@@ -1,0 +1,163 @@
+"""
+schemas.py
+Schemas Pydantic para la API (request/response).
+"""
+from typing import Optional, List, Dict, Any, Literal
+from pydantic import BaseModel
+
+
+class ServiceOut(BaseModel):
+    clave: str
+    etiqueta: str
+    class Config:
+        from_attributes = True
+
+
+class ServiceCreate(BaseModel):
+    clave: str
+    etiqueta: str
+
+
+class FragmentBase(BaseModel):
+    nombre: str
+    marca: str
+    modelos_compatibles: str = ""
+    servicios: List[str] = []
+    orden: int = 50
+    texto: str = ""
+
+
+class FragmentCreate(FragmentBase):
+    pass
+
+
+class FragmentUpdate(FragmentBase):
+    pass
+
+
+class FragmentOut(FragmentBase):
+    id: str
+    class Config:
+        from_attributes = True
+
+
+class BuildTemplateRequest(BaseModel):
+    fragment_ids: List[str]
+    variables: Dict[str, str] = {}
+    extra_lan_networks: List[Dict[str, str]] = []
+    acl_mgmt_ips: List[str] = []
+
+
+class ApplyTemplateRequest(BuildTemplateRequest):
+    marca: str
+    connection: Dict[str, Any]
+
+
+class ChecklistItemBase(BaseModel):
+    servicio: str
+    seccion: str
+    nombre: str
+    orden: int = 10
+    modo: str = "auto"
+    comando: str = ""
+
+
+class ChecklistItemCreate(ChecklistItemBase):
+    pass
+
+
+class ChecklistItemOut(ChecklistItemBase):
+    id: str
+    class Config:
+        from_attributes = True
+
+
+class ChecklistRunItem(BaseModel):
+    item_id: str
+    param: Optional[str] = ""
+
+
+class ChecklistRunRequest(BaseModel):
+    connection: Dict[str, Any]
+    items: List[ChecklistRunItem]
+
+
+class ChecklistPdfItem(BaseModel):
+    nombre: str
+    seccion: str
+    modo: str
+    cmd: Optional[str] = ""
+    output: Optional[str] = ""
+    image_paths: List[str] = []
+
+
+class ChecklistPdfRequest(BaseModel):
+    titulo: str = "CheckList de Claro"
+    servicio_label: str = ""
+    sot: str = ""
+    cid: str = ""
+    fecha: str = ""
+    device_id: str = ""
+    logo_path: Optional[str] = None
+    items: List[ChecklistPdfItem]
+
+
+class PhotoItemBase(BaseModel):
+    categoria: str
+    nombre: str
+    orden: int = 10
+
+
+class PhotoItemCreate(PhotoItemBase):
+    pass
+
+
+class PhotoItemOut(PhotoItemBase):
+    id: str
+    class Config:
+        from_attributes = True
+
+
+class PhotoReportItem(BaseModel):
+    numero: int
+    descripcion: str
+    image_path: Optional[str] = None
+    lado: Literal["site", "pdi", "pop", "cliente"] = "site"
+
+
+class PhotoReportRequest(BaseModel):
+    titulo: str = "REPORTE FOTOGRAFICO INSTALACION EN"
+    proy: str = ""
+    cliente: str = ""
+    sot: str = ""
+    fecha: str = ""
+    cid: str = ""
+    contrata: str = ""
+    logo_izq_path: Optional[str] = None
+    logo_der_path: Optional[str] = None
+    items: List[PhotoReportItem]
+
+
+class RunTestsRequest(BaseModel):
+    connection: Dict[str, Any]
+    vendor_key: str
+    device_type: str
+    uplink: str = ""
+    ping: str = ""
+
+
+class TestsPdfRequest(BaseModel):
+    device_id: str = ""
+    ip: str = ""
+    vendor_label: str = ""
+    sede: str = ""
+    fecha: str = ""
+    logo_izq_path: Optional[str] = None
+    logo_der_path: Optional[str] = None
+    config_text: str = ""
+    results: List[Dict[str, Any]] = []
+
+
+class UploadOut(BaseModel):
+    path: str
+    url: str

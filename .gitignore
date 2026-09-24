@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Node
+node_modules/
+frontend/dist/
+
+# Datos/almacenamiento local
+backend/app/storage/uploads/*
+backend/app/storage/outputs/*
+!backend/app/storage/uploads/.gitkeep
+!backend/app/storage/outputs/.gitkeep
+
+# Env
+.env
+
+# Editores/SO
+.DS_Store
+.vscode/

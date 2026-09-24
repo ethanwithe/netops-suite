@@ -1,0 +1,57 @@
+# ============================================================
+# Dockerfile.allinone
+# Variante "todo en una sola imagen, literalmente": frontend + backend +
+# PostgreSQL, los tres corriendo DENTRO del mismo contenedor (supervisord).
+#
+# Esto NO es la practica recomendada para produccion (la base de datos
+# normalmente va en su propio contenedor/servicio para poder escalar,
+# respaldar y actualizar cada pieza por separado - ver Dockerfile +
+# docker-compose.yml para esa opcion, que es la que se usa por defecto).
+# Esta variante existe para el caso de querer UN SOLO contenedor
+# autocontenido (ej. una demo portatil, o un entorno muy restringido).
+#
+# Uso:
+#   docker build -f Dockerfile.allinone -t netops-suite:allinone .
+#   docker run -p 8000:8000 -v netops_pgdata:/var/lib/postgresql/data netops-suite:allinone
+# ============================================================
+
+FROM node:20-alpine AS frontend-build
+WORKDIR /frontend
+COPY frontend/package.json frontend/package-lock.json* ./
+RUN npm install
+COPY frontend/ ./
+RUN npm run build
+
+FROM python:3.12-slim
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        gcc libpq-dev postgresql postgresql-contrib supervisor gosu \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY backend/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+RUN python -m playwright install --with-deps chromium
+
+COPY backend/app ./app
+COPY --from=frontend-build /frontend/dist ./app/static_frontend
+
+RUN mkdir -p /app/app/storage/uploads /app/app/storage/outputs
+
+ENV UPLOADS_DIR=/app/app/storage/uploads \
+    OUTPUTS_DIR=/app/app/storage/outputs \
+    DATABASE_URL=postgresql+psycopg2://netops:netops@localhost:5432/netops \
+    CORS_ORIGINS=* \
+    PYTHONUNBUFFERED=1 \
+    PGDATA=/var/lib/postgresql/data
+
+COPY docker/allinone/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+COPY docker/allinone/init_db.sh /docker-entrypoint-init-db.sh
+COPY docker/allinone/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh /docker-entrypoint-init-db.sh
+
+EXPOSE 8000
+VOLUME ["/var/lib/postgresql/data"]
+
+ENTRYPOINT ["/entrypoint.sh"]

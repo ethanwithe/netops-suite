@@ -1,0 +1,18 @@
+# Levanta SOLO Postgres en Docker, para cuando quieres correr el backend y
+# el frontend localmente (sin Docker) pero no quieres instalar Postgres a
+# mano en tu máquina:
+#   docker compose -f docker-compose.db-only.yml up -d
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: netops
+      POSTGRES_PASSWORD: netops
+      POSTGRES_DB: netops
+    ports:
+      - "5432:5432"
+    volumes:
+      - db_data_local:/var/lib/postgresql/data
+volumes:
+  db_data_local:
