@@ -6,6 +6,38 @@ body {
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
 }
 
+/* =========================
+   LAYOUT BASE RESPONSIVE
+========================= */
+
+.app-layout {
+  @apply flex min-h-screen bg-slate-50;
+}
+
+/* SIDEBAR */
+.sidebar {
+  @apply fixed lg:static z-40 w-64 h-full bg-white border-r border-slate-200 transition-transform duration-300;
+}
+
+/* oculto en mobile */
+.sidebar-hidden {
+  @apply -translate-x-full lg:translate-x-0;
+}
+
+/* contenido principal */
+.main-content {
+  @apply flex-1 w-full lg:ml-0 transition-all duration-300;
+}
+
+/* overlay mobile */
+.sidebar-overlay {
+  @apply fixed inset-0 bg-black/40 z-30 lg:hidden;
+}
+
+/* =========================
+   COMPONENTES UI
+========================= */
+
 .card {
   @apply bg-white rounded-xl shadow-sm border border-slate-200 p-5;
 }
@@ -32,4 +64,16 @@ body {
 
 .label {
   @apply block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1;
+}
+
+/* =========================
+   RESPONSIVE HELPERS
+========================= */
+
+.hide-mobile {
+  @apply hidden lg:block;
+}
+
+.show-mobile {
+  @apply block lg:hidden;
 }
