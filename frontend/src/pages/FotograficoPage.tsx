@@ -5,6 +5,7 @@ import ImageAnnotator from "../components/ImageAnnotator";
 import type { PhotoItem } from "../types";
 
 type Lado = "site" | "pdi" | "pop" | "cliente";
+type TipoInstalacion = "gpon_ont" | "gpon_modulo" | "fibra_convencional";
 
 type RowState = {
   item: PhotoItem;
@@ -15,9 +16,63 @@ type RowState = {
   lado: Lado;
 };
 
+type SavedRowState = {
+  id: string;
+  incluir: boolean;
+  descripcion: string;
+  imagePath: string;
+  imageUrl: string;
+  lado: Lado;
+};
+
+type DraftState = {
+  titulo: string;
+  proy: string;
+  cliente: string;
+  sot: string;
+  fecha: string;
+  cid: string;
+  contrata: string;
+  rows: SavedRowState[];
+};
+
+type LogoState = {
+  logoIzq: string;
+  logoIzqUrl: string;
+  logoDer: string;
+  logoDerUrl: string;
+};
+
+const LOGOS_STORAGE_KEY = "fotografico_logos_v1";
+
+function draftStorageKey(tipo: TipoInstalacion) {
+  return `fotografico_draft_v1_${tipo}`;
+}
+
+function defaultTitle() {
+  return "REPORTE FOTOGRAFICO INSTALACION DE FIBRA";
+}
+
+function readJson<T>(key: string, fallback: T): T {
+  try {
+    const value = localStorage.getItem(key);
+    return value ? JSON.parse(value) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function getTipoLabel(tipo: TipoInstalacion) {
+  if (tipo === "gpon_ont") return "GPON CON ONT";
+  if (tipo === "gpon_modulo") return "GPON CON MÓDULO";
+  return "FIBRA CONVENCIONAL";
+}
+
 export default function FotograficoPage() {
   const [tab, setTab] = useState<"run" | "items">("run");
   const [items, setItems] = useState<PhotoItem[]>([]);
+  const [tipoInstalacion, setTipoInstalacion] =
+    useState<TipoInstalacion | "">("");
 
   useEffect(() => {
     reload();
@@ -27,22 +82,70 @@ export default function FotograficoPage() {
     api.get("/photos/items").then((r) => setItems(r.data));
   }
 
+  if (!tipoInstalacion) {
+    return (
+      <div className="max-w-xl mx-auto">
+        <div className="card space-y-5">
+          <div>
+            <h2 className="text-2xl font-bold text-slate-800">
+              Reporte Fotográfico
+            </h2>
+            <p className="text-sm text-slate-500 mt-1">
+              Selecciona primero el tipo de instalación.
+            </p>
+          </div>
+
+          <div>
+            <label className="label">Tipo de instalación</label>
+            <select
+              className="input"
+              defaultValue=""
+              onChange={(e) =>
+                setTipoInstalacion(e.target.value as TipoInstalacion)
+              }
+            >
+              <option value="" disabled>
+                Seleccionar...
+              </option>
+              <option value="gpon_ont">GPON CON ONT</option>
+              <option value="gpon_modulo">GPON CON MÓDULO</option>
+              <option value="fibra_convencional">FIBRA CONVENCIONAL</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold text-slate-800">
-          Reporte Fotográfico
-        </h2>
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+        <div>
+          <h2 className="text-2xl font-bold text-slate-800">
+            Reporte Fotográfico
+          </h2>
 
-        <p className="text-slate-500 text-sm">
-          EQUIPOS INSTALADOS ACCESO, ETIQUETADO, RECORRIDO EN ACCESO, VISTA
-          GENERAL UBICACION DE EQUIPOS, EQUIPOS LADO CLIENTE, ETIQUETADO
-          CLIENTE, VISTA INSTALACION EN GABINETE, RECORRIDO CLIENTE, VISTA
-          INSTALACION DE EQUIPOS, MULTIMETRO, QR.
-        </p>
+          <p className="text-slate-500 text-sm">
+            EQUIPOS INSTALADOS ACCESO, ETIQUETADO, RECORRIDO EN ACCESO, VISTA
+            GENERAL UBICACION DE EQUIPOS, EQUIPOS LADO CLIENTE, ETIQUETADO
+            CLIENTE, VISTA INSTALACION EN GABINETE, RECORRIDO CLIENTE, VISTA
+            INSTALACION DE EQUIPOS, MULTIMETRO, QR.
+          </p>
+
+          <p className="mt-2 text-xs font-semibold text-brand-700">
+            Tipo: {getTipoLabel(tipoInstalacion)}
+          </p>
+        </div>
+
+        <button
+          className="btn-secondary shrink-0"
+          onClick={() => setTipoInstalacion("")}
+        >
+          Cambiar tipo
+        </button>
       </div>
 
-      <div className="flex gap-2">
+      <div className="flex flex-col sm:flex-row gap-2">
         <button
           className={tab === "run" ? "btn-primary" : "btn-secondary"}
           onClick={() => setTab("run")}
@@ -59,7 +162,7 @@ export default function FotograficoPage() {
       </div>
 
       {tab === "run" ? (
-        <RunTab items={items} />
+        <RunTab items={items} tipoInstalacion={tipoInstalacion} />
       ) : (
         <ItemsTab items={items} onChange={reload} />
       )}
@@ -67,40 +170,125 @@ export default function FotograficoPage() {
   );
 }
 
-function RunTab({ items }: { items: PhotoItem[] }) {
+function RunTab({
+  items,
+  tipoInstalacion,
+}: {
+  items: PhotoItem[];
+  tipoInstalacion: TipoInstalacion;
+}) {
+  const draftKey = draftStorageKey(tipoInstalacion);
+
+  const savedDraft = readJson<DraftState>(draftKey, {
+    titulo: defaultTitle(),
+    proy: "",
+    cliente: "",
+    sot: "",
+    fecha: new Date().toLocaleDateString("es-PE"),
+    cid: "",
+    contrata: "",
+    rows: [],
+  });
+
+  const savedLogos = readJson<LogoState>(LOGOS_STORAGE_KEY, {
+    logoIzq: "",
+    logoIzqUrl: "",
+    logoDer: "",
+    logoDerUrl: "",
+  });
+
   const [rows, setRows] = useState<RowState[]>([]);
+  const [rowsReady, setRowsReady] = useState(false);
 
-  // TÍTULO CORREGIDO
-  const [titulo, setTitulo] = useState(
-    "REPORTE FOTOGRAFICO INSTALACION DE FIBRA"
-  );
-
-  const [proy, setProy] = useState("");
-  const [cliente, setCliente] = useState("");
-  const [sot, setSot] = useState("");
+  const [titulo, setTitulo] = useState(savedDraft.titulo || defaultTitle());
+  const [proy, setProy] = useState(savedDraft.proy || "");
+  const [cliente, setCliente] = useState(savedDraft.cliente || "");
+  const [sot, setSot] = useState(savedDraft.sot || "");
   const [fecha, setFecha] = useState(
-    new Date().toLocaleDateString("es-PE")
+    savedDraft.fecha || new Date().toLocaleDateString("es-PE")
   );
-  const [cid, setCid] = useState("");
-  const [contrata, setContrata] = useState("");
-  const [logoIzq, setLogoIzq] = useState("");
-  const [logoDer, setLogoDer] = useState("");
+  const [cid, setCid] = useState(savedDraft.cid || "");
+  const [contrata, setContrata] = useState(savedDraft.contrata || "");
+
+  const [logoIzq, setLogoIzq] = useState(savedLogos.logoIzq || "");
+  const [logoIzqUrl, setLogoIzqUrl] = useState(savedLogos.logoIzqUrl || "");
+  const [logoDer, setLogoDer] = useState(savedLogos.logoDer || "");
+  const [logoDerUrl, setLogoDerUrl] = useState(savedLogos.logoDerUrl || "");
+
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [editing, setEditing] = useState<RowState | null>(null);
   const [dragId, setDragId] = useState<string | null>(null);
 
   useEffect(() => {
-    setRows(
-      items.map((item) => ({
-        item,
-        incluir: false,
-        descripcion: item.nombre,
-        imagePath: "",
-        imageUrl: "",
-        lado: "cliente",
-      }))
+    if (items.length === 0) return;
+
+    const savedRows = new Map(
+      savedDraft.rows.map((row) => [row.id, row])
     );
-  }, [items]);
+
+    setRows(
+      items.map((item) => {
+        const saved = savedRows.get(item.id);
+
+        return {
+          item,
+          incluir: saved?.incluir ?? false,
+          descripcion: saved?.descripcion ?? item.nombre,
+          imagePath: saved?.imagePath ?? "",
+          imageUrl: saved?.imageUrl ?? "",
+          lado: saved?.lado ?? "cliente",
+        };
+      })
+    );
+
+    setRowsReady(true);
+  }, [items, tipoInstalacion]);
+
+  useEffect(() => {
+    if (!rowsReady) return;
+
+    const data: DraftState = {
+      titulo,
+      proy,
+      cliente,
+      sot,
+      fecha,
+      cid,
+      contrata,
+      rows: rows.map((r) => ({
+        id: r.item.id,
+        incluir: r.incluir,
+        descripcion: r.descripcion,
+        imagePath: r.imagePath,
+        imageUrl: r.imageUrl,
+        lado: r.lado,
+      })),
+    };
+
+    localStorage.setItem(draftKey, JSON.stringify(data));
+  }, [
+    rowsReady,
+    draftKey,
+    titulo,
+    proy,
+    cliente,
+    sot,
+    fecha,
+    cid,
+    contrata,
+    rows,
+  ]);
+
+  useEffect(() => {
+    const data: LogoState = {
+      logoIzq,
+      logoIzqUrl,
+      logoDer,
+      logoDerUrl,
+    };
+
+    localStorage.setItem(LOGOS_STORAGE_KEY, JSON.stringify(data));
+  }, [logoIzq, logoIzqUrl, logoDer, logoDerUrl]);
 
   function updateRow(id: string, patch: Partial<RowState>) {
     setRows((prev) =>
@@ -176,17 +364,8 @@ function RunTab({ items }: { items: PhotoItem[] }) {
       }
 
       const reordered = [...catRows];
-
-      const [moved] = reordered.splice(
-        fromIdx,
-        1
-      );
-
-      reordered.splice(
-        toIdx,
-        0,
-        moved
-      );
+      const [moved] = reordered.splice(fromIdx, 1);
+      reordered.splice(toIdx, 0, moved);
 
       reordered.forEach((r, i) => {
         const nuevoOrden = (i + 1) * 10;
@@ -259,10 +438,8 @@ function RunTab({ items }: { items: PhotoItem[] }) {
         fecha,
         cid,
         contrata,
-        logo_izq_path:
-          logoIzq || null,
-        logo_der_path:
-          logoDer || null,
+        logo_izq_path: logoIzq || null,
+        logo_der_path: logoDer || null,
         items: payloadItems,
       }
     );
@@ -270,12 +447,23 @@ function RunTab({ items }: { items: PhotoItem[] }) {
     setPdfUrl(data.url);
   }
 
+  function clearDraft() {
+    if (
+      !confirm(
+        "¿Limpiar los datos, selecciones y fotografías guardadas de este tipo de reporte?"
+      )
+    ) {
+      return;
+    }
+
+    localStorage.removeItem(draftKey);
+    window.location.reload();
+  }
+
   return (
     <div className="space-y-6">
-      <div className="card grid grid-cols-2 gap-3">
-
-        {/* TÍTULO */}
-        <div className="col-span-2">
+      <div className="card grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="sm:col-span-2">
           <label className="label">
             Título
           </label>
@@ -373,32 +561,62 @@ function RunTab({ items }: { items: PhotoItem[] }) {
           />
         </div>
 
-        <div>
+        <div className="space-y-2">
           <p className="label">
             Logo izquierda (empresa)
           </p>
 
           <ImageUpload
-            onUploaded={(p) =>
-              setLogoIzq(p)
-            }
+            initialUrl={logoIzqUrl}
+            onUploaded={(p, u) => {
+              setLogoIzq(p);
+              setLogoIzqUrl(u || "");
+            }}
           />
+
+          {logoIzq && (
+            <button
+              type="button"
+              className="btn-danger w-full sm:w-auto"
+              onClick={() => {
+                setLogoIzq("");
+                setLogoIzqUrl("");
+              }}
+            >
+              Quitar logo
+            </button>
+          )}
         </div>
 
-        <div>
+        <div className="space-y-2">
           <p className="label">
             Logo derecha (Claro)
           </p>
 
           <ImageUpload
-            onUploaded={(p) =>
-              setLogoDer(p)
-            }
+            initialUrl={logoDerUrl}
+            onUploaded={(p, u) => {
+              setLogoDer(p);
+              setLogoDerUrl(u || "");
+            }}
           />
+
+          {logoDer && (
+            <button
+              type="button"
+              className="btn-danger w-full sm:w-auto"
+              onClick={() => {
+                setLogoDer("");
+                setLogoDerUrl("");
+              }}
+            >
+              Quitar logo
+            </button>
+          )}
         </div>
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:justify-between">
         <label className="flex items-center gap-2 text-sm font-medium">
           <input
             type="checkbox"
@@ -413,6 +631,14 @@ function RunTab({ items }: { items: PhotoItem[] }) {
 
           Seleccionar todo
         </label>
+
+        <button
+          type="button"
+          className="btn-danger w-full sm:w-auto"
+          onClick={clearDraft}
+        >
+          Limpiar reporte actual
+        </button>
       </div>
 
       <div className="space-y-4">
@@ -421,7 +647,7 @@ function RunTab({ items }: { items: PhotoItem[] }) {
             key={cat}
             className="card"
           >
-            <div className="flex items-center justify-between mb-3">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
               <h3 className="text-sm font-bold text-brand-700 uppercase">
                 {cat}
               </h3>
@@ -464,7 +690,7 @@ function RunTab({ items }: { items: PhotoItem[] }) {
                         cat
                       )
                     }
-                    className={`border rounded-lg p-3 flex items-center gap-3 flex-wrap cursor-move transition-colors ${
+                    className={`border rounded-lg p-3 grid grid-cols-[auto_1fr] sm:flex sm:items-center gap-3 cursor-move transition-colors ${
                       dragId === r.item.id
                         ? "opacity-50"
                         : "border-slate-100"
@@ -492,7 +718,7 @@ function RunTab({ items }: { items: PhotoItem[] }) {
                     />
 
                     <input
-                      className="input flex-1 min-w-[220px]"
+                      className="input col-span-2 sm:flex-1 sm:min-w-[220px]"
                       value={r.descripcion}
                       onChange={(e) =>
                         updateRow(
@@ -506,7 +732,7 @@ function RunTab({ items }: { items: PhotoItem[] }) {
                     />
 
                     <select
-                      className="input w-32"
+                      className="input col-span-2 sm:w-32"
                       value={r.lado}
                       onChange={(e) =>
                         updateRow(
@@ -536,26 +762,28 @@ function RunTab({ items }: { items: PhotoItem[] }) {
                       </option>
                     </select>
 
-                    <ImageUpload
-                      compact
-                      initialUrl={r.imageUrl}
-                      onUploaded={(
-                        p,
-                        u
-                      ) =>
-                        updateRow(
-                          r.item.id,
-                          {
-                            imagePath: p,
-                            imageUrl: u,
-                          }
-                        )
-                      }
-                    />
+                    <div className="col-span-2 sm:col-span-1 min-w-0">
+                      <ImageUpload
+                        compact
+                        initialUrl={r.imageUrl}
+                        onUploaded={(
+                          p,
+                          u
+                        ) =>
+                          updateRow(
+                            r.item.id,
+                            {
+                              imagePath: p,
+                              imageUrl: u,
+                            }
+                          )
+                        }
+                      />
+                    </div>
 
                     {r.imagePath && (
                       <button
-                        className="btn-secondary text-xs"
+                        className="btn-secondary text-xs col-span-2 sm:col-span-1"
                         onClick={() =>
                           setEditing(r)
                         }
@@ -571,7 +799,7 @@ function RunTab({ items }: { items: PhotoItem[] }) {
       </div>
 
       <button
-        className="btn-primary"
+        className="btn-primary w-full sm:w-auto"
         onClick={generate}
       >
         Generar PDF
@@ -584,7 +812,7 @@ function RunTab({ items }: { items: PhotoItem[] }) {
           </p>
 
           <a
-            className="btn-primary"
+            className="btn-primary w-full sm:w-auto"
             href={pdfUrl}
             target="_blank"
             rel="noreferrer"
@@ -703,7 +931,7 @@ function ItemsTab({
   }
 
   return (
-    <div className="grid grid-cols-[320px_1fr] gap-6">
+    <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-6">
       <div className="space-y-3">
 
         <div className="card p-0 divide-y divide-slate-100 max-h-[480px] overflow-y-auto">
@@ -806,7 +1034,7 @@ function ItemsTab({
           />
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex flex-col sm:flex-row gap-2">
           <button
             className="btn-primary"
             onClick={save}
