@@ -1,4 +1,3 @@
-// IMPORTS IGUAL
 import { useEffect, useState } from "react";
 import { api } from "../api/client";
 import ImageUpload from "../components/ImageUpload";
@@ -7,15 +6,15 @@ import ImageAnnotator from "../components/ImageAnnotator";
 type Lado = "site" | "pdi" | "pop" | "cliente";
 type Tipo = "gpon_ont" | "gpon_modulo" | "fibra";
 
-const STORAGE = "rf_v2";
+const STORAGE = "rf_v3";
 
 export default function FotograficoPage() {
   const [tipo, setTipo] = useState<Tipo | null>(null);
 
   if (!tipo) {
     return (
-      <div className="p-4">
-        <div className="card max-w-md mx-auto space-y-4">
+      <div className="p-4 flex justify-center">
+        <div className="card w-full max-w-md space-y-4">
           <h2 className="text-xl font-bold">Tipo de instalación</h2>
 
           <select
@@ -45,6 +44,7 @@ function RunTab({ tipo }: { tipo: Tipo }) {
   const [fecha, setFecha] = useState(saved.fecha || "");
   const [logoIzq, setLogoIzq] = useState(saved.logoIzq || "");
   const [logoDer, setLogoDer] = useState(saved.logoDer || "");
+
   const [loading, setLoading] = useState(false);
   const [pdf, setPdf] = useState<string | null>(null);
 
@@ -91,7 +91,7 @@ function RunTab({ tipo }: { tipo: Tipo }) {
 
       setPdf(data.url);
     } catch {
-      alert("Error");
+      alert("Error generando PDF");
     } finally {
       setLoading(false);
     }
@@ -100,10 +100,10 @@ function RunTab({ tipo }: { tipo: Tipo }) {
   return (
     <div className="p-3 space-y-4">
 
-      {/* PEGADO RAPIDO */}
+      {/* PEGADO AUTOMATICO */}
       <textarea
         className="input"
-        placeholder="Pegar PROY SOT CID CLIENTE"
+        placeholder="Pega PROY SOT CID CLIENTE"
         onBlur={(e) => parsePaste(e.target.value)}
       />
 
@@ -112,19 +112,47 @@ function RunTab({ tipo }: { tipo: Tipo }) {
       <input className="input" value={cid} onChange={(e)=>setCid(e.target.value)} placeholder="CID"/>
       <input className="input" value={cliente} onChange={(e)=>setCliente(e.target.value)} placeholder="CLIENTE"/>
 
-      <input type="date" className="input" value={fecha} onChange={(e)=>setFecha(e.target.value)} />
+      {/* FECHA */}
+      <input
+        type="date"
+        className="input"
+        value={fecha}
+        onChange={(e)=>setFecha(e.target.value)}
+      />
 
-      <ImageUpload onUploaded={(p)=>setLogoIzq(p)} />
-      <ImageUpload onUploaded={(p)=>setLogoDer(p)} />
+      {/* LOGOS */}
+      <div>
+        <p className="label">Logo Izquierdo</p>
+        <ImageUpload onUploaded={(p)=>setLogoIzq(p)} />
+      </div>
 
-      <button className="btn-primary w-full" onClick={generate}>
-        {loading ? "Generando..." : "Generar PDF"}
+      <div>
+        <p className="label">Logo Derecho</p>
+        <ImageUpload onUploaded={(p)=>setLogoDer(p)} />
+      </div>
+
+      {/* BOTON */}
+      <button
+        className="btn-primary w-full"
+        onClick={generate}
+        disabled={loading}
+      >
+        {loading ? "Generando PDF..." : "Generar PDF"}
       </button>
 
+      {/* RESULTADO */}
       {pdf && (
-        <div className="card">
-          <a href={pdf} target="_blank">Descargar</a>
-          <button onClick={()=>setPdf(null)}>Volver</button>
+        <div className="card space-y-2">
+          <a className="btn-primary w-full" href={pdf} target="_blank">
+            Descargar PDF
+          </a>
+
+          <button
+            className="btn-secondary w-full"
+            onClick={()=>setPdf(null)}
+          >
+            Volver a generar
+          </button>
         </div>
       )}
     </div>
