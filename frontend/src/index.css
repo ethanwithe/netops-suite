@@ -2,8 +2,15 @@
 @tailwind components;
 @tailwind utilities;
 
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
 body {
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  overflow-x: hidden;
 }
 
 .card {
@@ -30,6 +37,33 @@ body {
   @apply w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent;
 }
 
+/* Evita que selects e inputs hagan zoom incómodo en iPhone */
+@media (max-width: 640px) {
+  .input {
+    font-size: 16px;
+    min-height: 44px;
+  }
+
+  .btn {
+    min-height: 44px;
+  }
+
+  .card {
+    @apply p-3 rounded-lg;
+  }
+
+  body {
+    @apply text-sm;
+  }
+}
+
 .label {
   @apply block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1;
+}
+
+/* Imágenes, canvas y previews nunca deben desbordar el celular */
+img,
+canvas {
+  max-width: 100%;
+  height: auto;
 }
