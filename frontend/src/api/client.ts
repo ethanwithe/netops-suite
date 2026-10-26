@@ -1,17 +1,10 @@
 import axios from "axios";
 
-const API_URL = (import.meta.env.VITE_API_URL || "").replace(/\/+$/, "");
-
-export const api = axios.create({
-  baseURL: API_URL ? `${API_URL}/api` : "/api",
-});
+export const api = axios.create({ baseURL: "/api" });
 
 export function wsUrl(path: string): string {
-  const base = API_URL ? new URL(API_URL) : window.location;
-  const proto = base.protocol === "https:" ? "wss" : "ws";
-  const route = path.startsWith("/") ? path : `/${path}`;
-
-  return `${proto}://${base.host}/api${route}`;
+  const proto = window.location.protocol === "https:" ? "wss" : "ws";
+  return ${proto}://${window.location.host}/api${path};
 }
 
 export type WsEvent =
