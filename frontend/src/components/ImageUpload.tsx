@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
+import { compressForUpload } from "../utils/imageCompress";
 import CameraCapture from "./CameraCapture";
-import { getPlace, stampImage, stampLines } from "../utils/photoStamp";
+import { getPlaceFast, stampImage, stampLines } from "../utils/photoStamp";
 
 interface Props {
   onUploaded: (path: string, url: string) => void;
@@ -50,7 +51,7 @@ export default function ImageUpload({ onUploaded, label = "Subir imagen...", com
 
     try {
       const form = new FormData();
-      form.append("file", file);
+      form.append("file", await compressForUpload(file));
       const { data } = await api.post("/files/upload", form, {
         headers: { "Content-Type": "multipart/form-data" },
       });
@@ -71,7 +72,7 @@ export default function ImageUpload({ onUploaded, label = "Subir imagen...", com
     setStamping(true);
     try {
       const when = new Date();
-      const place = await getPlace();
+      const place = await getPlaceFast();
       const stamped = await stampImage(file, stampLines(cliente, place, when));
       setStamping(false);
       await handleFile(stamped);

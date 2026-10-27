@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { prefetchPlace } from "../utils/photoStamp";
 
 /**
  * Cámara propia (pantalla completa) pensada para fotos de equipos:
@@ -42,6 +43,7 @@ export default function CameraCapture({ onCapture, onClose, onNative }: Props) {
 
   useEffect(() => {
     let cancelled = false;
+    prefetchPlace(); // ubicación y dirección se buscan mientras apuntas
 
     async function start() {
       if (!navigator.mediaDevices?.getUserMedia) {
@@ -148,21 +150,13 @@ export default function CameraCapture({ onCapture, onClose, onNative }: Props) {
     setBusy(true);
 
     try {
-      // Pequeña pausa para que el enfoque se asiente tras pulsar.
-      await new Promise((r) => window.setTimeout(r, 250));
-
       let blob: Blob | null = null;
 
-      const IC = (window as unknown as { ImageCapture?: new (t: MediaStreamTrack) => { takePhoto: (o?: object) => Promise<Blob>; getPhotoCapabilities?: () => Promise<{ imageWidth?: { max: number }; imageHeight?: { max: number } }> } }).ImageCapture;
+      const IC = (window as unknown as { ImageCapture?: new (t: MediaStreamTrack) => { takePhoto: (o?: object) => Promise<Blob> } }).ImageCapture;
       if (IC) {
         try {
-          const ic = new IC(track);
-          const pc = await ic.getPhotoCapabilities?.().catch(() => undefined);
-          blob = await ic.takePhoto(
-            pc?.imageWidth && pc?.imageHeight
-              ? { imageWidth: pc.imageWidth.max, imageHeight: pc.imageHeight.max }
-              : undefined
-          );
+          // Resolución por defecto del teléfono: nítida y mucho más rápida que pedir la máxima.
+          blob = await new IC(track).takePhoto();
         } catch {
           blob = null; // se usa el cuadro de video
         }

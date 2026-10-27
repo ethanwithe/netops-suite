@@ -60,6 +60,52 @@ async function reverseAddress(lat: number, lng: number): Promise<string[] | unde
   }
 }
 
+const sleep = (ms: number) => new Promise<void>((r) => window.setTimeout(r, ms));
+
+let inflight: Promise<Place | null> | null = null;
+let addressOf: Promise<string[] | undefined> | null = null;
+
+/**
+ * Empieza a buscar la ubicación y la dirección en segundo plano (se llama al
+ * abrir la cámara), para que al disparar ya estén listas y no haya espera.
+ */
+export function prefetchPlace(): void {
+  try {
+    void document.fonts?.load('600 40px "Dancing Script"').catch(() => undefined); // letra del sello
+  } catch {
+    /* sin soporte */
+  }
+  if (inflight) return;
+  inflight = (async () => {
+    const pos = await position(8000);
+    if (!pos) return null;
+    const place: Place = { lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy };
+    addressOf = reverseAddress(place.lat, place.lng).then((a) => {
+      place.address = a;
+      return a;
+    });
+    return place;
+  })();
+  // pasado un minuto se vuelve a consultar (por si el usuario se movió)
+  window.setTimeout(() => {
+    inflight = null;
+    addressOf = null;
+  }, CACHE_MS);
+}
+
+/**
+ * Ubicación para el sello SIN hacer esperar a quien toma la foto: usa lo que
+ * ya se buscó en segundo plano y espera como máximo ~2 s por lo que falte.
+ */
+export async function getPlaceFast(): Promise<Place | null> {
+  prefetchPlace();
+  const place = await Promise.race([inflight!, sleep(1500).then(() => null)]);
+  if (place && !place.address && addressOf) {
+    await Promise.race([addressOf, sleep(1200)]);
+  }
+  return place;
+}
+
 /** Ubicación actual (con dirección si se puede). null si no hay permiso o señal. */
 export async function getPlace(): Promise<Place | null> {
   if (lastPlace && Date.now() - lastPlace.at < CACHE_MS) return lastPlace.place;
