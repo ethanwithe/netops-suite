@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.config import OUTPUTS_DIR, UPLOADS_DIR
+from app.services import file_store
 from app import models, schemas
 from app.services.device_link import run_tests
 from app.services.logo_store import resolve_logo
@@ -87,7 +88,9 @@ async def run_checklist_ws(websocket: WebSocket, db: Session = Depends(get_db)):
 
 def _resolve_upload_path(rel_path: str) -> str:
     """rel_path es lo que devolvió /api/uploads (nombre de archivo)."""
-    return str(UPLOADS_DIR / os.path.basename(rel_path))
+    name = os.path.basename(rel_path)
+    file_store.ensure_local(file_store.UPLOAD, name)
+    return str(UPLOADS_DIR / name)
 
 
 @router.post("/pdf")
@@ -118,4 +121,5 @@ def generate_checklist_pdf(payload: schemas.ChecklistPdfRequest, db: Session = D
     out_name = f"checklist_{uuid.uuid4().hex[:10]}.pdf"
     out_path = str(OUTPUTS_DIR / out_name)
     build_checklist_pdf(meta, sections_list, out_path)
+    file_store.put_path(file_store.OUTPUT, out_path, "application/pdf")
     return {"filename": out_name, "url": f"/api/files/outputs/{out_name}", "warnings": warnings}

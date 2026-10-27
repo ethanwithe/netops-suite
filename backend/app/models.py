@@ -96,3 +96,19 @@ class GeneratedDocument(Base):
     nombre_archivo = Column(String, nullable=False)
     meta = Column(JSON, default=dict)
     created_at = Column(DateTime, default=dt.datetime.utcnow)
+
+
+class StoredFile(Base):
+    """
+    Foto subida o PDF generado, guardado en la base de datos (solo se usa
+    cuando STORAGE_BACKEND=db, p. ej. en Vercel, que no deja escribir en disco).
+    id = "<tipo>:<nombre>", con tipo upload | output.
+    """
+    __tablename__ = "stored_files"
+
+    id = Column(String, primary_key=True)
+    kind = Column(String, nullable=False, index=True)
+    name = Column(String, nullable=False)
+    content_type = Column(String, nullable=True)
+    data = Column(LargeBinary, nullable=False)
+    created_at = Column(DateTime, default=dt.datetime.utcnow, index=True)

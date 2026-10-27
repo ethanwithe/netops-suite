@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 
 from app import models, schemas
 from app.database import get_db
+from app.services import cache
 
 router = APIRouter(prefix="/api/logos", tags=["logos"])
 
@@ -42,6 +43,11 @@ def list_logos(posicion: Optional[str] = None, db: Session = Depends(get_db)):
     if posicion is not None and posicion not in POSICIONES:
         raise HTTPException(400, "Posición inválida (usa 'izq' o 'der').")
 
+    key = f"logos:{posicion or 'all'}"
+    cached = cache.get_json(key)
+    if cached is not None:
+        return cached
+
     # Solo columnas livianas: no se carga el binario de cada logo en el listado.
     q = db.query(
         models.HeaderLogo.id,
@@ -52,7 +58,9 @@ def list_logos(posicion: Optional[str] = None, db: Session = Depends(get_db)):
         q = q.filter(models.HeaderLogo.posicion == posicion)
 
     rows = q.order_by(func.lower(models.HeaderLogo.nombre), models.HeaderLogo.created_at).all()
-    return [_logo_out(r) for r in rows]
+    out = [_logo_out(r) for r in rows]
+    cache.set_json(key, out)
+    return out
 
 
 @router.post("", response_model=schemas.HeaderLogoOut)
@@ -98,17 +106,22 @@ def create_logo(
     db.add(logo)
     db.commit()
     db.refresh(logo)
+    cache.delete_prefix("logos:")
     return _logo_out(logo)
 
 
 @router.get("/{logo_id}/image")
 def get_logo_image(logo_id: str, db: Session = Depends(get_db)):
-    logo = db.get(models.HeaderLogo, logo_id)
-    if not logo:
-        raise HTTPException(404, "Logo no encontrado.")
+    data = cache.get_bytes(f"logo:{logo_id}")
+    if data is None:
+        logo = db.get(models.HeaderLogo, logo_id)
+        if not logo:
+            raise HTTPException(404, "Logo no encontrado.")
+        data = bytes(logo.data)
+        cache.set_bytes(f"logo:{logo_id}", data)
     return Response(
-        content=bytes(logo.data),
-        media_type=logo.content_type or "image/png",
+        content=data,
+        media_type="image/png",
         # El contenido de un id nunca cambia -> se puede cachear sin riesgo.
         headers={"Cache-Control": "public, max-age=31536000, immutable"},
     )
@@ -121,4 +134,6 @@ def delete_logo(logo_id: str, db: Session = Depends(get_db)):
         raise HTTPException(404, "Logo no encontrado.")
     db.delete(logo)
     db.commit()
+    cache.delete_prefix("logos:")
+    cache.delete_prefix(f"logo:{logo_id}")
     return {"ok": True}

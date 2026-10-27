@@ -11,6 +11,7 @@ from app.database import get_db
 from app.config import OUTPUTS_DIR, UPLOADS_DIR
 from app import models, schemas
 from app.seed_data import CATEGORIAS, TIPO_CATEGORIAS
+from app.services import cache, file_store
 from app.services.logo_store import resolve_logo
 from app.services.naming import build_report_filename
 from app.services.pdf_photo_report import build_photo_report_pdf
@@ -48,10 +49,17 @@ def list_items(
 ):
     if tipo not in TIPO_CATEGORIAS:
         raise HTTPException(400, "Tipo de reporte inválido.")
+    key = f"items:{tipo}:{categoria or ''}"
+    cached = cache.get_json(key)
+    if cached is not None:
+        return cached
+
     q = db.query(models.PhotoItem).filter(models.PhotoItem.tipo == tipo)
     if categoria:
         q = q.filter(models.PhotoItem.categoria == categoria)
-    return sorted(q.all(), key=_sort_key)
+    items = sorted(q.all(), key=_sort_key)
+    cache.set_json(key, [schemas.PhotoItemOut.model_validate(i).model_dump() for i in items])
+    return items
 
 
 @router.post("/items", response_model=schemas.PhotoItemOut)
@@ -74,6 +82,7 @@ def create_item(payload: schemas.PhotoItemCreate, db: Session = Depends(get_db))
     db.add(item)
     db.commit()
     db.refresh(item)
+    cache.delete_prefix("items:")
     return item
 
 
@@ -100,6 +109,7 @@ def reorder_items(payload: schemas.PhotoReorderRequest, db: Session = Depends(ge
         items[item_id].orden = pos * 10
 
     db.commit()
+    cache.delete_prefix("items:")
     return [items[i] for i in ids]
 
 
@@ -113,6 +123,7 @@ def update_item(item_id: str, payload: schemas.PhotoItemCreate, db: Session = De
         setattr(item, k, v)
     db.commit()
     db.refresh(item)
+    cache.delete_prefix("items:")
     return item
 
 
@@ -123,6 +134,7 @@ def delete_item(item_id: str, db: Session = Depends(get_db)):
         raise HTTPException(404, "Ítem no encontrado.")
     db.delete(item)
     db.commit()
+    cache.delete_prefix("items:")
     return {"ok": True}
 
 
@@ -133,7 +145,9 @@ def delete_item(item_id: str, db: Session = Depends(get_db)):
 def _resolve_upload_path(rel_path: Optional[str]) -> Optional[str]:
     if not rel_path:
         return None
-    return str(UPLOADS_DIR / os.path.basename(rel_path))
+    name = os.path.basename(rel_path)
+    file_store.ensure_local(file_store.UPLOAD, name)  # en Vercel, baja la foto de la BD
+    return str(UPLOADS_DIR / name)
 
 
 @router.post("/pdf")
@@ -194,6 +208,7 @@ def generate_photo_report_pdf(
             if msg:
                 warnings.append(msg)
         os.replace(tmp_path, out_path)
+        file_store.put_path(file_store.OUTPUT, out_path, "application/pdf")
     except Exception as exc:
         raise HTTPException(500, f"No se pudo generar el PDF: {exc}")
     finally:
@@ -230,6 +245,7 @@ def generate_pj_report_pdf(
             if msg:
                 pj_warnings.append(msg)
         os.replace(tmp_path, out_path)
+        file_store.put_path(file_store.OUTPUT, out_path, "application/pdf")
     except Exception as exc:
         raise HTTPException(500, f"No se pudo generar el PDF: {exc}")
     finally:

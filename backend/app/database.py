@@ -34,10 +34,18 @@ def _connect_args(url: str) -> dict:
     return {} if is_local else {"sslmode": "require"}
 
 
+_engine_kwargs: dict = {}
+if os.getenv("VERCEL"):
+    # Serverless: cada invocación abre y cierra su conexión (el pooler de la
+    # base de datos es quien las reutiliza); un pool propio las acumularía.
+    from sqlalchemy.pool import NullPool
+    _engine_kwargs["poolclass"] = NullPool
+
 engine = create_engine(
     DATABASE_URL,
     pool_pre_ping=True,
     connect_args=_connect_args(DATABASE_URL),
+    **_engine_kwargs,
 )
 
 SessionLocal = sessionmaker(

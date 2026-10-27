@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app import models
 from app.config import UPLOADS_DIR
+from app.services import file_store
 
 
 def resolve_logo(
@@ -34,7 +35,9 @@ def resolve_logo(
         )
 
     if logo_path:
-        path = str(UPLOADS_DIR / os.path.basename(logo_path))
+        name = os.path.basename(logo_path)
+        file_store.ensure_local(file_store.UPLOAD, name)
+        path = str(UPLOADS_DIR / name)
         if os.path.isfile(path):
             return path
         warnings.append(f"No se encontró el archivo del logo {label}; se omitió.")
