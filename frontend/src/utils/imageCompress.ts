@@ -1,7 +1,6 @@
 /**
  * Reduce la foto ANTES de subirla: una foto de celular pesa 4–10 MB; a 2000 px
- * y JPEG 85 % pesa ~0,4–0,8 MB, se sube mucho más rápido y entra en los
- * límites de tamaño de Vercel (4,5 MB por petición). Para un PDF es más que
+ * y JPEG 85 % pesa ~0,4–0,8 MB, se sube mucho más rápido. Para un PDF es más que
  * suficiente.
  */
 

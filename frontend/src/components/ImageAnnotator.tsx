@@ -336,7 +336,7 @@ function fitRatio(r: CropR, ratio: number, W: number, H: number): CropR {
 
 async function loadBase(url: string): Promise<HTMLCanvasElement> {
   // Se descarga como archivo y se dibuja desde ahí: así funciona también cuando
-  // el backend está en otro dominio (Vercel) sin "manchar" el lienzo (CORS).
+  // el backend está en otro dominio sin "manchar" el lienzo (CORS).
   let src = url;
   let temp: string | null = null;
   if (!url.startsWith("blob:") && !url.startsWith("data:")) {

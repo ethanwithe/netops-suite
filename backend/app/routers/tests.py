@@ -4,7 +4,6 @@ from fastapi import APIRouter, Depends, WebSocket
 from sqlalchemy.orm import Session
 
 from app.config import OUTPUTS_DIR
-from app.services import file_store
 from app.database import get_db
 from app import schemas
 from app.services.logo_store import resolve_logo
@@ -53,5 +52,4 @@ def generate_tests_pdf(payload: schemas.TestsPdfRequest, db: Session = Depends(g
     out_name = f"pruebas_{uuid.uuid4().hex[:10]}.pdf"
     out_path = str(OUTPUTS_DIR / out_name)
     build_pdf(meta, payload.config_text, results, out_path=out_path)
-    file_store.put_path(file_store.OUTPUT, out_path, "application/pdf")
     return {"filename": out_name, "url": f"/api/files/outputs/{out_name}", "warnings": warnings}

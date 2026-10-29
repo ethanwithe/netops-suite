@@ -176,29 +176,3 @@ Dockerfile) y salida a Internet hacia el sitio de speedtest elegido.
 **Nota sobre Ostinato**: el endpoint solo orquesta "arrancar → esperar → capturar" — el comando exacto que arranca
 el tráfico depende 100% de cómo tengas armado tu script/CLI de Ostinato en esa máquina; no lo controla
 directamente porque la configuración de streams varía mucho de un caso a otro.
-
----
-
-## Publicar en Vercel (opcional) sin afectar a Railway
-
-Railway/Docker siguen funcionando igual (un solo servidor con frontend + backend, archivos en disco). Para Vercel se publican **dos proyectos** apuntando al mismo repositorio:
-
-**1. Backend** (Root Directory: `backend`)
-Variables de entorno (Project → Settings → Environment Variables; **no las guardes en el repositorio**):
-
-| Variable | Valor |
-|---|---|
-| `DATABASE_URL` | cadena de PostgreSQL (`postgresql://usuario:clave@host/base?sslmode=require`) |
-| `REDIS_URL` | cadena de Redis (`rediss://default:clave@host:puerto`) – opcional, acelera listas y logos |
-| `CORS_ORIGINS` | dirección del frontend, p. ej. `https://tu-frontend.vercel.app` |
-| `CORS_ORIGIN_REGEX` | opcional, p. ej. `https://.*\.vercel\.app` |
-
-En Vercel las fotos subidas y los PDF **se guardan en la base de datos** (Vercel no permite escribir en disco); se borran solos a los 30 días (`FILE_RETENTION_DAYS`).
-
-**2. Frontend** (Root Directory: `frontend`)
-`VITE_API_URL=https://tu-backend.vercel.app` (sin `/api`). Ver `frontend/.env.example`.
-
-**Límites de Vercel que conviene conocer**
-- No hay WebSocket: *Pruebas* y *CheckList* en vivo (SSH/serial) no funcionan allí. Si los necesitas, mantén Railway y define `VITE_WS_URL=https://tu-app.up.railway.app`.
-- Cada petición/respuesta admite hasta ~4,5 MB: por eso las fotos se reducen antes de subirse. Un PDF con muchas fotos puede superar ese tamaño; en ese caso descárgalo desde Railway o genera menos fotos por PDF.
-- Una función dura como máximo 60 s.

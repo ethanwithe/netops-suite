@@ -1,15 +1,12 @@
 import os
-import threading
 from pathlib import Path
 
 from fastapi import FastAPI
-from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app.config import CORS_ORIGINS, CORS_ORIGIN_REGEX
+from app.config import CORS_ORIGINS
 from sqlalchemy import inspect, text
 
 from app.database import Base, engine, SessionLocal
@@ -21,7 +18,6 @@ app = FastAPI(title="NetOps Suite API", version="1.0.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
-    allow_origin_regex=CORS_ORIGIN_REGEX,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -54,26 +50,8 @@ def _ensure_columns() -> None:
                 conn.execute(text("CREATE INDEX IF NOT EXISTS ix_photo_items_tipo ON photo_items (tipo)"))
 
 
-_initialized = False
-_init_lock = threading.Lock()
-
-
-def init_app() -> None:
-    """
-    Crea las tablas, agrega columnas nuevas y siembra datos. Es idempotente.
-    En servidores normales (Railway/Docker) corre una vez al arrancar; en
-    Vercel (serverless, sin evento de arranque fiable) corre en la primera
-    petición de cada instancia.
-    """
-    global _initialized
-    with _init_lock:
-        _init_once()
-
-
-def _init_once() -> None:
-    global _initialized
-    if _initialized:
-        return
+@app.on_event("startup")
+def on_startup():
     Base.metadata.create_all(bind=engine)
     _ensure_columns()
     db = SessionLocal()
@@ -82,28 +60,6 @@ def _init_once() -> None:
         db_seed.seed_photo_tipos(db)
     finally:
         db.close()
-    try:
-        from app.services import file_store
-
-        file_store.purge_old()
-    except Exception:
-        pass
-    _initialized = True
-
-
-@app.on_event("startup")
-def on_startup():
-    init_app()
-
-
-@app.middleware("http")
-async def _lazy_init(request, call_next):
-    if not _initialized and request.url.path.startswith("/api/") and request.url.path != "/api/health":
-        try:
-            await run_in_threadpool(init_app)
-        except Exception as exc:  # BD caída: se informa en lugar de dar un 500 mudo
-            return JSONResponse({"detail": f"No se pudo iniciar la base de datos: {exc}"}, status_code=503)
-    return await call_next(request)
 
 
 @app.get("/api/health")

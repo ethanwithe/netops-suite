@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app import models, schemas
+from app.services import cache
 from app.services import config_builder as cb
 from app.services.vendor_commands import get_config_mode
 from app.services.device_link import apply_raw_lines
@@ -23,12 +24,17 @@ def _frag_to_dict(f: models.TemplateFragment):
 
 @router.get("/fragments", response_model=list[schemas.FragmentOut])
 def list_fragments(marca: Optional[str] = None, servicio: Optional[str] = None, db: Session = Depends(get_db)):
+    key = f"fragments:{marca or ''}:{servicio or ''}"
+    cached = cache.get_json(key)
+    if cached is not None:
+        return cached
     q = db.query(models.TemplateFragment)
     if marca:
         q = q.filter(models.TemplateFragment.marca == marca)
     items = q.order_by(models.TemplateFragment.orden).all()
     if servicio:
         items = [f for f in items if servicio in (f.servicios or [])]
+    cache.set_json(key, [schemas.FragmentOut.model_validate(r).model_dump() for r in items])
     return items
 
 
@@ -38,6 +44,7 @@ def create_fragment(payload: schemas.FragmentCreate, db: Session = Depends(get_d
     db.add(frag)
     db.commit()
     db.refresh(frag)
+    cache.delete_prefix("fragments:")
     return frag
 
 
@@ -50,6 +57,7 @@ def update_fragment(frag_id: str, payload: schemas.FragmentUpdate, db: Session =
         setattr(frag, k, v)
     db.commit()
     db.refresh(frag)
+    cache.delete_prefix("fragments:")
     return frag
 
 
@@ -60,6 +68,7 @@ def delete_fragment(frag_id: str, db: Session = Depends(get_db)):
         raise HTTPException(404, "Fragmento no encontrado.")
     db.delete(frag)
     db.commit()
+    cache.delete_prefix("fragments:")
     return {"ok": True}
 
 

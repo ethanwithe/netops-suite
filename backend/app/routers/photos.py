@@ -11,7 +11,7 @@ from app.database import get_db
 from app.config import OUTPUTS_DIR, UPLOADS_DIR
 from app import models, schemas
 from app.seed_data import CATEGORIAS, TIPO_CATEGORIAS
-from app.services import cache, file_store
+from app.services import cache
 from app.services.logo_store import resolve_logo
 from app.services.naming import build_report_filename
 from app.services.pdf_photo_report import build_photo_report_pdf
@@ -146,7 +146,6 @@ def _resolve_upload_path(rel_path: Optional[str]) -> Optional[str]:
     if not rel_path:
         return None
     name = os.path.basename(rel_path)
-    file_store.ensure_local(file_store.UPLOAD, name)  # en Vercel, baja la foto de la BD
     return str(UPLOADS_DIR / name)
 
 
@@ -208,7 +207,6 @@ def generate_photo_report_pdf(
             if msg:
                 warnings.append(msg)
         os.replace(tmp_path, out_path)
-        file_store.put_path(file_store.OUTPUT, out_path, "application/pdf")
     except Exception as exc:
         raise HTTPException(500, f"No se pudo generar el PDF: {exc}")
     finally:
@@ -245,7 +243,6 @@ def generate_pj_report_pdf(
             if msg:
                 pj_warnings.append(msg)
         os.replace(tmp_path, out_path)
-        file_store.put_path(file_store.OUTPUT, out_path, "application/pdf")
     except Exception as exc:
         raise HTTPException(500, f"No se pudo generar el PDF: {exc}")
     finally:

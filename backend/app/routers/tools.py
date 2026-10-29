@@ -20,7 +20,6 @@ from fastapi import APIRouter, WebSocket
 from pydantic import BaseModel
 
 from app.config import UPLOADS_DIR
-from app.services import file_store
 from app.services.device_link import run_tests
 from app.ws_utils import run_streaming
 
@@ -65,7 +64,6 @@ async def speedtest_ws(websocket: WebSocket):
             page.screenshot(path=out_path)
             browser.close()
 
-        file_store.put_path(file_store.UPLOAD, out_path, "image/png")
         progress_cb("Captura de resultado guardada.")
         return {"path": out_name, "url": f"/api/files/uploads/{out_name}"}
 
