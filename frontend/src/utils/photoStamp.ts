@@ -11,6 +11,29 @@ export interface Place {
   address?: string[];
 }
 
+/** Esquina donde se imprime el sello: abajo-derecha (como el modelo), abajo-izquierda, arriba... */
+export type StampPos = "br" | "bl" | "tr" | "tl";
+export const STAMP_ORDER: StampPos[] = ["br", "bl", "tl", "tr"];
+export const STAMP_ARROW: Record<StampPos, string> = { br: "↘", bl: "↙", tl: "↖", tr: "↗" };
+const POS_KEY = "netops.stampPos";
+
+export function getStampPos(): StampPos {
+  try {
+    const v = localStorage.getItem(POS_KEY) as StampPos | null;
+    return v && STAMP_ORDER.includes(v) ? v : "br";
+  } catch {
+    return "br";
+  }
+}
+
+export function setStampPos(p: StampPos): void {
+  try {
+    localStorage.setItem(POS_KEY, p);
+  } catch {
+    /* sin almacenamiento: no se recuerda */
+  }
+}
+
 let lastPlace: { at: number; place: Place } | null = null;
 const CACHE_MS = 60_000;
 
@@ -182,7 +205,7 @@ function loadImage(file: File): Promise<HTMLImageElement> {
 }
 
 /** Devuelve una copia JPEG de la foto con la franja de datos al pie. */
-export async function stampImage(file: File, lines: string[]): Promise<File> {
+export async function stampImage(file: File, lines: string[], pos: StampPos = "br"): Promise<File> {
   const img = await loadImage(file);
 
   const MAX = 1600;
@@ -209,7 +232,9 @@ export async function stampImage(file: File, lines: string[]): Promise<File> {
   }
   ctx.font = `600 ${size}px ${family}`;
   ctx.textBaseline = "alphabetic";
-  ctx.textAlign = "right";
+  const right = pos === "br" || pos === "tr";
+  const bottom = pos === "br" || pos === "bl";
+  ctx.textAlign = right ? "right" : "left";
 
   // Cada dato se parte en las líneas que necesite (un cliente largo ocupa 2 o más).
   const rows = lines.flatMap((l) => wrap(ctx, l, w - 2 * pad));
@@ -219,10 +244,12 @@ export async function stampImage(file: File, lines: string[]): Promise<File> {
   ctx.shadowBlur = Math.max(3, Math.round(size * 0.14));
   ctx.shadowOffsetX = Math.max(1, Math.round(size * 0.04));
   ctx.shadowOffsetY = Math.max(1, Math.round(size * 0.04));
-  const baseline = h - pad - Math.round(size * 0.2);
+  const x = right ? w - pad : pad;
   rows.forEach((r, i) => {
-    const y = baseline - (rows.length - 1 - i) * lead;
-    ctx.fillText(r, w - pad, y);
+    const y = bottom
+      ? h - pad - Math.round(size * 0.2) - (rows.length - 1 - i) * lead
+      : pad + Math.round(size * 0.85) + i * lead;
+    ctx.fillText(r, x, y);
   });
 
   const blob: Blob | null = await new Promise((res) => canvas.toBlob(res, "image/jpeg", 0.88));
@@ -230,4 +257,53 @@ export async function stampImage(file: File, lines: string[]): Promise<File> {
 
   const base = (file.name || "foto").replace(/\.[^.]+$/, "");
   return new File([blob], `${base}.jpg`, { type: "image/jpeg" });
+}
+
+
+/**
+ * Sigue la ubicación en tiempo real (para mostrar las coordenadas en la
+ * cámara). Devuelve la función que detiene el seguimiento. La dirección se
+ * consulta solo la primera vez y cuando te mueves más de ~50 m.
+ */
+export function watchPlace(onUpdate: (p: Place) => void): () => void {
+  if (typeof navigator === "undefined" || !navigator.geolocation) return () => undefined;
+
+  let current: Place | null = null;
+  let addrFrom: { lat: number; lng: number } | null = null;
+
+  const id = navigator.geolocation.watchPosition(
+    (pos) => {
+      const place: Place = {
+        lat: pos.coords.latitude,
+        lng: pos.coords.longitude,
+        accuracy: pos.coords.accuracy,
+        address: current?.address,
+      };
+      current = place;
+      onUpdate(place);
+
+      const moved = !addrFrom || distanceM(addrFrom, place) > 50;
+      if (moved) {
+        addrFrom = { lat: place.lat, lng: place.lng };
+        void reverseAddress(place.lat, place.lng).then((a) => {
+          if (a && current) {
+            current = { ...current, address: a };
+            onUpdate(current);
+          }
+        });
+      }
+    },
+    () => undefined,
+    { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 }
+  );
+  return () => navigator.geolocation.clearWatch(id);
+}
+
+function distanceM(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
+  const R = 6371000;
+  const rad = (d: number) => (d * Math.PI) / 180;
+  const dLat = rad(b.lat - a.lat);
+  const dLng = rad(b.lng - a.lng);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
 }

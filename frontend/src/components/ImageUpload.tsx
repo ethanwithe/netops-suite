@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
 import { compressForUpload } from "../utils/imageCompress";
 import CameraCapture from "./CameraCapture";
-import { getPlaceFast, stampImage, stampLines } from "../utils/photoStamp";
+import { getPlaceFast, getStampPos, stampImage, stampLines } from "../utils/photoStamp";
+import type { Place } from "../utils/photoStamp";
 
 interface Props {
   onUploaded: (path: string, url: string) => void;
@@ -67,13 +68,13 @@ export default function ImageUpload({ onUploaded, label = "Subir imagen...", com
   }
 
   /** Foto de la cámara: se le imprime cliente, fecha/hora, dirección y coordenadas. */
-  async function handleCamera(file: File) {
+  async function handleCamera(file: File, known?: Place | null) {
     if (!file.type.startsWith("image/")) return;
     setStamping(true);
     try {
       const when = new Date();
-      const place = await getPlaceFast();
-      const stamped = await stampImage(file, stampLines(cliente, place, when));
+      const place = known !== undefined ? known : await getPlaceFast();
+      const stamped = await stampImage(file, stampLines(cliente, place, when), getStampPos());
       setStamping(false);
       await handleFile(stamped);
     } catch {
@@ -178,9 +179,10 @@ export default function ImageUpload({ onUploaded, label = "Subir imagen...", com
       {cameraOpen && (
         <CameraCapture
           onClose={() => setCameraOpen(false)}
-          onCapture={(f) => {
+          cliente={cliente}
+          onCapture={(f, place) => {
             setCameraOpen(false);
-            void handleCamera(f);
+            void handleCamera(f, place);
           }}
           onNative={() => {
             setCameraOpen(false);
