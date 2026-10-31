@@ -41,13 +41,101 @@ def _sort_key(item: models.PhotoItem):
     return (rank, custom, item.orden or 0, (item.nombre or "").lower())
 
 
+# ============================================================
+# VENTANAS PERSONALIZADAS
+# ============================================================
+
+def _clean_config(cfg: dict) -> dict:
+    """Solo se guardan los campos conocidos (textos y logos)."""
+    out = {}
+    for k in ("proy", "cliente", "sot", "cid", "contrata"):
+        out[k] = str((cfg or {}).get(k, ""))[:300]
+    for k in ("logoIzq", "logoDer"):
+        v = (cfg or {}).get(k) or {}
+        out[k] = {
+            "id": v.get("id") if isinstance(v.get("id"), str) else None,
+            "path": "",
+            "url": "",
+        }
+    return out
+
+
+def _is_window(db: Session, tipo: str) -> bool:
+    return db.get(models.PhotoWindow, tipo) is not None
+
+
+@router.get("/windows", response_model=list[schemas.PhotoWindowOut])
+def list_windows(db: Session = Depends(get_db)):
+    return (
+        db.query(models.PhotoWindow)
+        .order_by(models.PhotoWindow.orden, models.PhotoWindow.created_at)
+        .all()
+    )
+
+
+@router.post("/windows", response_model=schemas.PhotoWindowOut)
+def create_window(payload: schemas.PhotoWindowIn, db: Session = Depends(get_db)):
+    nombre = payload.nombre.strip()
+    if not nombre:
+        raise HTTPException(400, "Escribe un nombre para la ventana.")
+    last = db.query(func.max(models.PhotoWindow.orden)).scalar()
+    win = models.PhotoWindow(
+        nombre=nombre[:80], config=_clean_config(payload.config), orden=(last or 0) + 10
+    )
+    db.add(win)
+    db.flush()
+
+    base = payload.copiar_de or ""
+    if base:
+        for it in sorted(
+            db.query(models.PhotoItem).filter(models.PhotoItem.tipo == base).all(),
+            key=_sort_key,
+        ):
+            db.add(
+                models.PhotoItem(
+                    tipo=win.id, categoria=it.categoria, nombre=it.nombre, orden=it.orden
+                )
+            )
+    db.commit()
+    db.refresh(win)
+    cache.delete_prefix("items:")
+    return win
+
+
+@router.put("/windows/{win_id}", response_model=schemas.PhotoWindowOut)
+def update_window(win_id: str, payload: schemas.PhotoWindowIn, db: Session = Depends(get_db)):
+    win = db.get(models.PhotoWindow, win_id)
+    if not win:
+        raise HTTPException(404, "La ventana ya no existe.")
+    nombre = payload.nombre.strip()
+    if not nombre:
+        raise HTTPException(400, "Escribe un nombre para la ventana.")
+    win.nombre = nombre[:80]
+    win.config = _clean_config(payload.config)
+    db.commit()
+    db.refresh(win)
+    return win
+
+
+@router.delete("/windows/{win_id}")
+def delete_window(win_id: str, db: Session = Depends(get_db)):
+    win = db.get(models.PhotoWindow, win_id)
+    if not win:
+        raise HTTPException(404, "La ventana ya no existe.")
+    db.query(models.PhotoItem).filter(models.PhotoItem.tipo == win_id).delete()
+    db.delete(win)
+    db.commit()
+    cache.delete_prefix("items:")
+    return {"ok": True}
+
+
 @router.get("/items", response_model=list[schemas.PhotoItemOut])
 def list_items(
     categoria: Optional[str] = None,
     tipo: str = "fibra",
     db: Session = Depends(get_db),
 ):
-    if tipo not in TIPO_CATEGORIAS:
+    if tipo not in TIPO_CATEGORIAS and not _is_window(db, tipo):
         raise HTTPException(400, "Tipo de reporte inválido.")
     key = f"items:{tipo}:{categoria or ''}"
     cached = cache.get_json(key)
@@ -57,7 +145,26 @@ def list_items(
     q = db.query(models.PhotoItem).filter(models.PhotoItem.tipo == tipo)
     if categoria:
         q = q.filter(models.PhotoItem.categoria == categoria)
-    items = sorted(q.all(), key=_sort_key)
+    rows = q.all()
+    if tipo in TIPO_CATEGORIAS:
+        items = sorted(rows, key=_sort_key)
+    else:
+        # Ventana propia: las categorías van en el orden en que se crearon.
+        import datetime as _dt
+        first: dict = {}
+        for r in rows:
+            c = r.created_at or _dt.datetime.min
+            if r.categoria not in first or c < first[r.categoria]:
+                first[r.categoria] = c
+        items = sorted(
+            rows,
+            key=lambda i: (
+                first[i.categoria],
+                i.categoria.lower(),
+                i.orden or 0,
+                (i.nombre or "").lower(),
+            ),
+        )
     cache.set_json(key, [schemas.PhotoItemOut.model_validate(i).model_dump() for i in items])
     return items
 

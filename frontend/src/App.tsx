@@ -4,6 +4,7 @@ import PruebasPage from "./pages/PruebasPage";
 import PlantillasPage from "./pages/PlantillasPage";
 import ChecklistPage from "./pages/ChecklistPage";
 import FotograficoPage from "./pages/FotograficoPage";
+import CustomFotograficoPage from "./pages/CustomFotograficoPage";
 import PoderJudicialPage from "./pages/PoderJudicialPage";
 
 export default function App() {
@@ -18,6 +19,7 @@ export default function App() {
         <Route path="/fotografico/gpon-ont" element={<FotograficoPage key="gpon_ont" tipo="gpon_ont" />} />
         <Route path="/fotografico/gpon-modulo" element={<FotograficoPage key="gpon_modulo" tipo="gpon_modulo" />} />
         <Route path="/fotografico/fibra" element={<FotograficoPage key="fibra" tipo="fibra" />} />
+        <Route path="/fotografico/v/:id" element={<CustomFotograficoPage />} />
         <Route path="/fotografico/poder-judicial" element={<PoderJudicialPage />} />
       </Route>
     </Routes>

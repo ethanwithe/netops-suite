@@ -10,6 +10,7 @@ import {
   FOTO_TIPOS,
   generatePdf,
   importReport,
+  isCustom,
   isGpon,
   getRow,
   previewFilename,
@@ -72,7 +73,17 @@ function groupByCategory(items: PhotoItem[]) {
 // PÁGINA
 // ============================================================
 
-export default function FotograficoPage({ tipo }: { tipo: FotoTipo }) {
+export default function FotograficoPage({
+  tipo,
+  nombre,
+  onConfigure,
+}: {
+  tipo: FotoTipo;
+  /** Nombre de una ventana propia (las fijas usan FOTO_TIPOS). */
+  nombre?: string;
+  /** Solo ventanas propias: abre su configuración (nombre, valores por defecto). */
+  onConfigure?: () => void;
+}) {
   // La pestaña activa se recuerda al ir a otra página y volver.
   const [tab, setTab] = usePersistentState<"run" | "items">(`fotografico.tab.${tipo}`, "run");
   const [items, setItems] = useState<PhotoItem[]>([]);
@@ -135,8 +146,13 @@ export default function FotograficoPage({ tipo }: { tipo: FotoTipo }) {
     <div className="space-y-6">
       <div>
         <h2 className="text-xl sm:text-2xl font-bold text-slate-800">
-          Reporte Fotográfico — {FOTO_TIPOS[tipo]}
+          Reporte Fotográfico — {nombre ?? FOTO_TIPOS[tipo]}
         </h2>
+        {onConfigure && (
+          <button type="button" className="btn-secondary mt-1 text-xs" onClick={onConfigure}>
+            ⚙️ Configurar esta ventana (nombre y valores por defecto)
+          </button>
+        )}
 
         <p className="text-slate-500 text-sm">
           Arma el PDF del reporte fotográfico: marca los ítems, sube o toma la
@@ -315,7 +331,7 @@ function RunTab({
       gpon_modulo: "gpon-modulo",
       fibra: "fibra",
     };
-    navigate(`/fotografico/${route[p.tipo ?? "fibra"] ?? "fibra"}`);
+    navigate(isCustom(p.tipo ?? "fibra") ? `/fotografico/v/${p.tipo}` : `/fotografico/${route[p.tipo ?? "fibra"] ?? "fibra"}`);
   }
 
   function generate() {
@@ -343,7 +359,7 @@ function RunTab({
   function newReport() {
     if (
       confirm(
-        "¿Empezar un reporte nuevo?\n\nSe borrarán los datos, los ítems marcados, las descripciones editadas y las fotos. Los logos elegidos se conservan."
+        "¿Empezar un reporte nuevo?\n\nSe borrarán los datos, los ítems marcados, las descripciones editadas y las fotos. Los logos elegidos se conservan (en una ventana propia vuelven los valores por defecto)."
       )
     ) {
       resetReport(tipo);

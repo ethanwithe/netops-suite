@@ -138,15 +138,49 @@ export interface PhotoReportState extends ReportFields {
 // CARGA / GUARDADO (localStorage)
 // ============================================================
 
-export type FotoTipo = "gpon_ont" | "gpon_modulo" | "fibra";
+/** Tipos fijos o el id de una ventana creada por el usuario. */
+export type FotoTipo = string;
 
-export const FOTO_TIPOS: Record<FotoTipo, string> = {
+/** Valores por defecto de una ventana propia (se aplican a cada reporte nuevo). */
+export interface WindowConfig {
+  proy?: string;
+  cliente?: string;
+  sot?: string;
+  cid?: string;
+  contrata?: string;
+  logoIzq?: { id: string | null };
+  logoDer?: { id: string | null };
+}
+
+const BUILTIN: FotoTipo[] = ["fibra", "gpon_ont", "gpon_modulo"];
+export const isCustom = (t: FotoTipo) => !BUILTIN.includes(t);
+
+const windowDefaults = new Map<FotoTipo, WindowConfig>();
+
+/** Registra (sin tocar la pantalla) los valores por defecto de una ventana propia. */
+export function registerWindowDefaults(tipo: FotoTipo, cfg: WindowConfig | null): void {
+  if (cfg) windowDefaults.set(tipo, cfg);
+  else windowDefaults.delete(tipo);
+}
+
+/** Borra lo guardado de una ventana eliminada. */
+export function forgetWindow(tipo: FotoTipo): void {
+  windowDefaults.delete(tipo);
+  stores.delete(tipo);
+  try {
+    localStorage.removeItem(keyOf(tipo));
+  } catch {
+    /* sin localStorage */
+  }
+}
+
+export const FOTO_TIPOS: Record<string, string> = {
   gpon_ont: "GPON con ONT",
   gpon_modulo: "GPON con módulo",
   fibra: "Fibra convencional",
 };
 
-export const isGpon = (t: FotoTipo) => t !== "fibra";
+export const isGpon = (t: FotoTipo) => t.startsWith("gpon");
 
 // Cada tipo de reporte guarda su avance por separado. Fibra conserva la clave
 // original para no perder lo que ya estaba en curso.
@@ -162,17 +196,19 @@ function todayPE(): string {
   return new Date().toLocaleDateString("es-PE");
 }
 
-function freshFields(): ReportFields {
+function freshFields(tipo?: FotoTipo): ReportFields {
+  const d = (tipo && windowDefaults.get(tipo)) || {};
+  const logo = (v?: { id: string | null }): LogoSel => (v?.id ? { id: v.id, path: "", url: "" } : NO_LOGO);
   return {
     titulo: DEFAULT_TITULO,
-    proy: "",
-    cliente: "",
-    sot: "",
+    proy: d.proy ?? "",
+    cliente: d.cliente ?? "",
+    sot: d.sot ?? "",
     fecha: todayPE(),
-    cid: "",
-    contrata: "",
-    logoIzq: NO_LOGO,
-    logoDer: NO_LOGO,
+    cid: d.cid ?? "",
+    contrata: d.contrata ?? "",
+    logoIzq: logo(d.logoIzq),
+    logoDer: logo(d.logoDer),
     rows: {},
   };
 }
@@ -221,7 +257,7 @@ function sharedLogos(): Partial<ReportFields> {
 }
 
 function loadFields(tipo: FotoTipo): ReportFields {
-  const base = freshFields();
+  const base = freshFields(tipo);
   try {
     const raw = localStorage.getItem(keyOf(tipo));
     if (!raw) return base;
@@ -241,7 +277,7 @@ function loadFields(tipo: FotoTipo): ReportFields {
       logoIzq: loadLogo(x.logoIzq),
       logoDer: loadLogo(x.logoDer),
       rows: loadRows(x.rows),
-      ...sharedLogos(),
+      ...(isCustom(tipo) ? {} : sharedLogos()),
     };
   } catch {
     return base; // JSON dañado o localStorage no disponible
@@ -261,7 +297,7 @@ function storeOf(tipo: FotoTipo): Store {
   if (!st) {
     const fields = loadFields(tipo);
     // Si nunca se guardó nada por tipo, los logos vienen de la clave antigua de fibra.
-    if (!localStorage.getItem(LOGOS_KEY) && tipo !== "fibra") {
+    if (!isCustom(tipo) && !localStorage.getItem(LOGOS_KEY) && tipo !== "fibra") {
       const old = stores.get("fibra")?.state ?? loadFields("fibra");
       fields.logoIzq = old.logoIzq;
       fields.logoDer = old.logoDer;
@@ -288,7 +324,9 @@ function persist(tipo: FotoTipo): void {
       rows: state.rows,
     };
     localStorage.setItem(keyOf(tipo), JSON.stringify({ ...fields, savedOn: todayPE() }));
-    localStorage.setItem(LOGOS_KEY, JSON.stringify({ logoIzq: state.logoIzq, logoDer: state.logoDer }));
+    if (!isCustom(tipo)) {
+      localStorage.setItem(LOGOS_KEY, JSON.stringify({ logoIzq: state.logoIzq, logoDer: state.logoDer }));
+    }
   } catch {
     // sin espacio / modo privado: se sigue funcionando en memoria
   }
@@ -307,9 +345,9 @@ function setState(tipo: FotoTipo, patch: Partial<PhotoReportState>): void {
   scheduleSave(tipo);
 
   // Los logos se comparten: si cambian aquí, cambian en los demás tipos.
-  if ("logoIzq" in patch || "logoDer" in patch) {
+  if (!isCustom(tipo) && ("logoIzq" in patch || "logoDer" in patch)) {
     for (const [other, o] of stores) {
-      if (other === tipo) continue;
+      if (other === tipo || isCustom(other)) continue;
       o.state = {
         ...o.state,
         ...("logoIzq" in patch ? { logoIzq: patch.logoIzq! } : {}),
@@ -384,9 +422,9 @@ export function pruneRows(tipo: FotoTipo, validIds: string[]): void {
 export function resetReport(tipo: FotoTipo): void {
   const { state } = storeOf(tipo);
   setState(tipo, {
-    ...freshFields(),
-    logoIzq: state.logoIzq,
-    logoDer: state.logoDer,
+    ...freshFields(tipo),
+    // Ventanas propias: vuelven a sus logos por defecto; las demás conservan los compartidos.
+    ...(isCustom(tipo) ? {} : { logoIzq: state.logoIzq, logoDer: state.logoDer }),
     result: null,
     error: null,
   });
