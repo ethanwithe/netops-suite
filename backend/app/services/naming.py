@@ -56,3 +56,18 @@ def build_report_filename(
         parts.append(now.strftime("%Y%m%d_%H%M%S"))
 
     return "_".join(parts) + ext
+
+
+def build_checklist_filename(sot, cliente, now=None):
+    """checklist_sot_<sot>-<cliente>.pdf  (ej. checklist_sot_98765432-NOMBRE DEL CLIENTE.pdf)"""
+    sot_clean = clean_part(_SOT_PREFIX.sub("", str(sot or "")))
+    cliente_clean = clean_part(cliente)
+    if not sot_clean and not cliente_clean:
+        now = now or dt.datetime.now()
+        return "checklist_" + now.strftime("%Y%m%d_%H%M%S") + ".pdf"
+    name = "checklist"
+    if sot_clean:
+        name += f"_sot_{sot_clean}"
+    if cliente_clean:
+        name += ("-" if sot_clean else "_") + cliente_clean
+    return name + ".pdf"

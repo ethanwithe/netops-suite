@@ -249,3 +249,46 @@ class PJReportRequest(BaseModel):
     logo_id: Optional[str] = None
     logo_path: Optional[str] = None
     project: Optional[Dict[str, Any]] = None
+
+
+# ---------------- CheckList (plantillas y reporte) ----------------
+
+class ChecklistTemplateIn(BaseModel):
+    nombre: str
+    data: Dict[str, Any] = {}
+    # Solo al crear: id de una plantilla existente de la que se copia el contenido
+    copiar_de: Optional[str] = None
+
+
+class ChecklistTemplateOut(BaseModel):
+    id: str
+    nombre: str
+    data: Dict[str, Any] = {}
+    class Config:
+        from_attributes = True
+
+
+class ChecklistReportItem(BaseModel):
+    nombre: str
+    modo: str = "foto"          # "texto" | "foto"
+    texto: str = ""             # salida del comando (texto) o captura tipo terminal (foto sin imagen)
+    cmd: str = ""
+    images: List[str] = []
+
+
+class ChecklistReportSection(BaseModel):
+    titulo: str
+    items: List[ChecklistReportItem]
+
+
+class ChecklistReportRequest(BaseModel):
+    titulo: str = "CheckList de Claro"
+    servicio_label: str = ""
+    sot: str = ""
+    cid: str = ""
+    cliente: str = ""
+    fecha: str = ""
+    equipo: str = ""            # nombre del equipo (prompt de la terminal)
+    logo_id: Optional[str] = None
+    logo_path: Optional[str] = None
+    sections: List[ChecklistReportSection]

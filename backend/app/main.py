@@ -58,6 +58,7 @@ def on_startup():
     try:
         db_seed.seed_if_empty(db)
         db_seed.seed_photo_tipos(db)
+        db_seed.seed_checklist_templates(db)
     finally:
         db.close()
 

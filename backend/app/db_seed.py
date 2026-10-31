@@ -62,3 +62,16 @@ def seed_photo_tipos(db: Session):
                     nombre=item["nombre"], orden=item["orden"],
                 ))
     db.commit()
+
+
+def seed_checklist_templates(db: Session):
+    """Siembra los tipos de CheckList la primera vez (no pisa lo que el usuario edite)."""
+    from app.checklist_seed import SEED_TYPES, build_data
+
+    if db.query(models.ChecklistTemplate).count() > 0:
+        return
+    for i, (nombre, servicio, marca, mra, ha) in enumerate(SEED_TYPES, start=1):
+        db.add(models.ChecklistTemplate(
+            nombre=nombre, data=build_data(servicio, marca, mra, ha), orden=i * 10,
+        ))
+    db.commit()

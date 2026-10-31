@@ -85,6 +85,21 @@ class PhotoWindow(Base):
     created_at = Column(DateTime, default=dt.datetime.utcnow)
 
 
+class ChecklistTemplate(Base):
+    """Tipo de CheckList (p. ej. «Internet Huawei con MRA»).
+
+    `data` guarda servicio, marca, comandos de preparación, parámetros que se
+    piden al inicio y las secciones con sus ítems (texto o foto + comando).
+    """
+    __tablename__ = "checklist_templates"
+
+    id = Column(String, primary_key=True, default=gen_uuid)
+    nombre = Column(String, nullable=False)
+    data = Column(JSON, nullable=False, default=dict)
+    orden = Column(Integer, default=10)
+    created_at = Column(DateTime, default=dt.datetime.utcnow)
+
+
 class HeaderLogo(Base):
     """Logo reutilizable para la cabecera de los PDF.
 
