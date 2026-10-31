@@ -121,33 +121,37 @@ LADO_ORDER = ["site", "pdi", "pop", "cliente"]
 
 
 def _normalize_lado(lado):
-    lado = str(lado or "").strip().lower()
-    if lado in LADO_LABELS:
-        return lado
-    return "site"
+    return str(lado or "").strip().lower() or "site"
 
 
-def _build_lado_title(lado):
-    label = LADO_LABELS.get(_normalize_lado(lado), "SITE")
-    return f"REPORTE FOTOGRAFICO INSTALACION EN {label}"
+def _label_of(lado, label):
+    """Texto que se agrega al título: el elegido por el usuario o, si no hay, el clásico."""
+    label = str(label or "").strip()
+    if label:
+        return label.upper()
+    return f"INSTALACION EN {LADO_LABELS.get(lado, lado.upper())}"
 
 
-def _group_items_by_lado(items):
-    groups = {
-        "site": [],
-        "pdi": [],
-        "pop": [],
-        "cliente": [],
-    }
+def _build_lado_title(base, label):
+    return f"{str(base or 'REPORTE FOTOGRAFICO').strip()} {label}".strip()
 
+
+def _group_items_by_lado(items, orden=None):
+    """Agrupa por opción. Orden de las secciones: el de la lista de opciones
+    del usuario (`orden`); las que no estén en ella van al final."""
+    groups = {}
+    labels = {}
     for item in items:
         lado = _normalize_lado(item.get("lado"))
-        groups[lado].append(item)
+        groups.setdefault(lado, []).append(item)
+        labels.setdefault(lado, _label_of(lado, item.get("lado_label")))
 
+    sequence = [_normalize_lado(o) for o in (orden or LADO_ORDER)]
+    sequence += [k for k in groups if k not in sequence]
     return [
-        (lado, groups[lado])
-        for lado in LADO_ORDER
-        if groups[lado]
+        (lado, labels[lado], groups[lado])
+        for lado in dict.fromkeys(sequence)
+        if lado in groups
     ]
 
 
@@ -268,7 +272,12 @@ def _draw_header(c, meta):
 
     # Cada logo puede ocupar, como máximo, el espacio que deja libre el
     # título centrado (para que nunca se encimen).
-    title_w = c.stringWidth(titulo, TITLE_FONT, TITLE_SIZE)
+    # Si el título es largo se reduce la letra para que quepa en la hoja.
+    size = TITLE_SIZE
+    max_w = PAGE_W - 2 * MARGIN - 4 * cm
+    while size > 7 and c.stringWidth(titulo, TITLE_FONT, size) > max_w:
+        size -= 0.5
+    title_w = c.stringWidth(titulo, TITLE_FONT, size)
     free_w = PAGE_W / 2 - title_w / 2 - MARGIN - 0.3 * cm
     logo_max_w = max(2 * cm, min(LOGO_MAX_W, free_w))
 
@@ -276,7 +285,7 @@ def _draw_header(c, meta):
     _draw_logo(c, meta.get("logo_der"), "right", top, logo_max_w)
 
     c.setFillColorRGB(0, 0, 0)
-    c.setFont(TITLE_FONT, TITLE_SIZE)
+    c.setFont(TITLE_FONT, size)
     c.drawCentredString(
         PAGE_W / 2,
         top - MARGIN - LOGO_H / 2,
@@ -467,10 +476,10 @@ def build_photo_report_pdf(meta, items, out_path, progress_cb=None):
         if progress_cb:
             progress_cb(msg)
 
-    groups = _group_items_by_lado(items)
+    groups = _group_items_by_lado(items, meta.get("lados_orden"))
 
     total_pages = 0
-    for lado, group_items in groups:
+    for lado, label, group_items in groups:
         total_pages += max(1, (len(group_items) + ITEMS_PER_PAGE - 1) // ITEMS_PER_PAGE)
 
     if not groups:
@@ -499,9 +508,9 @@ def build_photo_report_pdf(meta, items, out_path, progress_cb=None):
         _draw_footer(c, 1, 1)
         c.showPage()
 
-    for lado, group_items in groups:
+    for lado, label, group_items in groups:
 
-        group_title = _build_lado_title(lado)
+        group_title = _build_lado_title(meta.get("titulo"), label)
 
         group_meta = {
             **meta,

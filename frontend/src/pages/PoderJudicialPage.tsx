@@ -1,10 +1,12 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, apiErrorMessage } from "../api/client";
+import ImageAnnotator from "../components/ImageAnnotator";
 import ImportPdfButton from "../components/ImportPdfButton";
 import type { ImportedProject } from "../components/ImportPdfButton";
 import { takePjForm } from "../store/pjForm";
 import { importReport } from "../store/photoReportStore";
+import type { FotoTipo } from "../store/photoReportStore";
 import ImageUpload from "../components/ImageUpload";
 import LogoPicker from "../components/LogoPicker";
 import Spinner from "../components/Spinner";
@@ -70,6 +72,17 @@ export default function PoderJudicialPage() {
 
   const navigate = useNavigate();
 
+  // Edición de fotos (líneas, flechas, texto, recorte, mejora...), igual que en el resto de reportes.
+  type EditTarget = { kind: "ubic" } | { kind: "cell"; sid: string; cid: string; idx: number };
+  const [editing, setEditing] = useState<{ target: EditTarget; url: string } | null>(null);
+
+  function savedEdit(path: string, url: string) {
+    if (!editing) return;
+    const t = editing.target;
+    if (t.kind === "ubic") set("fotoUbicacion", { path, url });
+    else patchCell(t.sid, t.cid, (x) => ({ ...x, images: x.images.map((im, i) => (i === t.idx ? { path, url } : im)) }));
+  }
+
   // Si venimos de abrir un PDF de este tipo, se carga su contenido.
   useEffect(() => {
     const saved = takePjForm();
@@ -87,7 +100,7 @@ export default function PoderJudicialPage() {
       setResult(null);
       setError(null);
     } else {
-      importReport(p.state);
+      importReport(((p.tipo as FotoTipo) ?? "fibra"), p.state);
       const route: Record<string, string> = { gpon_ont: "gpon-ont", gpon_modulo: "gpon-modulo" };
       navigate(`/fotografico/${route[p.tipo ?? ""] ?? "fibra"}`);
     }
@@ -190,6 +203,10 @@ export default function PoderJudicialPage() {
           <span className="label mb-0">Foto de ubicación</span>
           <ImageUpload compact cliente={f.sede} initialUrl={f.fotoUbicacion?.url}
             onUploaded={(path, url) => set("fotoUbicacion", { path, url })} />
+          {f.fotoUbicacion?.path && (
+            <button type="button" className="btn-secondary text-xs"
+              onClick={() => setEditing({ target: { kind: "ubic" }, url: f.fotoUbicacion!.url })}>✏️ Editar foto</button>
+          )}
         </div>
       </div>
 
@@ -209,6 +226,9 @@ export default function PoderJudicialPage() {
                   {c.images.map((im, k) => (
                     <div key={im.path} className="relative">
                       <img src={im.url} alt="" className="h-16 rounded border" />
+                      <button type="button" title="Editar foto" aria-label="Editar foto"
+                        className="absolute -left-1 -top-1 rounded-full bg-brand-600 px-1 text-[10px] text-white"
+                        onClick={() => setEditing({ target: { kind: "cell", sid: s.id, cid: c.id, idx: k }, url: im.url })}>✏️</button>
                       <button className="absolute -right-1 -top-1 rounded-full bg-red-600 px-1 text-[10px] text-white"
                         onClick={() => patchCell(s.id, c.id, (x) => ({ ...x, images: x.images.filter((_, j) => j !== k) }))}>✕</button>
                     </div>
@@ -256,6 +276,14 @@ export default function PoderJudicialPage() {
           )}
           <a className="btn-primary" href={result.url} target="_blank" rel="noreferrer">Descargar PDF</a>
         </div>
+      )}
+
+      {editing && (
+        <ImageAnnotator
+          imageUrl={editing.url}
+          onClose={() => setEditing(null)}
+          onSaved={savedEdit}
+        />
       )}
     </div>
   );

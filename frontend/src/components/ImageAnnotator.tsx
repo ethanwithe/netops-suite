@@ -28,6 +28,9 @@ interface Doc {
   objects: Obj[];
 }
 
+type CropR = { x: number; y: number; w: number; h: number };
+type CropMode = "new" | "move" | "tl" | "t" | "tr" | "r" | "br" | "b" | "bl" | "l";
+
 type Tool = "select" | "path" | "line" | "arrow" | "rect" | "ellipse" | "text" | "blur" | "crop";
 
 const MAX_WORK = 3000;     // lado máximo de la imagen guardada (suficiente para un PDF)
@@ -236,25 +239,129 @@ function mapObj(o: Obj, f: (p: Point) => Point): Obj {
   }
 }
 
+
+// ---------- recorte ajustable ----------
+
+const clampN = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+
+/** Qué parte del recuadro de recorte se tocó: una manija, el interior (mover) o nada. */
+function cropHit(r: CropR, p: Point, tol: number): CropMode | null {
+  const nearX1 = Math.abs(p.x - r.x) <= tol, nearX2 = Math.abs(p.x - (r.x + r.w)) <= tol;
+  const nearY1 = Math.abs(p.y - r.y) <= tol, nearY2 = Math.abs(p.y - (r.y + r.h)) <= tol;
+  const inX = p.x >= r.x - tol && p.x <= r.x + r.w + tol;
+  const inY = p.y >= r.y - tol && p.y <= r.y + r.h + tol;
+  const midX = Math.abs(p.x - (r.x + r.w / 2)) <= tol * 1.4;
+  const midY = Math.abs(p.y - (r.y + r.h / 2)) <= tol * 1.4;
+
+  if (nearX1 && nearY1) return "tl";
+  if (nearX2 && nearY1) return "tr";
+  if (nearX1 && nearY2) return "bl";
+  if (nearX2 && nearY2) return "br";
+  if (nearY1 && midX && inX) return "t";
+  if (nearY2 && midX && inX) return "b";
+  if (nearX1 && midY && inY) return "l";
+  if (nearX2 && midY && inY) return "r";
+  if (nearX1 && inY) return "l";
+  if (nearX2 && inY) return "r";
+  if (nearY1 && inX) return "t";
+  if (nearY2 && inX) return "b";
+  if (p.x > r.x && p.x < r.x + r.w && p.y > r.y && p.y < r.y + r.h) return "move";
+  return null;
+}
+
+const MIN_CROP = 24;
+
+/** Redimensiona el recuadro arrastrando una manija; con proporción fija la conserva. */
+function resizeCrop(o: CropR, mode: CropMode, p: Point, ratio: number | null, W: number, H: number): CropR {
+  let x1 = o.x, y1 = o.y, x2 = o.x + o.w, y2 = o.y + o.h;
+  const px = clampN(p.x, 0, W), py = clampN(p.y, 0, H);
+  const L = mode.includes("l"), R = mode.includes("r"), T = mode.includes("t"), B = mode.includes("b");
+
+  if (L) x1 = Math.min(px, x2 - MIN_CROP);
+  if (R) x2 = Math.max(px, x1 + MIN_CROP);
+  if (T) y1 = Math.min(py, y2 - MIN_CROP);
+  if (B) y2 = Math.max(py, y1 + MIN_CROP);
+
+  if (ratio) {
+    const corner = (L || R) && (T || B);
+    if (corner || L || R) {
+      let w = x2 - x1;
+      let h = w / ratio;
+      if (!corner) {
+        // borde lateral: la altura se ajusta alrededor del centro
+        const cy = (o.y + o.h / 2);
+        y1 = cy - h / 2; y2 = cy + h / 2;
+      } else if (T) y1 = y2 - h;
+      else y2 = y1 + h;
+      // si se sale de la imagen, se reduce manteniendo la proporción
+      const over = Math.max(0 - y1, y2 - H, 0);
+      if (over > 0) {
+        h -= over * (corner ? 1 : 2);
+        w = h * ratio;
+        if (L) x1 = x2 - w; else x2 = x1 + w;
+        if (!corner) { const cy = o.y + o.h / 2; y1 = cy - h / 2; y2 = cy + h / 2; }
+        else if (T) y1 = y2 - h; else y2 = y1 + h;
+      }
+    } else {
+      // borde superior/inferior: el ancho se ajusta alrededor del centro
+      let h = y2 - y1;
+      let w = h * ratio;
+      const cx = o.x + o.w / 2;
+      x1 = cx - w / 2; x2 = cx + w / 2;
+      const over = Math.max(0 - x1, x2 - W, 0);
+      if (over > 0) {
+        w -= over * 2;
+        h = w / ratio;
+        x1 = cx - w / 2; x2 = cx + w / 2;
+        if (T) y1 = y2 - h; else y2 = y1 + h;
+      }
+    }
+  }
+
+  return { x: x1, y: y1, w: x2 - x1, h: y2 - y1 };
+}
+
+/** Ajusta un recuadro a una proporción, conservando su centro y sin salirse de la imagen. */
+function fitRatio(r: CropR, ratio: number, W: number, H: number): CropR {
+  const cx = r.x + r.w / 2, cy = r.y + r.h / 2;
+  let w = r.w, h = r.w / ratio;
+  if (h > r.h) { h = r.h; w = h * ratio; }
+  w = Math.min(w, W); h = Math.min(h, H);
+  return { x: clampN(cx - w / 2, 0, W - w), y: clampN(cy - h / 2, 0, H - h), w, h };
+}
+
 // ============================================================
 // IMAGEN
 // ============================================================
 
-function loadBase(url: string): Promise<HTMLCanvasElement> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.crossOrigin = "anonymous";
-    img.onload = () => {
-      const k = Math.min(1, MAX_WORK / Math.max(img.naturalWidth, img.naturalHeight));
-      const c = document.createElement("canvas");
-      c.width = Math.max(1, Math.round(img.naturalWidth * k));
-      c.height = Math.max(1, Math.round(img.naturalHeight * k));
-      c.getContext("2d")?.drawImage(img, 0, 0, c.width, c.height);
-      resolve(c);
-    };
-    img.onerror = () => reject(new Error("No se pudo cargar la imagen."));
-    img.src = url;
-  });
+async function loadBase(url: string): Promise<HTMLCanvasElement> {
+  // Se descarga como archivo y se dibuja desde ahí: así funciona también cuando
+  // el backend está en otro dominio sin "manchar" el lienzo (CORS).
+  let src = url;
+  let temp: string | null = null;
+  if (!url.startsWith("blob:") && !url.startsWith("data:")) {
+    const r = await fetch(url, { mode: "cors", credentials: "omit" });
+    if (!r.ok) throw new Error("No se pudo cargar la imagen.");
+    temp = URL.createObjectURL(await r.blob());
+    src = temp;
+  }
+
+  try {
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const el = new Image();
+      el.onload = () => resolve(el);
+      el.onerror = () => reject(new Error("No se pudo cargar la imagen."));
+      el.src = src;
+    });
+    const k = Math.min(1, MAX_WORK / Math.max(img.naturalWidth, img.naturalHeight));
+    const c = document.createElement("canvas");
+    c.width = Math.max(1, Math.round(img.naturalWidth * k));
+    c.height = Math.max(1, Math.round(img.naturalHeight * k));
+    c.getContext("2d")?.drawImage(img, 0, 0, c.width, c.height);
+    return c;
+  } finally {
+    if (temp) URL.revokeObjectURL(temp);
+  }
 }
 
 function rotateBase(src: HTMLCanvasElement, cw: boolean): HTMLCanvasElement {
@@ -306,7 +413,8 @@ export default function ImageAnnotator({ imageUrl, onClose, onSaved }: Props) {
   // Trazos en curso
   const [draftPts, setDraftPts] = useState<Point[]>([]);
   const [dragShape, setDragShape] = useState<{ a: Point; b: Point } | null>(null);
-  const [cropRect, setCropRect] = useState<{ a: Point; b: Point } | null>(null);
+  const [cropRect, setCropRect] = useState<CropR | null>(null);
+  const cropDrag = useRef<{ mode: CropMode; start: Point; orig: CropR } | null>(null);
   const [ratio, setRatio] = useState<number | null>(null);
 
   const [adj, setAdj] = useState<Adjust>(NEUTRAL);
@@ -423,18 +531,36 @@ export default function ImageAnnotator({ imageUrl, onClose, onSaved }: Props) {
       ctx.fill();
     }
 
-    // recorte: se oscurece lo que se descarta
+    // recorte: se oscurece lo que se descarta y se dibujan las manijas
     if (tool === "crop" && cropRect) {
-      const x = Math.min(cropRect.a.x, cropRect.b.x) * s, y = Math.min(cropRect.a.y, cropRect.b.y) * s;
-      const w = Math.abs(cropRect.b.x - cropRect.a.x) * s, h = Math.abs(cropRect.b.y - cropRect.a.y) * s;
+      const x = cropRect.x * s, y = cropRect.y * s, w = cropRect.w * s, h = cropRect.h * s;
       ctx.fillStyle = "rgba(0,0,0,0.55)";
       ctx.fillRect(0, 0, canvas.width, y);
       ctx.fillRect(0, y + h, canvas.width, canvas.height - y - h);
       ctx.fillRect(0, y, x, h);
       ctx.fillRect(x + w, y, canvas.width - x - w, h);
+
+      ctx.strokeStyle = "rgba(255,255,255,0.45)"; // regla de tercios
+      ctx.lineWidth = 1;
+      for (let i = 1; i < 3; i++) {
+        ctx.beginPath(); ctx.moveTo(x + (w * i) / 3, y); ctx.lineTo(x + (w * i) / 3, y + h); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(x, y + (h * i) / 3); ctx.lineTo(x + w, y + (h * i) / 3); ctx.stroke();
+      }
       ctx.strokeStyle = "#fff";
       ctx.lineWidth = 2;
       ctx.strokeRect(x, y, w, h);
+
+      const hs = Math.max(10, Math.round(Math.max(canvas.width, canvas.height) * 0.014));
+      ctx.fillStyle = "#fff";
+      ctx.strokeStyle = "#2563eb";
+      const pts: [number, number][] = [
+        [x, y], [x + w / 2, y], [x + w, y], [x + w, y + h / 2],
+        [x + w, y + h], [x + w / 2, y + h], [x, y + h], [x, y + h / 2],
+      ];
+      for (const [hx, hy] of pts) {
+        ctx.fillRect(hx - hs / 2, hy - hs / 2, hs, hs);
+        ctx.strokeRect(hx - hs / 2, hy - hs / 2, hs, hs);
+      }
     }
   }, [adjusted, base, objects, dragShape, draftPts, cropRect, tool, selId, color, width, dashed, previewScale, u]);
 
@@ -457,6 +583,8 @@ export default function ImageAnnotator({ imageUrl, onClose, onSaved }: Props) {
     const w = Math.max(Math.abs(dx), Math.abs(dy) * ratio);
     return { x: a.x + Math.sign(dx || 1) * w, y: a.y + Math.sign(dy || 1) * (w / ratio) };
   }
+
+  const cropTol = () => (base ? Math.max(base.width, base.height) * 0.03 : 20);
 
   function onPointerDown(e: React.PointerEvent<HTMLCanvasElement>) {
     if (!doc || !base) return;
@@ -491,11 +619,25 @@ export default function ImageAnnotator({ imageUrl, onClose, onSaved }: Props) {
       return;
     }
 
-    // formas de arrastre y recorte
+    // recorte: tocar una manija la mueve, tocar dentro mueve todo el recuadro,
+    // tocar fuera empieza un recuadro nuevo
+    if (tool === "crop") {
+      e.currentTarget.setPointerCapture(e.pointerId);
+      const hit = cropRect ? cropHit(cropRect, p, cropTol()) : null;
+      if (hit && cropRect) {
+        cropDrag.current = { mode: hit, start: p, orig: cropRect };
+      } else {
+        const a = inBase(p);
+        cropDrag.current = { mode: "new", start: a, orig: { x: a.x, y: a.y, w: 0, h: 0 } };
+        setCropRect({ x: a.x, y: a.y, w: 0, h: 0 });
+      }
+      return;
+    }
+
+    // formas de arrastre
     e.currentTarget.setPointerCapture(e.pointerId);
     const a = inBase(p);
-    if (tool === "crop") setCropRect({ a, b: a });
-    else setDragShape({ a, b: a });
+    setDragShape({ a, b: a });
   }
 
   function onPointerMove(e: React.PointerEvent<HTMLCanvasElement>) {
@@ -510,10 +652,30 @@ export default function ImageAnnotator({ imageUrl, onClose, onSaved }: Props) {
       return;
     }
     if (dragShape && e.buttons) setDragShape({ a: dragShape.a, b: inBase(p) });
-    if (cropRect && e.buttons) setCropRect({ a: cropRect.a, b: inBase(constrain(cropRect.a, p)) });
+    const cd = cropDrag.current;
+    if (cd && base && e.buttons) {
+      if (cd.mode === "new") {
+        const b = inBase(constrain(cd.start, p));
+        setCropRect({ x: Math.min(cd.start.x, b.x), y: Math.min(cd.start.y, b.y), w: Math.abs(b.x - cd.start.x), h: Math.abs(b.y - cd.start.y) });
+      } else if (cd.mode === "move") {
+        const dx = p.x - cd.start.x, dy = p.y - cd.start.y;
+        setCropRect({
+          ...cd.orig,
+          x: clampN(cd.orig.x + dx, 0, base.width - cd.orig.w),
+          y: clampN(cd.orig.y + dy, 0, base.height - cd.orig.h),
+        });
+      } else {
+        setCropRect(resizeCrop(cd.orig, cd.mode, p, ratio, base.width, base.height));
+      }
+    }
   }
 
   function onPointerUp() {
+    if (cropDrag.current) {
+      cropDrag.current = null;
+      setCropRect((r) => (r && (r.w < MIN_CROP || r.h < MIN_CROP) ? null : r));
+      return;
+    }
     if (moving.current) {
       const origin = moving.current.origin;
       moving.current = null;
@@ -581,12 +743,23 @@ export default function ImageAnnotator({ imageUrl, onClose, onSaved }: Props) {
     setDraftPts([]);
   }
 
+  function startCrop() {
+    if (!base) return;
+    const m = Math.round(Math.min(base.width, base.height) * 0.04);
+    const r = { x: m, y: m, w: base.width - 2 * m, h: base.height - 2 * m };
+    setCropRect(ratio ? fitRatio(r, ratio, base.width, base.height) : r);
+  }
+
+  function changeRatio(v: number | null) {
+    setRatio(v);
+    if (v && cropRect && base) setCropRect(fitRatio(cropRect, v, base.width, base.height));
+  }
+
   function applyCrop() {
     if (!doc || !cropRect) return;
-    const x = Math.min(cropRect.a.x, cropRect.b.x), y = Math.min(cropRect.a.y, cropRect.b.y);
-    const w = Math.abs(cropRect.b.x - cropRect.a.x), h = Math.abs(cropRect.b.y - cropRect.a.y);
-    if (w < 20 || h < 20) {
-      alert("Arrastra sobre la imagen para marcar la zona que quieres conservar.");
+    const { x, y, w, h } = cropRect;
+    if (w < MIN_CROP || h < MIN_CROP) {
+      alert("El recorte es demasiado pequeño.");
       return;
     }
     commit({
@@ -661,207 +834,207 @@ export default function ImageAnnotator({ imageUrl, onClose, onSaved }: Props) {
   // INTERFAZ
   // ============================================================
 
-  const toolBtn = (t: Tool, label: string) => (
-    <button
-      key={t}
-      type="button"
-      className={`${tool === t ? "btn-primary" : "btn-secondary"} text-xs`}
-      onClick={() => { setTool(t); setDraftPts([]); setDragShape(null); if (t !== "crop") setCropRect(null); if (t !== "select") setSelId(null); }}
-    >
-      {label}
-    </button>
-  );
+  // ---------- interfaz compacta: todo el espacio para la imagen ----------
+  const [showEnhance, setShowEnhance] = useState(false);
+
+  const ib = (active = false, extra = "") =>
+    `inline-flex h-8 min-w-8 shrink-0 items-center justify-center rounded-md px-1.5 text-sm leading-none transition-colors disabled:opacity-40 ${
+      active ? "bg-brand-600 text-white" : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+    } ${extra}`;
+
+  const TOOLS: [Tool, string, string][] = [
+    ["select", "👆", "Mover / seleccionar"],
+    ["path", "✏️", "Recorrido (línea punteada por puntos)"],
+    ["line", "📏", "Línea recta por puntos"],
+    ["arrow", "↗", "Flecha"],
+    ["rect", "▭", "Rectángulo"],
+    ["ellipse", "◯", "Círculo"],
+    ["text", "🔤", "Texto"],
+    ["blur", "▦", "Difuminar zona"],
+    ["crop", "✂️", "Recortar"],
+  ];
+
+  function pickTool(t: Tool) {
+    setTool(t);
+    setDraftPts([]);
+    setDragShape(null);
+    if (t === "crop") startCrop();
+    else setCropRect(null);
+    if (t !== "select") setSelId(null);
+  }
 
   const showStyle = ["path", "line", "arrow", "rect", "ellipse", "text"].includes(tool) ||
     (tool === "select" && selected && selected.k !== "blur");
   const showText = tool === "text" || (tool === "select" && selected?.k === "text");
   const showWidth = tool !== "text" && !(tool === "select" && selected?.k === "text") && showStyle;
   const showDash = tool === "path" || (tool === "select" && selected?.k === "line");
+  const showLineActions = tool === "path" || tool === "line";
+  const hasContext = showStyle || showText || tool === "crop" || showLineActions || selId != null;
+
+  const sel = "h-8 rounded-md border border-slate-300 bg-white px-1.5 text-xs";
 
   const slider = (label: string, key: keyof Omit<Adjust, "auto">, min: number) => (
     <label className="flex items-center gap-2 text-xs text-slate-600">
-      <span className="w-20 shrink-0">{label}</span>
+      <span className="w-16 shrink-0">{label}</span>
       <input
         type="range" min={min} max={100} value={adj[key]}
         onChange={(e) => setAdj({ ...adj, [key]: Number(e.target.value) })}
-        className="w-full"
+        className="h-1 w-full"
       />
-      <span className="w-8 text-right tabular-nums">{adj[key]}</span>
+      <span className="w-7 text-right tabular-nums">{adj[key]}</span>
     </label>
   );
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-0 sm:p-2">
-      <div className="flex h-full max-h-[100dvh] w-full max-w-[99vw] flex-col overflow-hidden bg-white shadow-2xl sm:max-h-[98dvh] sm:rounded-xl">
-        {/* Cabecera */}
-        <div className="flex shrink-0 items-center justify-between border-b border-slate-200 px-4 py-3">
-          <div>
-            <h3 className="font-semibold text-slate-800">Editar imagen</h3>
-            <p className="text-xs text-slate-500">Marca, escribe, recorta y mejora la foto.</p>
-          </div>
-          <button onClick={close} className="h-9 w-9 rounded-lg text-xl text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="Cerrar">✕</button>
-        </div>
+    <div className="fixed inset-0 z-50 flex flex-col bg-white" role="dialog" aria-label="Editar imagen">
+      {/* Barra superior: cerrar, deshacer/rehacer y guardar */}
+      <div className="flex shrink-0 items-center gap-1.5 border-b border-slate-200 px-2 py-1">
+        <button onClick={close} className={ib()} aria-label="Cerrar" title="Cerrar">✕</button>
+        <span className="hidden truncate text-sm font-semibold text-slate-700 sm:block">Editar imagen</span>
+        <div className="flex-1" />
+        {saveError && <span role="alert" className="max-w-[40%] truncate text-xs text-red-600" title={saveError}>{saveError}</span>}
+        <button onClick={undo} disabled={!past.length} className={ib()} aria-label="Deshacer" title="Deshacer (Ctrl+Z)">↶</button>
+        <button onClick={redo} disabled={!future.length} className={ib()} aria-label="Rehacer" title="Rehacer (Ctrl+Y)">↷</button>
+        <button onClick={save} disabled={saving || !doc} className="inline-flex h-8 shrink-0 items-center rounded-md bg-brand-600 px-3 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-50">
+          {saving ? "Guardando..." : "💾 Guardar"}
+        </button>
+      </div>
 
-        {/* Herramientas */}
-        <div className="shrink-0 space-y-2 overflow-y-auto border-b border-slate-200 px-4 py-3" style={{ maxHeight: "30vh" }}>
-          <div className="flex flex-wrap items-center gap-1.5">
-            {toolBtn("select", "👆 Mover")}
-            {toolBtn("path", "✏️ Recorrido")}
-            {toolBtn("line", "📏 Línea")}
-            {toolBtn("arrow", "↗ Flecha")}
-            {toolBtn("rect", "▭ Rectángulo")}
-            {toolBtn("ellipse", "◯ Círculo")}
-            {toolBtn("text", "🔤 Texto")}
-            {toolBtn("blur", "▦ Difuminar")}
-            {toolBtn("crop", "✂️ Recortar")}
-          </div>
+      {/* Herramientas (solo iconos; el nombre aparece al mantener el cursor encima) */}
+      <div className="flex shrink-0 items-center gap-1 overflow-x-auto border-b border-slate-200 px-2 py-1">
+        {TOOLS.map(([t, icon, label]) => (
+          <button key={t} type="button" className={ib(tool === t)} onClick={() => pickTool(t)} title={label} aria-label={label}>
+            {icon}
+          </button>
+        ))}
+        <span className="mx-1 h-5 w-px shrink-0 bg-slate-300" />
+        <button type="button" className={ib()} onClick={() => rotate(false)} title="Girar a la izquierda" aria-label="Girar a la izquierda">⟲</button>
+        <button type="button" className={ib()} onClick={() => rotate(true)} title="Girar a la derecha" aria-label="Girar a la derecha">⟳</button>
+        <button type="button" className={ib(showEnhance || !isNeutral(adj))} onClick={() => setShowEnhance(!showEnhance)} title="Mejorar imagen (brillo, contraste, nitidez)" aria-label="Mejorar imagen">🖼</button>
+        <button type="button" className={ib()} onClick={deleteSelected} disabled={selId == null} title="Borrar la marca seleccionada" aria-label="Borrar selección">🗑</button>
+        <button type="button" className={ib()} onClick={clearAll} disabled={!objects.length} title="Quitar todas las marcas" aria-label="Limpiar marcas">🧹</button>
+      </div>
 
+      {/* Opciones de la herramienta actual: una sola línea */}
+      {hasContext && (
+        <div className="flex shrink-0 items-center gap-2 overflow-x-auto border-b border-slate-200 bg-slate-50 px-2 py-1">
           {showStyle && (
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="flex items-center gap-1">
-                {COLORS.map((c) => (
-                  <button
-                    key={c} type="button" aria-label={`Color ${c}`}
-                    onClick={() => changeColor(c)}
-                    className={`h-7 w-7 rounded-full border-2 ${activeColor === c ? "border-brand-600 ring-2 ring-brand-300" : "border-slate-300"}`}
-                    style={{ background: c }}
-                  />
-                ))}
-                <input type="color" value={activeColor} onChange={(e) => changeColor(e.target.value)} className="h-7 w-8 cursor-pointer rounded border border-slate-300 p-0" aria-label="Otro color" />
-              </div>
-
-              {showWidth && (
-                <select className="input w-auto text-xs" value={width} onChange={(e) => changeWidth(Number(e.target.value))}>
-                  {WIDTHS.map(([l, v]) => <option key={v} value={v}>{l}</option>)}
-                </select>
-              )}
-
-              {showDash && (
-                <label className="flex items-center gap-1 text-xs text-slate-600">
-                  <input
-                    type="checkbox" checked={tool === "select" && selected?.k === "line" ? selected.dashed : dashed}
-                    onChange={(e) => { setDashed(e.target.checked); if (selected?.k === "line") patchSelected({ dashed: e.target.checked }); }}
-                  />
-                  Punteada
-                </label>
-              )}
+            <div className="flex shrink-0 items-center gap-1">
+              {COLORS.map((c) => (
+                <button
+                  key={c} type="button" aria-label={`Color ${c}`}
+                  onClick={() => changeColor(c)}
+                  className={`h-5 w-5 rounded-full border-2 ${activeColor === c ? "border-brand-600 ring-2 ring-brand-300" : "border-slate-300"}`}
+                  style={{ background: c }}
+                />
+              ))}
+              <input type="color" value={activeColor} onChange={(e) => changeColor(e.target.value)} className="h-6 w-7 cursor-pointer rounded border border-slate-300 p-0" aria-label="Otro color" />
             </div>
           )}
 
-          {showText && (
-            <div className="flex flex-wrap items-center gap-2">
+          {showWidth && (
+            <select className={sel} value={width} onChange={(e) => changeWidth(Number(e.target.value))} aria-label="Grosor">
+              {WIDTHS.map(([l, v]) => <option key={v} value={v}>{l}</option>)}
+            </select>
+          )}
+
+          {showDash && (
+            <label className="flex shrink-0 items-center gap-1 text-xs text-slate-600">
               <input
-                type="text" className="input min-w-[10rem] flex-1 text-sm" placeholder="Escribe el texto..."
+                type="checkbox" checked={tool === "select" && selected?.k === "line" ? selected.dashed : dashed}
+                onChange={(e) => { setDashed(e.target.checked); if (selected?.k === "line") patchSelected({ dashed: e.target.checked }); }}
+              />
+              Punteada
+            </label>
+          )}
+
+          {showText && (
+            <>
+              <input
+                type="text" className={`${sel} w-40 shrink-0`} placeholder="Escribe el texto..."
                 value={textInput}
                 onChange={(e) => { setTextInput(e.target.value); if (selected?.k === "text" && e.target.value.trim()) patchSelected({ text: e.target.value }); }}
               />
               <select
-                className="input w-auto text-xs" value={selected?.k === "text" ? selected.size : textSize}
+                className={sel} value={selected?.k === "text" ? selected.size : textSize} aria-label="Tamaño del texto"
                 onChange={(e) => { const v = Number(e.target.value); setTextSize(v); if (selected?.k === "text") patchSelected({ size: v }); }}
               >
                 {[18, 24, 28, 36, 44, 56, 72].map((v) => <option key={v} value={v}>{v} px</option>)}
               </select>
               <select
-                className="input w-auto text-xs" value={selected?.k === "text" ? selected.bg : textBg}
+                className={sel} value={selected?.k === "text" ? selected.bg : textBg} aria-label="Fondo del texto"
                 onChange={(e) => { const v = e.target.value as TextBg; setTextBg(v); if (selected?.k === "text") patchSelected({ bg: v }); }}
               >
                 <option value="dark">Fondo oscuro</option>
                 <option value="light">Fondo claro</option>
                 <option value="none">Sin fondo</option>
               </select>
-              <label className="flex items-center gap-1 text-xs text-slate-600">
+              <label className="flex shrink-0 items-center gap-1 text-xs text-slate-600">
                 <input type="checkbox" checked={selected?.k === "text" ? selected.bold : bold}
                   onChange={(e) => { setBold(e.target.checked); if (selected?.k === "text") patchSelected({ bold: e.target.checked }); }} />
                 Negrita
               </label>
-              <span className="text-xs text-slate-500">
-                {tool === "text" ? "Luego toca la imagen para colocarlo." : "Arrástralo para cambiarlo de lugar."}
+              <span className="shrink-0 text-[11px] text-slate-500">
+                {tool === "text" ? "Toca la imagen para colocarlo" : "Arrástralo para moverlo"}
               </span>
-            </div>
+            </>
+          )}
+
+          {showLineActions && (
+            <>
+              <button className={ib(false, "px-2 text-xs")} onClick={finishLine} disabled={draftPts.length < 2}>✓ Terminar línea</button>
+              <button className={ib(false, "px-2 text-xs")} onClick={() => setDraftPts(draftPts.slice(0, -1))} disabled={!draftPts.length}>↶ Quitar punto</button>
+            </>
           )}
 
           {tool === "crop" && (
-            <div className="flex flex-wrap items-center gap-2">
-              <select className="input w-auto text-xs" value={ratio ?? ""} onChange={(e) => setRatio(e.target.value ? Number(e.target.value) : null)}>
+            <>
+              <select className={sel} value={ratio ?? ""} onChange={(e) => changeRatio(e.target.value ? Number(e.target.value) : null)} aria-label="Proporción">
                 {RATIOS.map(([l, v]) => <option key={l} value={v ?? ""}>{l}</option>)}
               </select>
-              <button className="btn-primary text-xs" onClick={applyCrop} disabled={!cropRect}>✓ Aplicar recorte</button>
-              <span className="text-xs text-slate-500">Arrastra sobre la imagen para elegir lo que se conserva.</span>
-            </div>
-          )}
-
-          {/* Mejora de imagen */}
-          <details className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-            <summary className="cursor-pointer text-xs font-semibold text-slate-700">🖼 Mejorar imagen</summary>
-            <div className="mt-2 grid grid-cols-1 gap-x-6 gap-y-1 sm:grid-cols-2">
-              {slider("Brillo", "brightness", -100)}
-              {slider("Contraste", "contrast", -100)}
-              {slider("Color", "saturation", -100)}
-              {slider("Nitidez", "sharpen", 0)}
-            </div>
-            <div className="mt-2 flex flex-wrap gap-2">
-              <button
-                className={`${adj.auto ? "btn-primary" : "btn-secondary"} text-xs`}
-                onClick={() => setAdj({ ...adj, auto: !adj.auto })}
-                title="Corrige fotos oscuras o apagadas automáticamente"
-              >
-                ✨ Mejora automática
-              </button>
-              <button className="btn-secondary text-xs" onClick={() => setAdj({ ...NEUTRAL, sharpen: 60, auto: true })} title="Mejora automática + recuperar nitidez">
-                🔍 Recuperar calidad
-              </button>
-              <button className="btn-secondary text-xs" onClick={() => setAdj(NEUTRAL)} disabled={isNeutral(adj)}>↺ Quitar ajustes</button>
-              <button className="btn-secondary text-xs" onClick={() => rotate(false)}>⟲ Girar</button>
-              <button className="btn-secondary text-xs" onClick={() => rotate(true)}>⟳ Girar</button>
-            </div>
-          </details>
-        </div>
-
-        {/* Imagen */}
-        <div ref={areaRef} className="flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-slate-100 p-1">
-          {loadError ? (
-            <p role="alert" className="text-sm text-red-600">{loadError}</p>
-          ) : !doc ? (
-            <p className="text-sm text-slate-500">Cargando imagen...</p>
-          ) : (
-            <canvas
-              ref={canvasRef}
-              onPointerDown={onPointerDown}
-              onPointerMove={onPointerMove}
-              onPointerUp={onPointerUp}
-              onPointerCancel={onPointerUp}
-              onDoubleClick={() => (tool === "path" || tool === "line") && finishLine()}
-              className={`block shrink-0 rounded border border-slate-300 bg-white shadow-sm ${
-                tool === "select" ? "cursor-move" : "cursor-crosshair"
-              }`}
-              style={{ width: fit?.w, height: fit?.h, touchAction: tool === "path" || tool === "line" || tool === "text" ? "manipulation" : "none" }}
-            />
+              <button className={ib(false, "px-2 text-xs")} onClick={startCrop}>Todo</button>
+              <button className="inline-flex h-8 shrink-0 items-center rounded-md bg-brand-600 px-3 text-xs font-semibold text-white disabled:opacity-50" onClick={applyCrop} disabled={!cropRect}>✓ Aplicar recorte</button>
+              <span className="shrink-0 text-[11px] text-slate-500">Arrastra las esquinas o los bordes; mueve el recuadro desde dentro</span>
+            </>
           )}
         </div>
+      )}
 
-        {/* Acciones */}
-        <div className="shrink-0 space-y-2 border-t border-slate-200 px-4 py-3">
-          {saveError && <p role="alert" className="text-xs text-red-600">{saveError}</p>}
-          <div className="flex flex-wrap items-center gap-2">
-            {(tool === "path" || tool === "line") && (
-              <>
-                <button className="btn-secondary text-xs" onClick={finishLine} disabled={draftPts.length < 2}>✓ Terminar línea</button>
-                <button className="btn-secondary text-xs" onClick={() => setDraftPts(draftPts.slice(0, -1))} disabled={!draftPts.length}>↶ Quitar punto</button>
-              </>
-            )}
-            <button className="btn-secondary text-xs" onClick={undo} disabled={!past.length}>↶ Deshacer</button>
-            <button className="btn-secondary text-xs" onClick={redo} disabled={!future.length}>↷ Rehacer</button>
-            <button className="btn-secondary text-xs" onClick={deleteSelected} disabled={selId == null}>🗑 Borrar selección</button>
-            <button className="btn-secondary text-xs" onClick={clearAll} disabled={!objects.length}>🧹 Limpiar marcas</button>
-
-            <div className="flex-1" />
-
-            <button className="btn-secondary" onClick={close} disabled={saving}>Cancelar</button>
-            <button className="btn-primary" onClick={save} disabled={saving || !doc}>
-              {saving ? "Guardando..." : "💾 Guardar imagen editada"}
-            </button>
+      {/* Mejora de imagen (solo cuando se abre) */}
+      {showEnhance && (
+        <div className="shrink-0 border-b border-slate-200 bg-slate-50 px-3 py-2">
+          <div className="grid grid-cols-1 gap-x-6 gap-y-1 sm:grid-cols-2">
+            {slider("Brillo", "brightness", -100)}
+            {slider("Contraste", "contrast", -100)}
+            {slider("Color", "saturation", -100)}
+            {slider("Nitidez", "sharpen", 0)}
+          </div>
+          <div className="mt-1.5 flex flex-wrap gap-1.5">
+            <button className={ib(adj.auto, "px-2 text-xs")} onClick={() => setAdj({ ...adj, auto: !adj.auto })} title="Corrige fotos oscuras o apagadas">✨ Mejora automática</button>
+            <button className={ib(false, "px-2 text-xs")} onClick={() => setAdj({ ...NEUTRAL, sharpen: 60, auto: true })} title="Mejora automática + nitidez">🔍 Recuperar calidad</button>
+            <button className={ib(false, "px-2 text-xs")} onClick={() => setAdj(NEUTRAL)} disabled={isNeutral(adj)}>↺ Quitar ajustes</button>
           </div>
         </div>
+      )}
+
+      {/* Imagen: ocupa todo el espacio restante */}
+      <div ref={areaRef} className="flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-slate-200 p-0.5">
+        {loadError ? (
+          <p role="alert" className="text-sm text-red-600">{loadError}</p>
+        ) : !doc ? (
+          <p className="text-sm text-slate-500">Cargando imagen...</p>
+        ) : (
+          <canvas
+            ref={canvasRef}
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={onPointerUp}
+            onPointerCancel={onPointerUp}
+            onDoubleClick={() => (tool === "path" || tool === "line") && finishLine()}
+            className={`block shrink-0 bg-white shadow ${tool === "select" ? "cursor-move" : "cursor-crosshair"}`}
+            style={{ width: fit?.w, height: fit?.h, touchAction: tool === "path" || tool === "line" || tool === "text" ? "manipulation" : "none" }}
+          />
+        )}
       </div>
     </div>
   );

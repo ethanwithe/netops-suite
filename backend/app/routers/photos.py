@@ -10,7 +10,8 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.config import OUTPUTS_DIR, UPLOADS_DIR
 from app import models, schemas
-from app.seed_data import CATEGORIAS
+from app.seed_data import CATEGORIAS, TIPO_CATEGORIAS
+from app.services import cache
 from app.services.logo_store import resolve_logo
 from app.services.naming import build_report_filename
 from app.services.pdf_photo_report import build_photo_report_pdf
@@ -30,31 +31,49 @@ def _sort_key(item: models.PhotoItem):
     creadas por el usuario van al final, ordenadas por nombre. Dentro de
     cada categoría manda "orden" y, si hay empate, el nombre.
     """
+    orden_oficial = TIPO_CATEGORIAS.get(getattr(item, "tipo", None) or "fibra", CATEGORIAS)
     try:
-        rank = CATEGORIAS.index(item.categoria)
+        rank = orden_oficial.index(item.categoria)
         custom = ""
     except ValueError:
-        rank = len(CATEGORIAS)
+        rank = len(orden_oficial)
         custom = (item.categoria or "").lower()
     return (rank, custom, item.orden or 0, (item.nombre or "").lower())
 
 
 @router.get("/items", response_model=list[schemas.PhotoItemOut])
-def list_items(categoria: Optional[str] = None, db: Session = Depends(get_db)):
-    q = db.query(models.PhotoItem)
+def list_items(
+    categoria: Optional[str] = None,
+    tipo: str = "fibra",
+    db: Session = Depends(get_db),
+):
+    if tipo not in TIPO_CATEGORIAS:
+        raise HTTPException(400, "Tipo de reporte inválido.")
+    key = f"items:{tipo}:{categoria or ''}"
+    cached = cache.get_json(key)
+    if cached is not None:
+        return cached
+
+    q = db.query(models.PhotoItem).filter(models.PhotoItem.tipo == tipo)
     if categoria:
         q = q.filter(models.PhotoItem.categoria == categoria)
-    return sorted(q.all(), key=_sort_key)
+    items = sorted(q.all(), key=_sort_key)
+    cache.set_json(key, [schemas.PhotoItemOut.model_validate(i).model_dump() for i in items])
+    return items
 
 
 @router.post("/items", response_model=schemas.PhotoItemOut)
 def create_item(payload: schemas.PhotoItemCreate, db: Session = Depends(get_db)):
     data = payload.model_dump()
+    data["tipo"] = data.get("tipo") or "fibra"
 
     if data.get("orden") is None:
         last = (
             db.query(func.max(models.PhotoItem.orden))
-            .filter(models.PhotoItem.categoria == data["categoria"])
+            .filter(
+                models.PhotoItem.categoria == data["categoria"],
+                models.PhotoItem.tipo == data["tipo"],
+            )
             .scalar()
         )
         data["orden"] = (last or 0) + 10
@@ -63,6 +82,7 @@ def create_item(payload: schemas.PhotoItemCreate, db: Session = Depends(get_db))
     db.add(item)
     db.commit()
     db.refresh(item)
+    cache.delete_prefix("items:")
     return item
 
 
@@ -89,6 +109,7 @@ def reorder_items(payload: schemas.PhotoReorderRequest, db: Session = Depends(ge
         items[item_id].orden = pos * 10
 
     db.commit()
+    cache.delete_prefix("items:")
     return [items[i] for i in ids]
 
 
@@ -102,6 +123,7 @@ def update_item(item_id: str, payload: schemas.PhotoItemCreate, db: Session = De
         setattr(item, k, v)
     db.commit()
     db.refresh(item)
+    cache.delete_prefix("items:")
     return item
 
 
@@ -112,6 +134,7 @@ def delete_item(item_id: str, db: Session = Depends(get_db)):
         raise HTTPException(404, "Ítem no encontrado.")
     db.delete(item)
     db.commit()
+    cache.delete_prefix("items:")
     return {"ok": True}
 
 
@@ -122,7 +145,8 @@ def delete_item(item_id: str, db: Session = Depends(get_db)):
 def _resolve_upload_path(rel_path: Optional[str]) -> Optional[str]:
     if not rel_path:
         return None
-    return str(UPLOADS_DIR / os.path.basename(rel_path))
+    name = os.path.basename(rel_path)
+    return str(UPLOADS_DIR / name)
 
 
 @router.post("/pdf")
@@ -147,13 +171,14 @@ def generate_photo_report_pdf(
                 "numero": i.numero,
                 "descripcion": i.descripcion,
                 "imagen": img_path,
-                # GPON: solo lado cliente
-                "lado": "cliente" if payload.tipo.startswith("gpon") else i.lado,
+                "lado": i.lado,
+                "lado_label": i.lado_label,
             }
         )
 
     meta = {
         "titulo": payload.titulo,
+        "lados_orden": payload.lados,
         "proy": payload.proy,
         "cliente": payload.cliente,
         "sot": payload.sot,

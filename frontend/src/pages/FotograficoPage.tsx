@@ -24,16 +24,22 @@ import ImportPdfButton from "../components/ImportPdfButton";
 import type { ImportedProject } from "../components/ImportPdfButton";
 import { savePjForm } from "../store/pjForm";
 import { useNavigate } from "react-router-dom";
-import type { FotoTipo, Lado } from "../store/photoReportStore";
+import type { FotoTipo } from "../store/photoReportStore";
+import { resolveOpcion, useOpciones } from "../store/photoReportStore";
+import OpcionesManager from "../components/OpcionesManager";
 
-const LADO_OPTIONS: { value: Lado; label: string }[] = [
-  { value: "site", label: "SITE" },
-  { value: "pdi", label: "PDI" },
-  { value: "pop", label: "POP" },
-  { value: "cliente", label: "CLIENTE" },
+
+const CATEGORIAS_GPON = [
+  "EQUIPOS INSTALADOS",
+  "INSTALACION Y IDENTIFICACION DE EQUIPOS",
+  "RECORRIDO",
+  "ETIQUETADO",
+  "PANORAMICA DE UBICACION",
+  "MULTIMETRO",
+  "QR",
 ];
 
-const CATEGORIAS_BASE = [
+const CATEGORIAS_FIBRA = [
   "EQUIPOS INSTALADOS ACCESO",
   "ETIQUETADO",
   "RECORRIDO EN ACCESO",
@@ -46,6 +52,8 @@ const CATEGORIAS_BASE = [
   "MULTIMETRO",
   "QR",
 ];
+
+const categoriasBase = (tipo: FotoTipo) => (isGpon(tipo) ? CATEGORIAS_GPON : CATEGORIAS_FIBRA);
 
 /** Agrupa por categoría respetando el orden en que llegan los ítems. */
 function groupByCategory(items: PhotoItem[]) {
@@ -66,26 +74,28 @@ function groupByCategory(items: PhotoItem[]) {
 
 export default function FotograficoPage({ tipo }: { tipo: FotoTipo }) {
   // La pestaña activa se recuerda al ir a otra página y volver.
-  const [tab, setTab] = usePersistentState<"run" | "items">("fotografico.tab", "run");
+  const [tab, setTab] = usePersistentState<"run" | "items">(`fotografico.tab.${tipo}`, "run");
   const [items, setItems] = useState<PhotoItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const reload = useCallback(() => {
     return api
-      .get<PhotoItem[]>("/photos/items")
+      .get<PhotoItem[]>("/photos/items", { params: { tipo } })
       .then((r) => {
         setItems(r.data);
         setLoadError(null);
-        pruneRows(r.data.map((i) => i.id));
+        pruneRows(tipo, r.data.map((i) => i.id));
       })
       .catch((e) =>
         setLoadError(apiErrorMessage(e, "No se pudieron cargar las descripciones."))
       )
       .finally(() => setLoading(false));
-  }, []);
+  }, [tipo]);
 
   useEffect(() => {
+    setLoading(true);
+    setItems([]);
     reload();
   }, [reload]);
 
@@ -129,11 +139,48 @@ export default function FotograficoPage({ tipo }: { tipo: FotoTipo }) {
         </h2>
 
         <p className="text-slate-500 text-sm">
-          EQUIPOS INSTALADOS ACCESO, ETIQUETADO, RECORRIDO EN ACCESO, VISTA
-          GENERAL UBICACION DE EQUIPOS, EQUIPOS LADO CLIENTE, ETIQUETADO
-          CLIENTE, VISTA INSTALACION EN GABINETE, RECORRIDO CLIENTE, VISTA
-          INSTALACION DE EQUIPOS, MULTIMETRO, QR.
+          Arma el PDF del reporte fotográfico: marca los ítems, sube o toma la
+          foto de cada uno y elige a qué opción pertenece.
         </p>
+        <details className="mt-2 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
+          <summary className="cursor-pointer font-medium text-slate-700">
+            📖 Cómo se usa (tutorial)
+          </summary>
+          <ol className="mt-2 list-decimal space-y-1 pl-5">
+            <li>
+              Llena los datos: <b>PROY, CLIENTE, SOT, FECHA, CID y CONTRATA</b>,
+              y elige los logos. El PDF se llamará <i>RF_SOT-&lt;sot&gt;_&lt;cliente&gt;.pdf</i>.
+            </li>
+            <li>
+              En <b>Opciones del título</b> define las secciones del reporte
+              (por ejemplo «INSTALACION EN CLIENTE»). Puedes <b>agregar</b>,
+              <b> renombrar</b> y <b>borrar</b>; sirven para todas las ventanas.
+              El título del PDF es «REPORTE FOTOGRAFICO» + la opción elegida.
+            </li>
+            <li>
+              Marca con ✔ los ítems que van, y arrástralos (⠿) para cambiar el orden.
+              Si quieres, edita su descripción.
+            </li>
+            <li>
+              En cada ítem elige su <b>opción</b> y sube la foto, o usa
+              <b> 📷 Tomar foto</b>: la cámara muestra en vivo el sello (fecha,
+              dirección y coordenadas) y con «Mover sello» lo cambias de esquina
+              para no tapar la serie del equipo.
+            </li>
+            <li>
+              Usa <b>✏️ Editar</b> para dibujar líneas, flechas, texto, recortar
+              o mejorar la imagen.
+            </li>
+            <li>
+              Pulsa <b>Generar reporte</b>. Se crea una sección (con su propio
+              título y numeración) por cada opción usada. El PDF se puede
+              volver a abrir con «Abrir PDF» para seguir editándolo.
+            </li>
+          </ol>
+          <p className="mt-2 text-xs text-slate-500">
+            Tu avance se guarda solo en este navegador; «Nuevo reporte» lo borra.
+          </p>
+        </details>
       </div>
 
       <div className="flex gap-2">
@@ -171,7 +218,7 @@ export default function FotograficoPage({ tipo }: { tipo: FotoTipo }) {
       ) : tab === "run" ? (
         <RunTab tipo={tipo} items={items} onReorder={reorderCategory} />
       ) : (
-        <ItemsTab items={items} onChange={reload} />
+        <ItemsTab tipo={tipo} items={items} onChange={reload} />
       )}
     </div>
   );
@@ -213,8 +260,9 @@ function RunTab({
   items: PhotoItem[];
   onReorder: (categoria: string, ids: string[]) => void;
 }) {
-  const s = usePhotoReport();
+  const s = usePhotoReport(tipo);
 
+  const manager = useOpciones();
   const [editing, setEditing] = useState<{ id: string; imageUrl: string } | null>(null);
   const [dragId, setDragId] = useState<string | null>(null);
   const [overId, setOverId] = useState<string | null>(null);
@@ -230,6 +278,7 @@ function RunTab({
 
   function toggle(list: PhotoItem[], value: boolean) {
     setIncluir(
+      tipo,
       list.map((it) => it.id),
       value
     );
@@ -260,7 +309,7 @@ function RunTab({
       navigate("/fotografico/poder-judicial");
       return;
     }
-    importReport(p.state);
+    importReport((p.tipo as FotoTipo) ?? "fibra", p.state);
     const route: Record<string, string> = {
       gpon_ont: "gpon-ont",
       gpon_modulo: "gpon-modulo",
@@ -288,7 +337,7 @@ function RunTab({
       return;
     }
 
-    void generatePdf(ordered, tipo);
+    void generatePdf(ordered, tipo, manager.opciones);
   }
 
   function newReport() {
@@ -297,7 +346,7 @@ function RunTab({
         "¿Empezar un reporte nuevo?\n\nSe borrarán los datos, los ítems marcados, las descripciones editadas y las fotos. Los logos elegidos se conservan."
       )
     ) {
-      resetReport();
+      resetReport(tipo);
     }
   }
 
@@ -321,27 +370,20 @@ function RunTab({
           </button>
         </div>
 
-        <div className="sm:col-span-2">
-          <TextField
-            label="Título"
-            value={s.titulo}
-            onChange={(v) => setField("titulo", v)}
-          />
-        </div>
 
-        <TextField label="PROY" value={s.proy} onChange={(v) => setField("proy", v)} />
+        <TextField label="PROY" value={s.proy} onChange={(v) => setField(tipo, "proy", v)} />
         <TextField
           label="CLIENTE"
           value={s.cliente}
-          onChange={(v) => setField("cliente", v)}
+          onChange={(v) => setField(tipo, "cliente", v)}
         />
-        <TextField label="SOT" value={s.sot} onChange={(v) => setField("sot", v)} />
-        <TextField label="FECHA" value={s.fecha} onChange={(v) => setField("fecha", v)} />
-        <TextField label="CID" value={s.cid} onChange={(v) => setField("cid", v)} />
+        <TextField label="SOT" value={s.sot} onChange={(v) => setField(tipo, "sot", v)} />
+        <TextField label="FECHA" value={s.fecha} onChange={(v) => setField(tipo, "fecha", v)} />
+        <TextField label="CID" value={s.cid} onChange={(v) => setField(tipo, "cid", v)} />
         <TextField
           label="CONTRATA"
           value={s.contrata}
-          onChange={(v) => setField("contrata", v)}
+          onChange={(v) => setField(tipo, "contrata", v)}
         />
 
         <p className="sm:col-span-2 text-xs text-slate-500">
@@ -356,7 +398,7 @@ function RunTab({
             posicion="izq"
             label="Logo izquierda (empresa)"
             value={s.logoIzq}
-            onChange={(v) => setField("logoIzq", v)}
+            onChange={(v) => setField(tipo, "logoIzq", v)}
           />
         </div>
 
@@ -365,10 +407,12 @@ function RunTab({
             posicion="der"
             label="Logo derecha (Claro)"
             value={s.logoDer}
-            onChange={(v) => setField("logoDer", v)}
+            onChange={(v) => setField(tipo, "logoDer", v)}
           />
         </div>
       </div>
+
+      <OpcionesManager manager={manager} />
 
       <div className="flex items-center gap-2">
         <label className="flex items-center gap-2 text-sm font-medium">
@@ -446,7 +490,7 @@ function RunTab({
                       type="checkbox"
                       checked={r.incluir}
                       onChange={(e) =>
-                        updateRow(it.id, { incluir: e.target.checked })
+                        updateRow(tipo, it.id, { incluir: e.target.checked })
                       }
                     />
 
@@ -454,34 +498,28 @@ function RunTab({
                       className="input flex-1 min-w-[160px]"
                       value={r.descripcion ?? it.nombre}
                       onChange={(e) =>
-                        updateRow(it.id, { descripcion: e.target.value })
+                        updateRow(tipo, it.id, { descripcion: e.target.value })
                       }
                     />
 
-                    {isGpon(tipo) ? (
-                      <span className="w-32 text-xs text-slate-500">Lado cliente</span>
-                    ) : (
                     <select
-                      className="input w-32"
-                      value={r.lado}
-                      onChange={(e) =>
-                        updateRow(it.id, { lado: e.target.value as Lado })
-                      }
+                      className="input w-full sm:w-56"
+                      value={resolveOpcion(r.lado, manager.opciones).id}
+                      onChange={(e) => updateRow(tipo, it.id, { lado: e.target.value })}
                     >
-                      {LADO_OPTIONS.map((o) => (
-                        <option key={o.value} value={o.value}>
+                      {manager.opciones.map((o) => (
+                        <option key={o.id} value={o.id}>
                           {o.label}
                         </option>
                       ))}
                     </select>
-                    )}
 
                     <ImageUpload
                       compact
                       cliente={s.cliente}
                       initialUrl={r.imageUrl}
                       onUploaded={(p, u) =>
-                        updateRow(it.id, { imagePath: p, imageUrl: u })
+                        updateRow(tipo, it.id, { imagePath: p, imageUrl: u })
                       }
                     />
 
@@ -587,7 +625,7 @@ function RunTab({
         <ImageAnnotator
           imageUrl={editing.imageUrl}
           onClose={() => setEditing(null)}
-          onSaved={(p, u) => updateRow(editing.id, { imagePath: p, imageUrl: u })}
+          onSaved={(p, u) => updateRow(tipo, editing.id, { imagePath: p, imageUrl: u })}
         />
       )}
     </div>
@@ -599,16 +637,18 @@ function RunTab({
 // ============================================================
 
 function ItemsTab({
+  tipo,
   items,
   onChange,
 }: {
+  tipo: FotoTipo;
   items: PhotoItem[];
   onChange: () => void;
 }) {
   // Borrador del formulario: no se pierde al cambiar de pestaña o de página.
   // (Solo en memoria; "orden" vacío = automático, al final de su categoría.)
   const [draft, setDraft] = usePersistentState(
-    "fotografico.itemsDraft",
+    `fotografico.itemsDraft.${tipo}`,
     { selectedId: "", categoria: "", nombre: "", orden: "" },
     { persist: false }
   );
@@ -622,8 +662,8 @@ function ItemsTab({
   const [busy, setBusy] = useState(false);
 
   const categorias = useMemo(
-    () => Array.from(new Set([...CATEGORIAS_BASE, ...items.map((i) => i.categoria)])),
-    [items]
+    () => Array.from(new Set([...categoriasBase(tipo), ...items.map((i) => i.categoria)])),
+    [items, tipo]
   );
 
   function select(it: PhotoItem) {
@@ -650,7 +690,8 @@ function ItemsTab({
       return;
     }
 
-    const payload: { categoria: string; nombre: string; orden?: number } = {
+    const payload: { tipo: FotoTipo; categoria: string; nombre: string; orden?: number } = {
+      tipo,
       categoria: categoria.trim(),
       nombre: nombre.trim(),
     };

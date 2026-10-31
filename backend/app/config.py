@@ -21,3 +21,6 @@ OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
 
 # Orígenes permitidos para CORS (en dev, el frontend corre en otro puerto)
 CORS_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(",")
+
+# Caché opcional (Redis). Sin REDIS_URL todo funciona igual, solo sin caché.
+REDIS_URL = os.getenv("REDIS_URL", "").strip()

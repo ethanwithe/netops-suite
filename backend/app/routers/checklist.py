@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.config import OUTPUTS_DIR, UPLOADS_DIR
 from app import models, schemas
+from app.services import cache
 from app.services.device_link import run_tests
 from app.services.logo_store import resolve_logo
 from app.services.pdf_checklist import build_checklist_pdf
@@ -18,10 +19,16 @@ router = APIRouter(prefix="/api/checklist", tags=["checklist"])
 
 @router.get("/items", response_model=list[schemas.ChecklistItemOut])
 def list_items(servicio: Optional[str] = None, db: Session = Depends(get_db)):
+    key = f"checklist:{servicio or ''}"
+    cached = cache.get_json(key)
+    if cached is not None:
+        return cached
     q = db.query(models.ChecklistItem)
     if servicio:
         q = q.filter(models.ChecklistItem.servicio == servicio)
-    return q.order_by(models.ChecklistItem.orden).all()
+    rows = q.order_by(models.ChecklistItem.orden).all()
+    cache.set_json(key, [schemas.ChecklistItemOut.model_validate(r).model_dump() for r in rows])
+    return rows
 
 
 @router.post("/items", response_model=schemas.ChecklistItemOut)
@@ -30,6 +37,7 @@ def create_item(payload: schemas.ChecklistItemCreate, db: Session = Depends(get_
     db.add(item)
     db.commit()
     db.refresh(item)
+    cache.delete_prefix("checklist:")
     return item
 
 
@@ -42,6 +50,7 @@ def update_item(item_id: str, payload: schemas.ChecklistItemCreate, db: Session 
         setattr(item, k, v)
     db.commit()
     db.refresh(item)
+    cache.delete_prefix("checklist:")
     return item
 
 
@@ -52,6 +61,7 @@ def delete_item(item_id: str, db: Session = Depends(get_db)):
         raise HTTPException(404, "Ítem no encontrado.")
     db.delete(item)
     db.commit()
+    cache.delete_prefix("checklist:")
     return {"ok": True}
 
 

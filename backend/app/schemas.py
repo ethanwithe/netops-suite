@@ -114,10 +114,13 @@ class PhotoItemBase(BaseModel):
 class PhotoItemCreate(PhotoItemBase):
     # Si no se envía "orden" al crear, el ítem va al final de su categoría.
     orden: Optional[int] = None
+    # Tipo de reporte. Al editar, si no se envía, se conserva el actual.
+    tipo: Optional[Literal["fibra", "gpon_ont", "gpon_modulo"]] = None
 
 
 class PhotoItemOut(PhotoItemBase):
     id: str
+    tipo: str = "fibra"
     class Config:
         from_attributes = True
 
@@ -138,13 +141,16 @@ class PhotoReportItem(BaseModel):
     numero: int
     descripcion: str
     image_path: Optional[str] = None
-    lado: Literal["site", "pdi", "pop", "cliente"] = "site"
+    # Identificador de la opción elegida (las opciones las define el usuario)
+    lado: str = "site"
+    # Texto que se agrega al título del reporte, p. ej. "INSTALACION EN CLIENTE"
+    lado_label: str = ""
 
 
 class PhotoReportRequest(BaseModel):
     # gpon_ont / gpon_modulo: todas las fotos van en el lado CLIENTE.
     tipo: Literal["gpon_ont", "gpon_modulo", "fibra"] = "fibra"
-    titulo: str = "REPORTE FOTOGRAFICO INSTALACION EN"
+    titulo: str = "REPORTE FOTOGRAFICO"
     proy: str = ""
     cliente: str = ""
     sot: str = ""
@@ -158,6 +164,8 @@ class PhotoReportRequest(BaseModel):
     logo_izq_path: Optional[str] = None
     logo_der_path: Optional[str] = None
     items: List[PhotoReportItem]
+    # Orden de las opciones (secciones) en el PDF
+    lados: List[str] = []
     # Estado del formulario: se guarda dentro del PDF para poder reabrirlo.
     project: Optional[Dict[str, Any]] = None
 
