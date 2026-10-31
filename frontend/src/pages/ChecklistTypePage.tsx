@@ -9,6 +9,9 @@ import { setField, usePhotoReport } from "../store/photoReportStore";
 import { usePersistentState } from "../store/persistentState";
 import { deleteChecklistType, updateChecklistType, useChecklistTypes } from "../store/checklistTypes";
 import type { CkData, CkItem, CkType } from "../store/checklistTypes";
+import ClientPicker from "../components/ClientPicker";
+import { syncClient, useSotSync } from "../store/clients";
+import type { ClientRecord } from "../store/clients";
 import { SerialSession, webSerialSupported } from "../utils/webSerial";
 import {
   extractBandwidthMbps, extractModel, fechaLarga, fillCmd, hoyISO, servicioLabel,
@@ -83,6 +86,27 @@ function Inner({ type }: { type: CkType }) {
     setS((p) => ({ ...p, rows: { ...p.rows, [itemId]: { ...(p.rows[itemId] ?? emptyRow), ...patch } } }));
   const setParam = (k: string, v: string) => setS((p) => ({ ...p, params: { ...p.params, [k]: v } }));
   const setF = <K extends keyof RunState>(k: K, v: RunState[K]) => setS((p) => ({ ...p, [k]: v }));
+
+  // Lo que se sabe de la SOT (IPs, interfaces, modelo, ancho de banda) se guarda solo en "Datos de cliente".
+  const datosSot = useMemo(() => {
+    const d: Record<string, string> = {};
+    for (const [k, v] of Object.entries(s.params)) if (v.trim()) d[k] = v.trim();
+    if (s.modelo.trim()) d["MODELO"] = s.modelo.trim();
+    if (s.ancho.trim()) d["ANCHO_MBPS"] = s.ancho.trim();
+    return d;
+  }, [s.params, s.modelo, s.ancho]);
+  useSotSync({ sot: s.sot, nombre: s.cliente, fecha: s.fecha, cid: s.cid, datos: datosSot });
+
+  function pickClient(c: ClientRecord) {
+    setS((p) => {
+      const params = { ...p.params };
+      for (const prm of data.params) if (c.datos?.[prm.key]) params[prm.key] = c.datos[prm.key];
+      return {
+        ...p, sot: c.sot, cid: c.cid || p.cid, cliente: c.nombre || p.cliente, fecha: c.fecha || p.fecha,
+        modelo: c.datos?.MODELO || p.modelo, ancho: c.datos?.ANCHO_MBPS || p.ancho, params,
+      };
+    });
+  }
 
   const allItems = useMemo(() => data.sections.flatMap((sec) => sec.items), [data]);
   const wan = s.params["WAN"] ?? "";
@@ -185,6 +209,12 @@ function Inner({ type }: { type: CkType }) {
         sections,
       });
       setPdf({ url: r.url, filename: r.filename, warnings: r.warnings ?? [] });
+      if (s.sot.trim()) {
+        void syncClient({
+          sot: s.sot, nombre: s.cliente, fecha: s.fecha, cid: s.cid, datos: datosSot,
+          reporte: { tipo: "checklist", nombre: type.nombre, filename: r.filename, url: r.url },
+        }).catch(() => {});
+      }
     } catch (e) {
       setPdfError(apiErrorMessage(e, "No se pudo generar el PDF."));
     } finally {
@@ -243,7 +273,8 @@ function Inner({ type }: { type: CkType }) {
         <>
           <div className="card grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="sm:col-span-2 flex flex-wrap items-center justify-between gap-2">
-              <p className="text-xs text-slate-400">Tu avance se guarda solo en este navegador.</p>
+              <p className="text-xs text-slate-400">Tu avance se guarda solo en este navegador; los datos de la SOT, en «Datos de cliente».</p>
+              <ClientPicker onPick={pickClient} />
               <button type="button" className="btn-secondary text-xs" onClick={newReport} disabled={!!busy}>🆕 Nuevo checklist</button>
             </div>
             <Field label="SOT" value={s.sot} onChange={(v) => setF("sot", v)} />

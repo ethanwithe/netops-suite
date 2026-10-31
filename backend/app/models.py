@@ -100,6 +100,35 @@ class ChecklistTemplate(Base):
     created_at = Column(DateTime, default=dt.datetime.utcnow)
 
 
+class Client(Base):
+    """Cliente / servicio identificado por su SOT.
+
+    Se ubica por año y mes según `fecha` (la fecha que se puso en los datos, no la de
+    creación). `datos` junta lo asociado a la SOT desde cualquier ventana (IPs, interfaces...)
+    y `reportes` el historial de PDF/carpetas generados.
+    """
+    __tablename__ = "clients"
+
+    id = Column(String, primary_key=True, default=gen_uuid)
+    sot = Column(String, nullable=False, index=True)
+    nombre = Column(String, nullable=False, default="")
+    fecha = Column(String, nullable=False, default="")  # ISO yyyy-mm-dd
+    cid = Column(String, nullable=False, default="")
+    proy = Column(String, nullable=False, default="")
+    contrata = Column(String, nullable=False, default="")
+    datos = Column(JSON, nullable=False, default=dict)
+    reportes = Column(JSON, nullable=False, default=list)
+    created_at = Column(DateTime, default=dt.datetime.utcnow)
+    updated_at = Column(DateTime, default=dt.datetime.utcnow)
+
+
+class ClientYear(Base):
+    """Años creados a mano (el actual existe siempre; los años con clientes también)."""
+    __tablename__ = "client_years"
+
+    year = Column(Integer, primary_key=True)
+
+
 class HeaderLogo(Base):
     """Logo reutilizable para la cabecera de los PDF.
 

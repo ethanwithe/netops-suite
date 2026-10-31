@@ -292,3 +292,58 @@ class ChecklistReportRequest(BaseModel):
     logo_id: Optional[str] = None
     logo_path: Optional[str] = None
     sections: List[ChecklistReportSection]
+
+
+# ---------------- Clientes (por SOT, año y mes) ----------------
+
+class ClientIn(BaseModel):
+    sot: str
+    nombre: str = ""
+    fecha: str = ""          # yyyy-mm-dd; si falta, hoy
+    cid: str = ""
+    proy: str = ""
+    contrata: str = ""
+    datos: Dict[str, str] = {}
+
+
+class ClientOut(BaseModel):
+    id: str
+    sot: str
+    nombre: str = ""
+    fecha: str = ""
+    cid: str = ""
+    proy: str = ""
+    contrata: str = ""
+    datos: Dict[str, Any] = {}
+    reportes: List[Dict[str, Any]] = []
+    class Config:
+        from_attributes = True
+
+
+class ClientSync(BaseModel):
+    """Lo que cualquier ventana manda cuando conoce algo de una SOT. Solo se guardan los datos con valor."""
+    sot: str
+    nombre: str = ""
+    fecha: str = ""
+    cid: str = ""
+    proy: str = ""
+    contrata: str = ""
+    datos: Dict[str, str] = {}
+    reporte: Optional[Dict[str, Any]] = None  # {tipo, nombre, filename, url}
+
+
+class ClientYearIn(BaseModel):
+    year: int
+
+
+class EvidenceItem(BaseModel):
+    nombre: str = ""
+    path: str = ""            # foto final (editada, si se editó)
+    original_path: str = ""   # foto sin editar (si es distinta)
+    lado_label: str = ""
+
+
+class EvidenceRequest(BaseModel):
+    sot: str = ""
+    cliente: str = ""
+    items: List[EvidenceItem]

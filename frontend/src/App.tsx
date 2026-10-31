@@ -4,6 +4,7 @@ import PruebasPage from "./pages/PruebasPage";
 import PlantillasPage from "./pages/PlantillasPage";
 import ChecklistTypePage from "./pages/ChecklistTypePage";
 import ChecklistHome from "./pages/ChecklistHome";
+import ClientsPage from "./pages/ClientsPage";
 import SaturadorPage from "./pages/SaturadorPage";
 import FotograficoPage from "./pages/FotograficoPage";
 import CustomFotograficoPage from "./pages/CustomFotograficoPage";
@@ -16,6 +17,8 @@ export default function App() {
         <Route index element={<Navigate to="/pruebas" replace />} />
         <Route path="/pruebas" element={<PruebasPage />} />
         <Route path="/plantillas" element={<PlantillasPage />} />
+        <Route path="/clientes" element={<ClientsPage />} />
+        <Route path="/clientes/:year" element={<ClientsPage />} />
         <Route path="/checklist" element={<ChecklistHome />} />
         <Route path="/checklist/t/:id" element={<ChecklistTypePage />} />
         <Route path="/checklist/saturador" element={<SaturadorPage />} />

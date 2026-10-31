@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import WindowEditor from "./WindowEditor";
 import { createWindow, usePhotoWindows, windowRoute } from "../store/photoWindows";
+import { createYear, listYears } from "../store/clients";
 import NewChecklistModal from "./NewChecklistModal";
 import { checklistRoute, createChecklistType, useChecklistTypes } from "../store/checklistTypes";
 import { usePersistentState } from "../store/persistentState";
@@ -32,6 +33,24 @@ export default function Layout() {
   const [creating, setCreating] = useState(false);
   const { list: ckTypes } = useChecklistTypes();
   const [creatingCk, setCreatingCk] = useState(false);
+  const inCl = pathname.startsWith("/clientes");
+  const [clOpen, setClOpen] = useState(inCl);
+  const clShown = clOpen || inCl;
+  const [years, setYears] = useState<{ year: number; total: number }[]>([{ year: new Date().getFullYear(), total: 0 }]);
+  const loadYears = () => listYears().then((y) => setYears([...y].sort((a, b) => b.year - a.year))).catch(() => {});
+  useEffect(() => { void loadYears(); }, [pathname]);
+  async function newYear() {
+    const txt = prompt("¿Qué año quieres crear? (se crean solos sus 12 meses)", String(Math.max(...years.map((y) => y.year)) + 1));
+    const y = Number(txt);
+    if (!txt || !Number.isInteger(y)) return;
+    try {
+      await createYear(y);
+      await loadYears();
+      navigate(`/clientes/${y}`);
+    } catch {
+      alert("No se pudo crear el año (debe estar entre 2000 y 2100).");
+    }
+  }
   const inCk = pathname.startsWith("/checklist");
   const [ckOpen, setCkOpen] = useState(inCk);
   const ckShown = ckOpen || inCk;
@@ -43,7 +62,7 @@ export default function Layout() {
     ...FOTO_SUB,
     ...custom.map((w) => ({ to: windowRoute(w.id), label: w.nombre })),
   ];
-  const titles: Record<string, string> = { ...TITLES, ...Object.fromEntries(ckSub.map((o) => [o.to, o.label])), "/checklist": "CheckList", ...Object.fromEntries(custom.map((w) => [windowRoute(w.id), w.nombre])) };
+  const titles: Record<string, string> = { ...TITLES, "/clientes": "Datos de clientes", ...Object.fromEntries(years.map((y) => [`/clientes/${y.year}`, `Clientes ${y.year}`])), ...Object.fromEntries(ckSub.map((o) => [o.to, o.label])), "/checklist": "CheckList", ...Object.fromEntries(custom.map((w) => [windowRoute(w.id), w.nombre])) };
   const inFoto = pathname.startsWith("/fotografico");
   const [fotoOpen, setFotoOpen] = useState(inFoto);
   const fotoShown = fotoOpen || inFoto;
@@ -114,6 +133,49 @@ export default function Layout() {
               </span>
             </NavLink>
           ))}
+
+          <div>
+            <button
+              type="button"
+              aria-expanded={clShown}
+              onClick={() => setClOpen(!clShown)}
+              className={`flex w-full items-center gap-3 rounded-lg px-3 py-3 text-sm text-left transition-colors ${
+                inCl ? "bg-slate-800 text-white" : "hover:bg-slate-800 text-slate-300"
+              }`}
+            >
+              <span className="text-lg">👥</span>
+              <span className="flex-1">
+                <span className="block font-medium">Datos de cliente</span>
+                <span className="block text-[11px] opacity-70">Por SOT · año y mes</span>
+              </span>
+              <span className="text-xs">{clShown ? "▾" : "▸"}</span>
+            </button>
+            {clShown && (
+              <div className="mt-1 ml-5 space-y-1 border-l border-slate-700 pl-3">
+                {[{ to: "/clientes", label: "Todos los clientes", end: true }, ...years.map((y) => ({ to: `/clientes/${y.year}`, label: `${y.year}  (${y.total})`, end: false }))].map((o) => (
+                  <NavLink
+                    key={o.to}
+                    to={o.to}
+                    end
+                    className={({ isActive }) =>
+                      `block rounded-md px-3 py-2.5 text-sm transition-colors ${
+                        isActive ? "bg-brand-600 text-white" : "hover:bg-slate-800 text-slate-300"
+                      }`
+                    }
+                  >
+                    {o.label}
+                  </NavLink>
+                ))}
+                <button
+                  type="button"
+                  onClick={newYear}
+                  className="block w-full rounded-md px-3 py-2.5 text-left text-sm text-brand-100 hover:bg-slate-800"
+                >
+                  ➕ Nuevo año
+                </button>
+              </div>
+            )}
+          </div>
 
           <div>
             <button
