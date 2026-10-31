@@ -12,6 +12,7 @@
 
 import { useCallback, useMemo, useSyncExternalStore } from "react";
 import { usePersistentState } from "./persistentState";
+import { syncClient, toISODate } from "./clients";
 import { api, apiErrorMessage } from "../api/client";
 import { NO_LOGO, logoPayload } from "../logo";
 import type { LogoSel } from "../logo";
@@ -98,6 +99,20 @@ export interface RowState {
   imagePath: string;
   imageUrl: string;
   lado: Lado;
+  /** Foto tal como se subió/tomó, antes de editarla (para la carpeta de evidencia). */
+  originalPath?: string;
+  originalUrl?: string;
+}
+
+/** Foto extra para la carpeta de evidencia (no va en el PDF). */
+export interface ExtraPhoto {
+  id: string;
+  nombre: string;
+  path: string;
+  url: string;
+  originalPath?: string;
+  originalUrl?: string;
+  lado: Lado;
 }
 
 export const DEFAULT_ROW: RowState = {
@@ -119,6 +134,7 @@ export interface ReportFields {
   logoDer: LogoSel;
   /** Estado por ítem, indexado por el id del ítem. */
   rows: Record<string, RowState>;
+  extras: ExtraPhoto[];
 }
 
 export interface GenResult {
@@ -210,6 +226,7 @@ function freshFields(tipo?: FotoTipo): ReportFields {
     logoIzq: logo(d.logoIzq),
     logoDer: logo(d.logoDer),
     rows: {},
+    extras: [],
   };
 }
 
@@ -240,9 +257,42 @@ function loadRows(v: unknown): Record<string, RowState> {
       imagePath: str(x.imagePath, ""),
       imageUrl: str(x.imageUrl, ""),
       lado: str(x.lado, "cliente") || "cliente",
+      originalPath: str(x.originalPath, ""),
+      originalUrl: str(x.originalUrl, ""),
     };
   }
   return out;
+}
+
+function loadExtras(v: unknown): ExtraPhoto[] {
+  if (!Array.isArray(v)) return [];
+  const out: ExtraPhoto[] = [];
+  for (const raw of v) {
+    if (!raw || typeof raw !== "object") continue;
+    const x = raw as Record<string, unknown>;
+    const path = str(x.path, "");
+    if (!path) continue;
+    out.push({
+      id: str(x.id, `e${out.length}`),
+      nombre: str(x.nombre, ""),
+      path,
+      url: str(x.url, ""),
+      originalPath: str(x.originalPath, ""),
+      originalUrl: str(x.originalUrl, ""),
+      lado: str(x.lado, "cliente") || "cliente",
+    });
+  }
+  return out;
+}
+
+export function addExtra(tipo: FotoTipo, extra: ExtraPhoto): void {
+  setState(tipo, { extras: [...storeOf(tipo).state.extras, extra] });
+}
+export function updateExtra(tipo: FotoTipo, id: string, patch: Partial<ExtraPhoto>): void {
+  setState(tipo, { extras: storeOf(tipo).state.extras.map((e) => (e.id === id ? { ...e, ...patch } : e)) });
+}
+export function removeExtra(tipo: FotoTipo, id: string): void {
+  setState(tipo, { extras: storeOf(tipo).state.extras.filter((e) => e.id !== id) });
 }
 
 function sharedLogos(): Partial<ReportFields> {
@@ -277,6 +327,7 @@ function loadFields(tipo: FotoTipo): ReportFields {
       logoIzq: loadLogo(x.logoIzq),
       logoDer: loadLogo(x.logoDer),
       rows: loadRows(x.rows),
+      extras: loadExtras(x.extras),
       ...(isCustom(tipo) ? {} : sharedLogos()),
     };
   } catch {
@@ -322,6 +373,7 @@ function persist(tipo: FotoTipo): void {
       logoIzq: state.logoIzq,
       logoDer: state.logoDer,
       rows: state.rows,
+      extras: state.extras,
     };
     localStorage.setItem(keyOf(tipo), JSON.stringify({ ...fields, savedOn: todayPE() }));
     if (!isCustom(tipo)) {
@@ -433,11 +485,11 @@ export function resetReport(tipo: FotoTipo): void {
 /** Estado que se guarda dentro del PDF para poder reabrirlo. */
 function projectOf(tipo: FotoTipo) {
   const { state } = storeOf(tipo);
-  const { titulo, proy, cliente, sot, fecha, cid, contrata, logoIzq, logoDer, rows } = state;
+  const { titulo, proy, cliente, sot, fecha, cid, contrata, logoIzq, logoDer, rows, extras } = state;
   return {
     kind: "photo",
     tipo,
-    state: { titulo, proy, cliente, sot, fecha, cid, contrata, logoIzq, logoDer, rows },
+    state: { titulo, proy, cliente, sot, fecha, cid, contrata, logoIzq, logoDer, rows, extras },
   };
 }
 
@@ -455,6 +507,7 @@ export function importReport(tipo: FotoTipo, saved: unknown): void {
     logoIzq: loadLogo(x.logoIzq),
     logoDer: loadLogo(x.logoDer),
     rows: loadRows(x.rows),
+    extras: loadExtras(x.extras),
     result: null,
     error: null,
   });
@@ -503,7 +556,8 @@ export function previewFilename(sot: string, cliente: string): string {
 export async function generatePdf(
   orderedItems: PhotoItem[],
   tipo: FotoTipo = "fibra",
-  opciones: Opcion[] = DEFAULT_OPCIONES
+  opciones: Opcion[] = DEFAULT_OPCIONES,
+  tipoNombre: string = ""
 ): Promise<void> {
   const s = storeOf(tipo).state;
   if (s.generating) return;
@@ -544,6 +598,14 @@ export async function generatePdf(
       lados: opciones.map((o) => o.id),
       items,
     });
+
+    // Queda registrado en el cliente de esta SOT (Datos de cliente)
+    if (s.sot.trim()) {
+      void syncClient({
+        sot: s.sot, nombre: s.cliente, fecha: toISODate(s.fecha), cid: s.cid, proy: s.proy, contrata: s.contrata,
+        reporte: { tipo: "fotografico", nombre: tipoNombre || FOTO_TIPOS[tipo] || tipo, filename: data.filename, url: data.url },
+      }).catch(() => {});
+    }
 
     setState(tipo, {
       generating: false,

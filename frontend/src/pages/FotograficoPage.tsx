@@ -26,7 +26,9 @@ import type { ImportedProject } from "../components/ImportPdfButton";
 import { savePjForm } from "../store/pjForm";
 import { useNavigate } from "react-router-dom";
 import type { FotoTipo } from "../store/photoReportStore";
-import { resolveOpcion, useOpciones } from "../store/photoReportStore";
+import { addExtra, removeExtra, resolveOpcion, updateExtra, useOpciones } from "../store/photoReportStore";
+import ClientPicker from "../components/ClientPicker";
+import { syncClient, toISODate, useSotSync } from "../store/clients";
 import OpcionesManager from "../components/OpcionesManager";
 
 
@@ -232,7 +234,7 @@ export default function FotograficoPage({
           <Spinner /> Cargando…
         </p>
       ) : tab === "run" ? (
-        <RunTab tipo={tipo} items={items} onReorder={reorderCategory} />
+        <RunTab tipo={tipo} nombre={nombre ?? FOTO_TIPOS[tipo] ?? tipo} items={items} onReorder={reorderCategory} />
       ) : (
         <ItemsTab tipo={tipo} items={items} onChange={reload} />
       )}
@@ -269,17 +271,58 @@ function TextField({
 
 function RunTab({
   tipo,
+  nombre,
   items,
   onReorder,
 }: {
   tipo: FotoTipo;
+  nombre: string;
   items: PhotoItem[];
   onReorder: (categoria: string, ids: string[]) => void;
 }) {
   const s = usePhotoReport(tipo);
 
   const manager = useOpciones();
-  const [editing, setEditing] = useState<{ id: string; imageUrl: string } | null>(null);
+  const [editing, setEditing] = useState<{ id: string; imageUrl: string; extra?: boolean } | null>(null);
+  const [zip, setZip] = useState<{ busy: boolean; url?: string; filename?: string; total?: number; missing?: number; error?: string }>({ busy: false });
+
+  // Los datos de la SOT se guardan solos en "Datos de cliente" (año y mes según la fecha).
+  useSotSync({ sot: s.sot, nombre: s.cliente, fecha: s.fecha, cid: s.cid, proy: s.proy, contrata: s.contrata });
+  const isoToLocal = (iso: string) => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso); return m ? `${m[3]}/${m[2]}/${m[1]}` : iso; };
+  function pickClient(c: { sot: string; nombre: string; fecha: string; cid: string; proy: string; contrata: string }) {
+    setField(tipo, "sot", c.sot);
+    setField(tipo, "cliente", c.nombre);
+    setField(tipo, "cid", c.cid);
+    setField(tipo, "proy", c.proy);
+    setField(tipo, "contrata", c.contrata);
+    if (c.fecha) setField(tipo, "fecha", isoToLocal(c.fecha));
+  }
+
+  /** Carpeta de evidencia: fotos finales + originales sin editar, con subcarpeta por opción si hay varias. */
+  async function makeZip() {
+    const rowsIn = ordered.flatMap((it) => {
+      const r = getRow(s.rows, it.id);
+      if (!r.incluir || !r.imagePath) return [];
+      const op = resolveOpcion(r.lado, manager.opciones);
+      return [{ nombre: r.descripcion ?? it.nombre, path: r.imagePath, original_path: r.originalPath || "", lado_label: op.label }];
+    });
+    const extrasIn = s.extras.map((e) => ({
+      nombre: e.nombre || "foto extra", path: e.path, original_path: e.originalPath || "",
+      lado_label: resolveOpcion(e.lado, manager.opciones).label,
+    }));
+    const all = [...rowsIn, ...extrasIn];
+    if (!all.length) { setZip({ busy: false, error: "No hay fotos para guardar todavía." }); return; }
+    setZip({ busy: true });
+    try {
+      const { data } = await api.post("/photos/evidence-zip", { sot: s.sot, cliente: s.cliente, items: all });
+      setZip({ busy: false, url: data.url, filename: data.filename, total: data.total, missing: data.missing });
+      if (s.sot.trim()) {
+        void syncClient({ sot: s.sot, nombre: s.cliente, fecha: toISODate(s.fecha), reporte: { tipo: tipo, nombre: `Evidencia · ${nombre}`, filename: data.filename, url: data.url } }).catch(() => {});
+      }
+    } catch (e) {
+      setZip({ busy: false, error: apiErrorMessage(e, "No se pudo crear la carpeta.") });
+    }
+  }
   const [dragId, setDragId] = useState<string | null>(null);
   const [overId, setOverId] = useState<string | null>(null);
 
@@ -353,7 +396,7 @@ function RunTab({
       return;
     }
 
-    void generatePdf(ordered, tipo, manager.opciones);
+    void generatePdf(ordered, tipo, manager.opciones, nombre);
   }
 
   function newReport() {
@@ -373,6 +416,8 @@ function RunTab({
           <p className="text-xs text-slate-400">
             Tu avance se guarda automáticamente en este navegador.
           </p>
+
+          <ClientPicker onPick={pickClient} />
 
           <ImportPdfButton onLoaded={openPdf} />
 
@@ -535,7 +580,7 @@ function RunTab({
                       cliente={s.cliente}
                       initialUrl={r.imageUrl}
                       onUploaded={(p, u) =>
-                        updateRow(tipo, it.id, { imagePath: p, imageUrl: u })
+                        updateRow(tipo, it.id, { imagePath: p, imageUrl: u, originalPath: "", originalUrl: "" })
                       }
                     />
 
@@ -637,11 +682,65 @@ function RunTab({
         </div>
       )}
 
+      <div className="card space-y-3">
+        <div>
+          <h3 className="text-sm font-semibold text-slate-700">📁 Carpeta de evidencia fotográfica</h3>
+          <p className="text-xs text-slate-500">
+            Descarga todas las fotos en una carpeta (ZIP) «Evidencia fotográfica SOT … cliente». Cada foto editada va con su original sin editar.
+            Si usas varias opciones (site, cliente…), cada una tiene su subcarpeta; si es una sola, van directo en la carpeta principal.
+          </p>
+        </div>
+
+        {s.extras.length > 0 && (
+          <ul className="space-y-2">
+            {s.extras.map((e) => (
+              <li key={e.id} className="flex flex-wrap items-center gap-2 rounded border border-slate-200 p-2">
+                <img src={e.url} alt="" className="h-14 w-20 rounded border object-cover" />
+                <input className="input min-w-[140px] flex-1" placeholder="Nombre de la foto" value={e.nombre} onChange={(ev) => updateExtra(tipo, e.id, { nombre: ev.target.value })} />
+                <select className="input w-full sm:w-56" value={resolveOpcion(e.lado, manager.opciones).id} onChange={(ev) => updateExtra(tipo, e.id, { lado: ev.target.value })}>
+                  {manager.opciones.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+                </select>
+                <button className="btn-secondary text-xs" onClick={() => setEditing({ id: e.id, imageUrl: e.url, extra: true })}>✏️ Editar</button>
+                <button className="btn-secondary text-xs" onClick={() => removeExtra(tipo, e.id)}>🗑</button>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        <div className="flex flex-wrap items-center gap-3">
+          <ImageUpload
+            key={s.extras.length}
+            compact
+            cliente={s.cliente}
+            label="➕ Agregar foto a la carpeta..."
+            onUploaded={(p, u) => p && addExtra(tipo, { id: `e${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`, nombre: "", path: p, url: u, lado: manager.opciones[manager.opciones.length - 1].id })}
+          />
+          <button className="btn-primary" onClick={makeZip} disabled={zip.busy}>
+            {zip.busy ? "Preparando carpeta..." : "📥 Descargar carpeta de evidencia"}
+          </button>
+        </div>
+        {zip.error && <p className="text-sm text-red-600">{zip.error}</p>}
+        {zip.url && (
+          <p className="text-sm text-green-700">
+            Carpeta lista ({zip.total} fotos{zip.missing ? `, ${zip.missing} no se encontraron en el servidor` : ""}):{" "}
+            <a className="font-medium underline break-all" href={zip.url} download={zip.filename}>{zip.filename}</a>
+          </p>
+        )}
+      </div>
+
       {editing && (
         <ImageAnnotator
           imageUrl={editing.imageUrl}
           onClose={() => setEditing(null)}
-          onSaved={(p, u) => updateRow(tipo, editing.id, { imagePath: p, imageUrl: u })}
+          onSaved={(p, u) => {
+            if (editing.extra) {
+              const e = s.extras.find((x) => x.id === editing.id);
+              updateExtra(tipo, editing.id, { path: p, url: u, originalPath: e?.originalPath || e?.path, originalUrl: e?.originalUrl || e?.url });
+            } else {
+              const r = getRow(s.rows, editing.id);
+              updateRow(tipo, editing.id, { imagePath: p, imageUrl: u, originalPath: r.originalPath || r.imagePath, originalUrl: r.originalUrl || r.imageUrl });
+            }
+          }}
         />
       )}
     </div>
