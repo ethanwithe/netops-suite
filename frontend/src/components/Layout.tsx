@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
-import { NavLink, Outlet, useLocation } from "react-router-dom";
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import WindowEditor from "./WindowEditor";
+import { createWindow, usePhotoWindows, windowRoute } from "../store/photoWindows";
 import { usePersistentState } from "../store/persistentState";
 
 const NAV = [
@@ -24,6 +26,14 @@ const TITLES: Record<string, string> = {
 
 export default function Layout() {
   const { pathname } = useLocation();
+  const navigate = useNavigate();
+  const { list: custom } = usePhotoWindows();
+  const [creating, setCreating] = useState(false);
+  const fotoSub = [
+    ...FOTO_SUB,
+    ...custom.map((w) => ({ to: windowRoute(w.id), label: w.nombre })),
+  ];
+  const titles: Record<string, string> = { ...TITLES, ...Object.fromEntries(custom.map((w) => [windowRoute(w.id), w.nombre])) };
   const inFoto = pathname.startsWith("/fotografico");
   const [fotoOpen, setFotoOpen] = useState(inFoto);
   const fotoShown = fotoOpen || inFoto;
@@ -107,13 +117,13 @@ export default function Layout() {
               <span className="text-lg">📷</span>
               <span className="flex-1">
                 <span className="block font-medium">Reporte fotográfico</span>
-                <span className="block text-[11px] opacity-70">4 formatos</span>
+                <span className="block text-[11px] opacity-70">{fotoSub.length} formatos</span>
               </span>
               <span className="text-xs">{fotoShown ? "▾" : "▸"}</span>
             </button>
             {fotoShown && (
               <div className="mt-1 ml-5 space-y-1 border-l border-slate-700 pl-3">
-                {FOTO_SUB.map((o) => (
+                {fotoSub.map((o) => (
                   <NavLink
                     key={o.to}
                     to={o.to}
@@ -126,6 +136,13 @@ export default function Layout() {
                     {o.label}
                   </NavLink>
                 ))}
+                <button
+                  type="button"
+                  onClick={() => setCreating(true)}
+                  className="block w-full rounded-md px-3 py-2.5 text-left text-sm text-brand-100 hover:bg-slate-800"
+                >
+                  ➕ Nueva ventana
+                </button>
               </div>
             )}
           </div>
@@ -146,7 +163,7 @@ export default function Layout() {
             ☰
           </button>
           <span className="truncate text-sm font-semibold text-slate-700">
-            {TITLES[pathname] ?? "NetOps Suite"}
+            {titles[pathname] ?? "NetOps Suite"}
           </span>
         </header>
 
@@ -156,6 +173,16 @@ export default function Layout() {
           </div>
         </main>
       </div>
+      {creating && (
+        <WindowEditor
+          onCancel={() => setCreating(false)}
+          onSave={async (input) => {
+            const w = await createWindow(input);
+            setCreating(false);
+            navigate(windowRoute(w.id));
+          }}
+        />
+      )}
     </div>
   );
 }

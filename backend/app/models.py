@@ -70,6 +70,21 @@ class PhotoItem(Base):
     created_at = Column(DateTime, default=dt.datetime.utcnow)
 
 
+class PhotoWindow(Base):
+    """Ventana (tipo de reporte fotográfico) creada por el usuario.
+
+    `config` guarda los valores por defecto de los campos (PROY, CLIENTE, SOT,
+    CID, CONTRATA y logos). Sus ítems son PhotoItem con tipo = id de la ventana.
+    """
+    __tablename__ = "photo_windows"
+
+    id = Column(String, primary_key=True, default=gen_uuid)
+    nombre = Column(String, nullable=False)
+    config = Column(JSON, nullable=False, default=dict)
+    orden = Column(Integer, default=10)
+    created_at = Column(DateTime, default=dt.datetime.utcnow)
+
+
 class HeaderLogo(Base):
     """Logo reutilizable para la cabecera de los PDF.
 

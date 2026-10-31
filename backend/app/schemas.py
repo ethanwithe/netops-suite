@@ -115,7 +115,23 @@ class PhotoItemCreate(PhotoItemBase):
     # Si no se envía "orden" al crear, el ítem va al final de su categoría.
     orden: Optional[int] = None
     # Tipo de reporte. Al editar, si no se envía, se conserva el actual.
-    tipo: Optional[Literal["fibra", "gpon_ont", "gpon_modulo"]] = None
+    tipo: Optional[str] = None
+
+
+class PhotoWindowIn(BaseModel):
+    nombre: str
+    config: Dict[str, Any] = {}
+    # Solo al crear: de qué tipo se copian los ítems iniciales
+    # ("fibra", "gpon_ont", "gpon_modulo", o "" para empezar vacía).
+    copiar_de: Optional[str] = "fibra"
+
+
+class PhotoWindowOut(BaseModel):
+    id: str
+    nombre: str
+    config: Dict[str, Any] = {}
+    class Config:
+        from_attributes = True
 
 
 class PhotoItemOut(PhotoItemBase):
@@ -149,7 +165,7 @@ class PhotoReportItem(BaseModel):
 
 class PhotoReportRequest(BaseModel):
     # gpon_ont / gpon_modulo: todas las fotos van en el lado CLIENTE.
-    tipo: Literal["gpon_ont", "gpon_modulo", "fibra"] = "fibra"
+    tipo: str = "fibra"
     titulo: str = "REPORTE FOTOGRAFICO"
     proy: str = ""
     cliente: str = ""
