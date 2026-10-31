@@ -24,14 +24,10 @@ import ImportPdfButton from "../components/ImportPdfButton";
 import type { ImportedProject } from "../components/ImportPdfButton";
 import { savePjForm } from "../store/pjForm";
 import { useNavigate } from "react-router-dom";
-import type { FotoTipo, Lado } from "../store/photoReportStore";
+import type { FotoTipo } from "../store/photoReportStore";
+import { resolveOpcion, useOpciones } from "../store/photoReportStore";
+import OpcionesManager from "../components/OpcionesManager";
 
-const LADO_OPTIONS: { value: Lado; label: string }[] = [
-  { value: "site", label: "SITE" },
-  { value: "pdi", label: "PDI" },
-  { value: "pop", label: "POP" },
-  { value: "cliente", label: "CLIENTE" },
-];
 
 const CATEGORIAS_GPON = [
   "EQUIPOS INSTALADOS",
@@ -143,11 +139,48 @@ export default function FotograficoPage({ tipo }: { tipo: FotoTipo }) {
         </h2>
 
         <p className="text-slate-500 text-sm">
-          EQUIPOS INSTALADOS ACCESO, ETIQUETADO, RECORRIDO EN ACCESO, VISTA
-          GENERAL UBICACION DE EQUIPOS, EQUIPOS LADO CLIENTE, ETIQUETADO
-          CLIENTE, VISTA INSTALACION EN GABINETE, RECORRIDO CLIENTE, VISTA
-          INSTALACION DE EQUIPOS, MULTIMETRO, QR.
+          Arma el PDF del reporte fotográfico: marca los ítems, sube o toma la
+          foto de cada uno y elige a qué opción pertenece.
         </p>
+        <details className="mt-2 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
+          <summary className="cursor-pointer font-medium text-slate-700">
+            📖 Cómo se usa (tutorial)
+          </summary>
+          <ol className="mt-2 list-decimal space-y-1 pl-5">
+            <li>
+              Llena los datos: <b>PROY, CLIENTE, SOT, FECHA, CID y CONTRATA</b>,
+              y elige los logos. El PDF se llamará <i>RF_SOT-&lt;sot&gt;_&lt;cliente&gt;.pdf</i>.
+            </li>
+            <li>
+              En <b>Opciones del título</b> define las secciones del reporte
+              (por ejemplo «INSTALACION EN CLIENTE»). Puedes <b>agregar</b>,
+              <b> renombrar</b> y <b>borrar</b>; sirven para todas las ventanas.
+              El título del PDF es «REPORTE FOTOGRAFICO» + la opción elegida.
+            </li>
+            <li>
+              Marca con ✔ los ítems que van, y arrástralos (⠿) para cambiar el orden.
+              Si quieres, edita su descripción.
+            </li>
+            <li>
+              En cada ítem elige su <b>opción</b> y sube la foto, o usa
+              <b> 📷 Tomar foto</b>: la cámara muestra en vivo el sello (fecha,
+              dirección y coordenadas) y con «Mover sello» lo cambias de esquina
+              para no tapar la serie del equipo.
+            </li>
+            <li>
+              Usa <b>✏️ Editar</b> para dibujar líneas, flechas, texto, recortar
+              o mejorar la imagen.
+            </li>
+            <li>
+              Pulsa <b>Generar reporte</b>. Se crea una sección (con su propio
+              título y numeración) por cada opción usada. El PDF se puede
+              volver a abrir con «Abrir PDF» para seguir editándolo.
+            </li>
+          </ol>
+          <p className="mt-2 text-xs text-slate-500">
+            Tu avance se guarda solo en este navegador; «Nuevo reporte» lo borra.
+          </p>
+        </details>
       </div>
 
       <div className="flex gap-2">
@@ -229,6 +262,7 @@ function RunTab({
 }) {
   const s = usePhotoReport(tipo);
 
+  const manager = useOpciones();
   const [editing, setEditing] = useState<{ id: string; imageUrl: string } | null>(null);
   const [dragId, setDragId] = useState<string | null>(null);
   const [overId, setOverId] = useState<string | null>(null);
@@ -303,7 +337,7 @@ function RunTab({
       return;
     }
 
-    void generatePdf(ordered, tipo);
+    void generatePdf(ordered, tipo, manager.opciones);
   }
 
   function newReport() {
@@ -336,13 +370,6 @@ function RunTab({
           </button>
         </div>
 
-        <div className="sm:col-span-2">
-          <TextField
-            label="Título"
-            value={s.titulo}
-            onChange={(v) => setField(tipo, "titulo", v)}
-          />
-        </div>
 
         <TextField label="PROY" value={s.proy} onChange={(v) => setField(tipo, "proy", v)} />
         <TextField
@@ -384,6 +411,8 @@ function RunTab({
           />
         </div>
       </div>
+
+      <OpcionesManager manager={manager} />
 
       <div className="flex items-center gap-2">
         <label className="flex items-center gap-2 text-sm font-medium">
@@ -473,23 +502,17 @@ function RunTab({
                       }
                     />
 
-                    {isGpon(tipo) ? (
-                      <span className="w-32 text-xs text-slate-500">Lado cliente</span>
-                    ) : (
                     <select
-                      className="input w-32"
-                      value={r.lado}
-                      onChange={(e) =>
-                        updateRow(tipo, it.id, { lado: e.target.value as Lado })
-                      }
+                      className="input w-full sm:w-56"
+                      value={resolveOpcion(r.lado, manager.opciones).id}
+                      onChange={(e) => updateRow(tipo, it.id, { lado: e.target.value })}
                     >
-                      {LADO_OPTIONS.map((o) => (
-                        <option key={o.value} value={o.value}>
+                      {manager.opciones.map((o) => (
+                        <option key={o.id} value={o.id}>
                           {o.label}
                         </option>
                       ))}
                     </select>
-                    )}
 
                     <ImageUpload
                       compact

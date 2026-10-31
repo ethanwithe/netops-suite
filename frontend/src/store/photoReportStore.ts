@@ -10,7 +10,8 @@
  * navegador.
  */
 
-import { useCallback, useSyncExternalStore } from "react";
+import { useCallback, useMemo, useSyncExternalStore } from "react";
+import { usePersistentState } from "./persistentState";
 import { api, apiErrorMessage } from "../api/client";
 import { NO_LOGO, logoPayload } from "../logo";
 import type { LogoSel } from "../logo";
@@ -24,8 +25,71 @@ export type { LogoSel };
 // TIPOS
 // ============================================================
 
-export type Lado = "site" | "pdi" | "pop" | "cliente";
-export const LADOS: Lado[] = ["site", "pdi", "pop", "cliente"];
+/** Id de una opción de título (ver `Opcion`). */
+export type Lado = string;
+
+/** Opción que se agrega al título: el texto completo, p. ej. «INSTALACION EN CLIENTE». */
+export interface Opcion {
+  id: string;
+  label: string;
+}
+
+export const DEFAULT_OPCIONES: Opcion[] = [
+  { id: "site", label: "INSTALACION EN SITE" },
+  { id: "pdi", label: "INSTALACION EN PDI" },
+  { id: "pop", label: "INSTALACION EN POP" },
+  { id: "cliente", label: "INSTALACION EN CLIENTE" },
+];
+
+/** Lista guardada → lista válida (nunca vacía). */
+export function cleanOpciones(v: unknown): Opcion[] {
+  const out: Opcion[] = [];
+  if (Array.isArray(v)) {
+    for (const o of v) {
+      const x = (o ?? {}) as Record<string, unknown>;
+      const id = typeof x.id === "string" ? x.id : "";
+      const label = typeof x.label === "string" ? x.label : "";
+      if (id && !out.some((q) => q.id === id)) out.push({ id, label });
+    }
+  }
+  return out.length ? out : DEFAULT_OPCIONES;
+}
+
+/** Opciones de título compartidas por todas las ventanas del reporte fotográfico. */
+export function useOpciones() {
+  const [raw, setRaw] = usePersistentState<Opcion[]>("netops.fotografico.opciones", DEFAULT_OPCIONES);
+  const opciones = useMemo(() => cleanOpciones(raw), [raw]);
+  const add = useCallback(
+    (label: string) => {
+      const text = label.trim();
+      if (!text) return;
+      setRaw((prev) => {
+        const list = cleanOpciones(prev);
+        if (list.some((o) => o.label.toLowerCase() === text.toLowerCase())) return list;
+        return [...list, { id: `o${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`, label: text }];
+      });
+    },
+    [setRaw]
+  );
+  const remove = useCallback(
+    (id: string) => setRaw((prev) => {
+      const list = cleanOpciones(prev);
+      return list.length > 1 ? list.filter((o) => o.id !== id) : list; // siempre queda al menos una
+    }),
+    [setRaw]
+  );
+  const rename = useCallback(
+    (id: string, label: string) => setRaw((prev) => cleanOpciones(prev).map((o) => (o.id === id ? { ...o, label } : o))),
+    [setRaw]
+  );
+  const reset = useCallback(() => setRaw(DEFAULT_OPCIONES), [setRaw]);
+  return { opciones, add, remove, rename, reset };
+}
+
+/** Si la opción de una fila fue borrada, la fila pasa a la primera que quede. */
+export function resolveOpcion(lado: Lado, opciones: Opcion[]): Opcion {
+  return opciones.find((o) => o.id === lado) ?? opciones.find((o) => o.id === "cliente") ?? opciones[0];
+}
 
 export interface RowState {
   incluir: boolean;
@@ -92,7 +156,7 @@ const keyOf = (t: FotoTipo) =>
 // Los logos sí se comparten entre todos los tipos.
 const LOGOS_KEY = "netops.fotografico.logos.v1";
 
-const DEFAULT_TITULO = "REPORTE FOTOGRAFICO INSTALACION DE FIBRA";
+const DEFAULT_TITULO = "REPORTE FOTOGRAFICO";
 
 function todayPE(): string {
   return new Date().toLocaleDateString("es-PE");
@@ -139,7 +203,7 @@ function loadRows(v: unknown): Record<string, RowState> {
       descripcion: typeof x.descripcion === "string" ? x.descripcion : undefined,
       imagePath: str(x.imagePath, ""),
       imageUrl: str(x.imageUrl, ""),
-      lado: LADOS.includes(x.lado as Lado) ? (x.lado as Lado) : "cliente",
+      lado: str(x.lado, "cliente") || "cliente",
     };
   }
   return out;
@@ -164,7 +228,7 @@ function loadFields(tipo: FotoTipo): ReportFields {
 
     const x = JSON.parse(raw) as Record<string, unknown>;
     return {
-      titulo: str(x.titulo, base.titulo),
+      titulo: base.titulo,
       proy: str(x.proy, ""),
       cliente: str(x.cliente, ""),
       sot: str(x.sot, ""),
@@ -343,7 +407,7 @@ function projectOf(tipo: FotoTipo) {
 export function importReport(tipo: FotoTipo, saved: unknown): void {
   const x = (saved ?? {}) as Record<string, unknown>;
   setState(tipo, {
-    titulo: str(x.titulo, DEFAULT_TITULO),
+    titulo: DEFAULT_TITULO,
     proy: str(x.proy, ""),
     cliente: str(x.cliente, ""),
     sot: str(x.sot, ""),
@@ -400,7 +464,8 @@ export function previewFilename(sot: string, cliente: string): string {
  */
 export async function generatePdf(
   orderedItems: PhotoItem[],
-  tipo: FotoTipo = "fibra"
+  tipo: FotoTipo = "fibra",
+  opciones: Opcion[] = DEFAULT_OPCIONES
 ): Promise<void> {
   const s = storeOf(tipo).state;
   if (s.generating) return;
@@ -413,12 +478,13 @@ export async function generatePdf(
 
   const items = selected.map((it, i) => {
     const r = getRow(s.rows, it.id);
+    const op = resolveOpcion(r.lado, opciones);
     return {
       numero: i + 1,
       descripcion: r.descripcion ?? it.nombre,
       image_path: r.imagePath || null,
-      // GPON solo tiene lado cliente (lo guardado en pantalla no se modifica)
-      lado: isGpon(tipo) ? "cliente" : r.lado,
+      lado: op.id,
+      lado_label: op.label,
     };
   });
 
@@ -437,6 +503,7 @@ export async function generatePdf(
       contrata: s.contrata,
       ...logoPayload(s.logoIzq, "logo_izq"),
       ...logoPayload(s.logoDer, "logo_der"),
+      lados: opciones.map((o) => o.id),
       items,
     });
 

@@ -171,13 +171,14 @@ def generate_photo_report_pdf(
                 "numero": i.numero,
                 "descripcion": i.descripcion,
                 "imagen": img_path,
-                # GPON: solo lado cliente
-                "lado": "cliente" if payload.tipo.startswith("gpon") else i.lado,
+                "lado": i.lado,
+                "lado_label": i.lado_label,
             }
         )
 
     meta = {
         "titulo": payload.titulo,
+        "lados_orden": payload.lados,
         "proy": payload.proy,
         "cliente": payload.cliente,
         "sot": payload.sot,
