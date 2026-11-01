@@ -183,7 +183,10 @@ Sin configurar nada, Bit responde con su cerebro local (palabras clave). Para qu
 inteligente, agrega en Railway (servicio del backend) las variables:
 
 - `ANTHROPIC_API_KEY`: tu clave de la API de Anthropic (solo como variable de entorno, nunca en el repo).
-- `MASCOT_MODEL` (opcional): modelo a usar; por defecto `claude-haiku-5-5` (rápido y barato).
+- `MASCOT_MODEL` (opcional): modelo a usar; por defecto `claude-sonnet-5-5`.
+- `MASCOT_WEB` (opcional): `0` desactiva la búsqueda web de Bit.
+- `OPENAI_API_KEY` también activa las **voces naturales** de Bit (modelo con `TTS_MODEL`). Sin ella usa las voces del navegador.
+- El micrófono de Bit queda siempre escuchando (se activa/desactiva desde Bit); la memoria de gustos se guarda en cada navegador.
 
 La conversación por voz usa el reconocimiento de voz del navegador (Chrome o Edge) y las voces del
 sistema; en Edge las voces «Natural» en español suenan mucho más humanas.

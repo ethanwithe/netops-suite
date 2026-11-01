@@ -27,7 +27,7 @@ export default {
         rise: { "0%": { opacity: 0, transform: "translateY(8px)" }, "100%": { opacity: 1, transform: "none" } },
         pop: { "0%": { opacity: 0, transform: "scale(.94)" }, "100%": { opacity: 1, transform: "none" } },
       },
-      animation: { rise: "rise .35s ease both", pop: "pop .18s ease both" },
+      animation: { rise: "rise .35s ease backwards", pop: "pop .18s ease both" },
     },
   },
   plugins: [],

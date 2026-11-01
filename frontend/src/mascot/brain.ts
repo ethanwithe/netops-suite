@@ -7,9 +7,11 @@ export type Action =
   | { kind: "theme"; id: "system" | "light" | "sky" | "dark" | "ocean" | "aurora" }
   | { kind: "voice"; on: boolean }
   | { kind: "hide" }
-  | { kind: "idle"; on: boolean };
+  | { kind: "idle"; on: boolean }
+  | { kind: "listen"; on: boolean }
+  | { kind: "forget" };
 export interface Reply { text: string; mood: Mood; action?: Action }
-export interface Ctx { pathname: string; hour: number; themeLabel: string }
+export interface Ctx { pathname: string; hour: number; themeLabel: string; name: string; facts: string[]; aiOn: boolean }
 
 const pick = <T,>(a: T[]): T => a[Math.floor(Math.random() * a.length)];
 
@@ -121,6 +123,75 @@ function speed(t: string): string | null {
   return `${v} MB/s ≈ ${(v * 8).toFixed(0)} Mbps.`;
 }
 
+
+// ---------- glosario técnico (respuestas sin IA) ----------
+const GLOSSARY: [string[], string][] = [
+  [["ont"], "La ONT es el equipo del cliente en una red GPON: convierte la luz de la fibra en red (Ethernet, WiFi, telefonía). Es el «módem» de la fibra."],
+  [["olt"], "La OLT es el equipo del operador que está en la central y manda la fibra a muchos clientes a la vez mediante splitters."],
+  [["gpon"], "GPON es una tecnología de fibra punto-multipunto: una sola fibra de la OLT se reparte con splitters pasivos a muchos clientes. Da hasta 2.5 Gbps de bajada y 1.25 Gbps de subida compartidos."],
+  [["splitter"], "Un splitter divide la señal óptica de una fibra en varias (1:8, 1:16, 1:32…). No usa energía y cada división baja la potencia unos 3 dB por cada duplicación."],
+  [["vlan"], "Una VLAN separa una red física en varias redes lógicas. Se identifican con una etiqueta (tag) de 1 a 4094, así el tráfico de cada servicio no se mezcla."],
+  [["qos"], "QoS es calidad de servicio: prioriza cierto tráfico (voz, video) sobre otro cuando el enlace se satura."],
+  [["bgp"], "BGP es el protocolo con el que los operadores intercambian rutas entre redes en Internet (entre sistemas autónomos)."],
+  [["ospf"], "OSPF es un protocolo de enrutamiento interno que calcula el camino más corto por estado de enlace. Muy usado dentro de una misma red."],
+  [["mtu"], "La MTU es el tamaño máximo de paquete que cruza un enlace sin fragmentarse. En Ethernet es 1500 bytes; con PPPoE suele ser 1492."],
+  [["nat"], "NAT traduce direcciones IP privadas a una pública para que varios equipos salgan a Internet con una sola IP."],
+  [["dhcp"], "DHCP entrega automáticamente IP, máscara, puerta de enlace y DNS a los equipos de la red."],
+  [["dns"], "DNS traduce nombres como google.com a direcciones IP. Si falla, hay internet pero no abren las páginas por nombre."],
+  [["snmp"], "SNMP es un protocolo para monitorear equipos de red: consultas contadores, estados, tráfico y alarmas."],
+  [["sla"], "El SLA es el acuerdo de nivel de servicio: la disponibilidad, tiempos de respuesta y penalidades que el operador promete al cliente."],
+  [["latencia"], "La latencia es el tiempo que tarda un paquete en ir y volver, en milisegundos. Para ir bien en videollamadas conviene menos de 50 ms."],
+  [["jitter"], "El jitter es la variación de la latencia entre paquetes. Si es alto, la voz y el video se entrecortan."],
+  [["ping"], "Ping manda paquetes ICMP a un destino y mide el tiempo de respuesta y la pérdida. Sirve para ver si hay conectividad."],
+  [["traceroute", "tracert"], "Traceroute muestra por qué saltos (routers) pasa tu tráfico hasta el destino y cuánto tarda cada uno."],
+  [["utp"], "El UTP es el cable de red de pares trenzados (cat5e, cat6). Máximo 100 m por tramo para Ethernet."],
+  [["monomodo", "singlemode"], "La fibra monomodo tiene núcleo muy fino (9 µm) y llega a decenas de kilómetros. Es la que se usa en GPON y enlaces largos."],
+  [["multimodo"], "La fibra multimodo tiene un núcleo más grueso (50 o 62.5 µm) y sirve para distancias cortas, como dentro de edificios o data centers."],
+  [["dbm"], "El dBm mide potencia óptica o de radio respecto a 1 mW. 0 dBm = 1 mW; −20 dBm = 0.01 mW. En una ONT lo normal de recepción es entre −8 y −27 dBm."],
+  [["atenuacion"], "La atenuación es la pérdida de potencia de la señal por distancia, empalmes, conectores y splitters. En fibra se mide en dB."],
+  [["apc", "upc"], "APC y UPC son pulidos de conector: el APC (verde) tiene la punta en ángulo de 8° y refleja menos; el UPC (azul) es plano. Nunca los mezcles: dañas el conector."],
+  [["sc"], "SC es un conector de fibra cuadrado de empuje, muy común en GPON y en las ONT."],
+  [["lan"], "LAN es la red local (tu oficina o casa). WAN es la red amplia que te conecta con el operador o Internet."],
+  [["wan"], "WAN es la red amplia que conecta sedes o te lleva a Internet. LAN es la red local."],
+  [["gateway", "puerta de enlace"], "La puerta de enlace (gateway) es el router por el que un equipo sale a otras redes."],
+  [["ipv6"], "IPv6 usa direcciones de 128 bits (en vez de 32 de IPv4) y resuelve la escasez de direcciones."],
+  [["ipv4"], "IPv4 usa direcciones de 32 bits, como 192.168.1.10. Hay unos 4 300 millones y ya se agotaron."],
+  [["mac"], "La MAC es la dirección física de 48 bits de una tarjeta de red, por ejemplo AA:BB:CC:11:22:33. Funciona en la red local."],
+  [["arp"], "ARP averigua la MAC que corresponde a una IP dentro de la red local."],
+  [["ttl"], "El TTL limita cuántos saltos puede dar un paquete; cada router lo baja en 1. Evita que den vueltas infinitas."],
+  [["cidr"], "CIDR es la notación /n de las redes: /24 son 24 bits de red y 254 equipos útiles; /30 son solo 2 equipos."],
+  [["poe"], "PoE alimenta equipos (cámaras, access points, teléfonos) por el mismo cable de red. 802.3af da hasta 15 W y 802.3at hasta 30 W."],
+  [["wifi", "wi-fi"], "El WiFi de 2.4 GHz llega más lejos pero es más lento y se satura; el de 5 GHz es más rápido y de menos alcance. Para evidencias de velocidad conviene medir por cable."],
+  [["iperf"], "iperf mide el rendimiento real entre dos equipos: uno en modo servidor y otro cliente, TCP o UDP."],
+  [["pppoe"], "PPPoE es una forma de conectarse con usuario y clave sobre Ethernet. Quita unos 8 bytes de MTU (1492)."],
+  [["firewall"], "Un firewall filtra el tráfico según reglas (origen, destino, puerto, aplicación)."],
+  [["vpn"], "Una VPN crea un túnel cifrado entre dos puntos para unir redes o proteger el tráfico por Internet."],
+  [["backbone"], "El backbone es la red troncal de alta capacidad que une las partes principales de una red."],
+  [["sfp"], "El SFP es un módulo enchufable (óptico o eléctrico) que da la interfaz de un puerto. SFP+ llega a 10 Gbps."],
+  [["rf poder judicial"], "RF Poder Judicial es el formato de reporte fotográfico de radio frecuencia para sedes del Poder Judicial en esta suite."],
+];
+
+function glossary(t: string): string | null {
+  for (const [keys, text] of GLOSSARY) {
+    for (const k of keys) {
+      const kk = norm(k);
+      if (new RegExp(`(^| )${kk.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}( |$)`).test(t)) return text;
+    }
+  }
+  return null;
+}
+
+function dbm(t: string): string | null {
+  const a = t.match(/(-?\d+(?:[.,]\d+)?)\s*dbm\b/);
+  if (a && /(a|en|son|equivale|mw|miliwatt)/.test(t)) {
+    const v = Number(a[1].replace(",", ".")); const mw = 10 ** (v / 10);
+    return `${v} dBm equivale a ${mw >= 1 ? mw.toFixed(2) : mw.toPrecision(3)} mW.`;
+  }
+  const b = t.match(/(\d+(?:[.,]\d+)?)\s*mw\b/);
+  if (b && /dbm/.test(t)) { const v = Number(b[1].replace(",", ".")); return `${v} mW son ${(10 * Math.log10(v)).toFixed(2)} dBm.`; }
+  return null;
+}
+
 type Intent = { keys: string[]; reply: (c: Ctx) => Reply };
 const INTENTS: Intent[] = [
   { keys: ["gracias", "te quiero", "eres genial", "buen trabajo", "crack"], reply: () => ({ text: pick(["De nada. Cobro en ping bajos y cero pérdida de paquetes.", "Me sonrojaría, pero mi pantalla solo sabe ser cian.", "Eso me da +10 de moral y -3 de latencia."]), mood: "happy" }) },
@@ -134,6 +205,11 @@ const INTENTS: Intent[] = [
   { keys: ["moneda", "cara o sello", "cara o cruz"], reply: () => ({ text: Math.random() < 0.5 ? "Cara." : "Sello.", mood: "smug" }) },
   { keys: ["dado"], reply: () => ({ text: `Salió un ${1 + Math.floor(Math.random() * 6)}.`, mood: "wink" }) },
   { keys: ["hora", "que hora", "fecha", "que dia"], reply: () => { const d = new Date(); return { text: `Son las ${d.toLocaleTimeString("es-PE", { hour: "2-digit", minute: "2-digit" })} del ${d.toLocaleDateString("es-PE", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}.`, mood: "neutral" }; } },
+  { keys: ["no me escuches", "deja de escucharme", "apaga el microfono", "desactiva el microfono", "silencia el microfono", "no escuches"], reply: () => ({ text: "Listo, ya no te escucho. Cuando quieras, vuelve a activar la conversación.", mood: "sleepy", action: { kind: "listen", on: false } }) },
+  { keys: ["escuchame", "activa el microfono", "enciende el microfono", "conversemos", "hablemos"], reply: () => ({ text: "¡Aquí estoy, te escucho!", mood: "listening", action: { kind: "listen", on: true } }) },
+  { keys: ["que sabes de mi", "que recuerdas de mi", "que recuerdas", "que sabes sobre mi"], reply: (c) => ({ text: c.facts.length || c.name ? `Sé que ${c.name ? "te llamas " + c.name : "aún no me dijiste tu nombre"}${c.facts.length ? ". Además: " + c.facts.slice(-6).join("; ") : ""}. Puedes borrar todo cuando quieras.` : "Todavía casi nada. Cuéntame cómo te llamas, qué te gusta, en qué trabajas… y lo voy recordando.", mood: "think" }) },
+  { keys: ["como me llamo", "mi nombre"], reply: (c) => ({ text: c.name ? `Te llamas ${c.name}, ¿o ya te cambiaste el nombre?` : "Aún no me lo dijiste. ¿Cómo te llamas?", mood: "wink" }) },
+  { keys: ["olvida todo", "borra mi memoria", "olvidame", "borra lo que sabes de mi"], reply: () => ({ text: "Hecho. Borré todo lo que sabía de ti. Presentémonos de nuevo.", mood: "surprised", action: { kind: "forget" } }) },
   { keys: ["tema oscuro", "modo oscuro", "ponte oscuro", "oscuro"], reply: () => ({ text: "Luces fuera. Tema oscuro activado.", mood: "smug", action: { kind: "theme", id: "dark" } }) },
   { keys: ["tema claro", "modo claro", "claro"], reply: () => ({ text: "¡Hágase la luz! Tema claro.", mood: "happy", action: { kind: "theme", id: "light" } }) },
   { keys: ["oceano", "azul profundo", "tema azul"], reply: () => ({ text: "Sumergiéndonos: tema Océano.", mood: "wink", action: { kind: "theme", id: "ocean" } }) },
@@ -167,10 +243,10 @@ const INTENTS: Intent[] = [
 ];
 
 const FALLBACKS = [
-  "Mmm… eso no lo tengo en mi base de datos. Pídeme un chiste, un tip, un cálculo o dime «ayuda».",
+  "Mmm… eso no lo tengo en mi cerebro básico. Pídeme un chiste, un tip, un cálculo o dime «ayuda».",
   "No te entendí, pero lo anoto en el log como «misterio». Prueba con «ayuda».",
-  "Mi procesador de dudas dice: ¿me lo repites con otras palabras?",
 ];
+const NO_AI = "Eso necesita mi cerebro de inteligencia artificial, y ahora estoy en modo básico. Para que responda cualquier cosa, agrega la variable ANTHROPIC_API_KEY en Railway y reinicia. Mientras tanto sé glosario de redes, cálculos, subredes, chistes y la suite.";
 
 export function answer(raw: string, ctx: Ctx): Reply {
   const text = raw.trim();
@@ -182,6 +258,9 @@ export function answer(raw: string, ctx: Ctx): Reply {
     const s = subnet(text); if (s) return { text: s, mood: "think" };
   }
   if (/mbps|megas|mb\/s|mbs/.test(t)) { const s = speed(t); if (s) return { text: s, mood: "think" }; }
+  if (/^(que es|que significa|que son|explicame|define|para que sirve|como funciona|diferencia)/.test(t)) {
+    const g0 = glossary(t); if (g0) return { text: g0, mood: "think" };
+  }
   let best: Intent | null = null; let bestScore = 0;
   for (const it of INTENTS) {
     for (const k of it.keys) {
@@ -194,7 +273,10 @@ export function answer(raw: string, ctx: Ctx): Reply {
     }
   }
   if (best) return best.reply(ctx);
-  return { text: pick(FALLBACKS), mood: "think" };
+  const d = dbm(t); if (d) return { text: d, mood: "think" };
+  const g = glossary(t); if (g) return { text: g, mood: "think" };
+  const q = /^(que|quien|cual|cuales|cuando|donde|como|por que|porque|cuanto|cuantos|explica|dime|cuentame|puedes|sabes|hay|existe)\b/.test(t) || text.includes("?");
+  return { text: q && !ctx.aiOn ? NO_AI : pick(FALLBACKS), mood: "think" };
 }
 
 export const QUICK: { label: string; ask: string }[] = [
@@ -205,11 +287,14 @@ export const QUICK: { label: string; ask: string }[] = [
   { label: "Tema oscuro", ask: "tema oscuro" },
 ];
 
-export const GREET = (hour: number): { text: string; mood: Mood } =>
-  hour < 6 ? { text: "¿Despierto a esta hora? Yo no duermo, pero tú deberías.", mood: "sleepy" }
-  : hour < 12 ? { text: "¡Buenos días! Soy Bit. Si me necesitas, toca mi cara.", mood: "happy" }
-  : hour < 19 ? { text: "¡Buenas tardes! Soy Bit. Pídeme un chiste cuando quieras.", mood: "wink" }
-  : { text: "¡Buenas noches! Soy Bit, tu guardia nocturna.", mood: "happy" };
+export const GREET = (hour: number, name = "", listening = false): { text: string; mood: Mood } => {
+  const who = name ? `, ${name}` : "";
+  const tail = listening ? " Ya te estoy escuchando: háblame con normalidad." : " Si me necesitas, toca mi cara.";
+  if (hour < 6) return { text: `¿Despierto a esta hora${who}? Yo no duermo, pero tú deberías.${tail}`, mood: "sleepy" };
+  if (hour < 12) return { text: `¡Buenos días${who}! Soy Bit.${tail}`, mood: "happy" };
+  if (hour < 19) return { text: `¡Buenas tardes${who}! Soy Bit.${tail}`, mood: "wink" };
+  return { text: `¡Buenas noches${who}! Soy Bit, tu guardia nocturna.${tail}`, mood: "happy" };
+};
 
 export const IDLE_LINES: { text: string; mood: Mood }[] = [
   ...JOKES.map((text) => ({ text, mood: "laugh" as Mood })),
