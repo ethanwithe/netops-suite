@@ -246,7 +246,7 @@ const FALLBACKS = [
   "Mmm… eso no lo tengo en mi cerebro básico. Pídeme un chiste, un tip, un cálculo o dime «ayuda».",
   "No te entendí, pero lo anoto en el log como «misterio». Prueba con «ayuda».",
 ];
-const NO_AI = "Eso necesita mi cerebro de inteligencia artificial, y ahora estoy en modo básico. Para que responda cualquier cosa, agrega la variable ANTHROPIC_API_KEY en Railway y reinicia. Mientras tanto sé glosario de redes, cálculos, subredes, chistes y la suite.";
+const NO_AI = "Eso necesita mi cerebro de inteligencia artificial, y ahora estoy en modo básico. Para que responda cualquier cosa, agrega en Railway una clave gratuita de Gemini o de Groq, o la de Anthropic, y reinicia. Mientras tanto sé glosario de redes, cálculos, subredes, chistes y la suite.";
 
 export function answer(raw: string, ctx: Ctx): Reply {
   const text = raw.trim();

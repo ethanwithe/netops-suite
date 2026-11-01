@@ -19,6 +19,8 @@ import uuid
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 
+from . import llm
+
 router = APIRouter(prefix="/api/imageai", tags=["imageai"])
 
 VISION_MODEL = os.getenv("IMAGE_AI_MODEL", "claude-sonnet-5-5").strip() or "claude-sonnet-5-5"
@@ -55,7 +57,7 @@ def _openai_key() -> str:
 
 @router.get("/status")
 def status():
-    return {"adjust": bool(_anthropic_key()), "edit": bool(_openai_key())}
+    return {"adjust": bool(_anthropic_key()) or bool(llm.free_provider()), "edit": bool(_openai_key())}
 
 
 def _num(v, lo, hi, default=0):
@@ -78,32 +80,40 @@ def _box(b):
 @router.post("/adjust")
 def adjust(body: AdjustIn):
     key = _anthropic_key()
-    if not key:
+    if not key and not llm.free_provider():
         raise HTTPException(503, "IA no configurada")
     m = re.match(r"data:(image/(?:jpeg|png|webp));base64,(.+)$", body.image, re.S)
     if not m:
         raise HTTPException(400, "Imagen inválida")
     prompt = body.prompt.strip() or "Mejora la calidad general de la foto para un informe técnico."
-    payload = {
-        "model": VISION_MODEL,
-        "max_tokens": 700,
-        "system": SYSTEM,
-        "messages": [{"role": "user", "content": [
-            {"type": "image", "source": {"type": "base64", "media_type": m.group(1), "data": m.group(2)}},
-            {"type": "text", "text": f"Instrucción del usuario: {prompt}"},
-        ]}],
-    }
-    req = urllib.request.Request(
-        "https://api.anthropic.com/v1/messages", data=json.dumps(payload).encode(),
-        headers={"content-type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01"}, method="POST")
-    try:
-        with urllib.request.urlopen(req, timeout=60) as r:
-            data = json.loads(r.read())
-    except urllib.error.HTTPError as e:
-        raise HTTPException(502, f"La IA respondió {e.code}")
-    except Exception:
-        raise HTTPException(502, "No se pudo contactar a la IA")
-    text = "".join(b.get("text", "") for b in data.get("content", []) if b.get("type") == "text")
+    if key:
+        payload = {
+            "model": VISION_MODEL,
+            "max_tokens": 700,
+            "system": SYSTEM,
+            "messages": [{"role": "user", "content": [
+                {"type": "image", "source": {"type": "base64", "media_type": m.group(1), "data": m.group(2)}},
+                {"type": "text", "text": f"Instrucción del usuario: {prompt}"},
+            ]}],
+        }
+        req = urllib.request.Request(
+            "https://api.anthropic.com/v1/messages", data=json.dumps(payload).encode(),
+            headers={"content-type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01"}, method="POST")
+        try:
+            with urllib.request.urlopen(req, timeout=60) as r:
+                data = json.loads(r.read())
+        except urllib.error.HTTPError as e:
+            raise HTTPException(502, f"La IA respondió {e.code}")
+        except Exception:
+            raise HTTPException(502, "No se pudo contactar a la IA")
+        text = "".join(b.get("text", "") for b in data.get("content", []) if b.get("type") == "text")
+    else:
+        try:
+            text = llm.complete(SYSTEM, [{"role": "user", "content": f"Instrucción del usuario: {prompt}"}], 700, image=body.image)
+        except urllib.error.HTTPError as e:
+            raise HTTPException(502, f"La IA respondió {e.code}")
+        except Exception:
+            raise HTTPException(502, "No se pudo contactar a la IA")
     j = re.search(r"\{.*\}", text, re.S)
     try:
         res = json.loads(j.group(0)) if j else {}
