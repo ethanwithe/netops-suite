@@ -22,6 +22,8 @@ export class SerialSession {
   private reading = false;
   private closed = false;
   stopRequested = false;
+  /** Todo lo que llega de la consola, en vivo (para mostrar la CLI del router). */
+  onData: ((chunk: string) => void) | null = null;
 
   async connect(baudRate: number): Promise<void> {
     const serial = (navigator as any).serial;
@@ -47,7 +49,11 @@ export class SerialSession {
       for (;;) {
         const { value, done } = await this.reader.read();
         if (done) break;
-        if (value) this.buf += dec.decode(value, { stream: true });
+        if (value) {
+          const txt = dec.decode(value, { stream: true });
+          this.buf += txt;
+          this.onData?.(txt);
+        }
       }
     } catch {
       /* puerto cerrado o desconectado */
@@ -93,6 +99,12 @@ export class SerialSession {
       if (quiet > 4000) break; // comandos largos sin prompt claro (p. ej. ping)
     }
     return cleanOutput(this.buf);
+  }
+
+  /** Escribe en la consola tal cual (para que tú también puedas teclear comandos). */
+  async typed(text: string) {
+    if (!this.connected) throw new Error("La consola no está conectada.");
+    await this.write(text + "\r");
   }
 
   async close() {

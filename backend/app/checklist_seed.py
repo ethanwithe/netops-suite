@@ -35,7 +35,11 @@ VENDOR_LABEL = {"huawei": "Huawei", "cisco": "Cisco", "fortinet": "Fortinet"}
 
 def _it(nombre, modo="foto", cmd="", n=[0]):
     n[0] += 1
-    return {"id": f"s{n[0]}", "nombre": nombre, "modo": modo, "cmd": cmd}
+    it = {"id": f"s{n[0]}", "nombre": nombre, "modo": modo, "cmd": cmd}
+    # Estadísticas de interfaz WAN/LAN: solo valen mientras se satura
+    if "[WAN Interface]" in nombre or "[LAN Interface]" in nombre:
+        it["sat"] = True
+    return it
 
 
 def _huawei(servicio, mra, ha):

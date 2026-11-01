@@ -83,3 +83,24 @@ export function servicioLabel(servicio: string, vendor: string, ancho: string, m
   const cpe = `${VENDOR_LABEL[vendor] ?? vendor} ${modelo}`.trim();
   return `Servicio ${s}${bw} - CPE ${cpe}`;
 }
+
+
+/** ¿El ítem solo vale con la saturación activa? (estadísticas de interfaz WAN/LAN) */
+export function isSatItem(it: { sat?: boolean; nombre: string; cmd: string }): boolean {
+  if (typeof it.sat === "boolean") return it.sat;
+  return /\[(WAN|LAN)\s+Interface\]/i.test(it.nombre);
+}
+
+/** Tasa de entrada/salida (Mbps) que muestra el router en "display interface" / "show interfaces". */
+export function parseRates(out: string): { inMbps: number; outMbps: number } | null {
+  const re = /(?:last\s+\d+\s+seconds?|\d+\s+(?:second|minute)s?)\s+(input|output)\s+rate\s*:?\s*(\d+)\s*bits?\/sec/gi;
+  let inB = -1, outB = -1;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(out))) {
+    const v = Number(m[2]);
+    if (m[1].toLowerCase() === "input") inB = Math.max(inB, v);
+    else outB = Math.max(outB, v);
+  }
+  if (inB < 0 && outB < 0) return null;
+  return { inMbps: Math.max(inB, 0) / 1e6, outMbps: Math.max(outB, 0) / 1e6 };
+}

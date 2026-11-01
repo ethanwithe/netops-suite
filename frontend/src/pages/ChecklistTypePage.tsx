@@ -5,7 +5,10 @@ import ImageUpload from "../components/ImageUpload";
 import LogoPicker from "../components/LogoPicker";
 import Spinner from "../components/Spinner";
 import ChecklistStructure from "../components/ChecklistStructure";
-import { setField, usePhotoReport } from "../store/photoReportStore";
+import ImageAnnotator from "../components/ImageAnnotator";
+import SaturadorPanel from "../components/SaturadorPanel";
+import { NO_LOGO } from "../logo";
+import type { LogoSel } from "../logo";
 import { usePersistentState } from "../store/persistentState";
 import { deleteChecklistType, updateChecklistType, useChecklistTypes } from "../store/checklistTypes";
 import type { CkData, CkItem, CkType } from "../store/checklistTypes";
@@ -14,7 +17,7 @@ import { syncClient, useSotSync } from "../store/clients";
 import type { ClientRecord } from "../store/clients";
 import { SerialSession, webSerialSupported } from "../utils/webSerial";
 import {
-  extractBandwidthMbps, extractModel, fechaLarga, fillCmd, hoyISO, servicioLabel,
+  extractBandwidthMbps, extractModel, fechaLarga, fillCmd, hoyISO, isSatItem, parseRates, servicioLabel,
 } from "../utils/checklistInfo";
 
 interface Row {
@@ -59,7 +62,8 @@ function Inner({ type }: { type: CkType }) {
   const [tab, setTab] = usePersistentState<"run" | "edit">(`checklist.tab.${type.id}`, "run");
   const [s, setS] = usePersistentState<RunState>(`checklist.run.${type.id}`, () => freshRun(data));
 
-  const logo = usePhotoReport("fibra").logoIzq; // el mismo logo de empresa del reporte fotográfico
+  // Logo propio del CheckList (independiente del reporte fotográfico)
+  const [logo, setLogo] = usePersistentState<LogoSel>("checklist.logo", NO_LOGO);
   const mem = { persist: false } as const;
   const [log, setLog] = usePersistentState<string>(`checklist.log.${type.id}`, "", mem);
   const [busy, setBusy] = usePersistentState<string | null>(`checklist.busy.${type.id}`, null, mem);
@@ -68,6 +72,27 @@ function Inner({ type }: { type: CkType }) {
   const [baud, setBaud] = usePersistentState("checklist.baud", 9600);
   const [connected, setConnected] = useState(false);
   const session = useRef<SerialSession | null>(null);
+
+  // CLI en vivo: todo lo que se envía y devuelve el router
+  const termRef = useRef("");
+  const [term, setTerm] = useState("");
+  const termTimer = useRef<number | null>(null);
+  const termBox = useRef<HTMLPreElement>(null);
+  const [typed, setTyped] = useState("");
+  const pushTerm = (chunk: string) => {
+    termRef.current = (termRef.current + chunk.replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, "").replace(/\r/g, "")).slice(-40000);
+    if (termTimer.current == null) {
+      termTimer.current = window.setTimeout(() => { termTimer.current = null; setTerm(termRef.current); }, 120);
+    }
+  };
+  useEffect(() => { if (termBox.current) termBox.current.scrollTop = termBox.current.scrollHeight; }, [term]);
+
+  // Saturación: el agente local o, si usas iperf/Ostinato, la marcas tú
+  const [agentRunning, setAgentRunning] = useState(false);
+  const [manualSat, setManualSat] = useState(false);
+  const saturando = agentRunning || manualSat;
+  const [readings, setReadings] = useState<Record<string, { inMbps: number; outMbps: number }>>({});
+  const [editImg, setEditImg] = useState<{ itemId: string; idx: number; url: string } | null>(null);
 
   // Los parámetros nuevos (si editaste la estructura) aparecen con su valor por defecto.
   useEffect(() => {
@@ -115,6 +140,7 @@ function Inner({ type }: { type: CkType }) {
   async function connect() {
     try {
       const sess = new SerialSession();
+      sess.onData = pushTerm;
       await sess.connect(baud);
       session.current = sess;
       setConnected(true);
@@ -153,8 +179,14 @@ function Inner({ type }: { type: CkType }) {
   async function runItems(items: CkItem[], label: string) {
     const sess = session.current;
     if (!sess?.connected) { alert("Primero conecta la consola (botón «Conectar consola»)."); return; }
-    const todo = items.filter((it) => it.cmd.trim() && row(it.id).incluir);
-    if (!todo.length) { alert("No hay ítems con comando para ejecutar."); return; }
+    const candidates = items.filter((it) => it.cmd.trim() && row(it.id).incluir);
+    const omitidos = candidates.filter((it) => isSatItem(it) && !saturando);
+    const todo = candidates.filter((it) => !(isSatItem(it) && !saturando));
+    if (!candidates.length) { alert("No hay ítems con comando para ejecutar."); return; }
+    if (!todo.length) {
+      alert("Esos ítems son de SATURACIÓN: solo se capturan mientras el enlace está saturado.\n\nInicia la saturación (tarjeta «Saturación») o márcala si usas iperf/Ostinato, espera a que suba el tráfico y vuelve a ejecutar.");
+      return;
+    }
     sess.stopRequested = false;
     setBusy(label);
     try {
@@ -170,9 +202,16 @@ function Inner({ type }: { type: CkType }) {
         setLog(`(${n}/${todo.length}) ${cmd}`);
         const out = await sess.run(cmd, { maxMs: it.modo === "texto" ? 180000 : 60000 });
         setRow(it.id, { texto: out });
+        if (isSatItem(it)) {
+          const rt = parseRates(out);
+          if (rt) setReadings((p) => ({ ...p, [it.id]: rt }));
+        }
         learn(out, /current-config|running-config/.test(cmd));
       }
-      setLog(sess.stopRequested ? "Detenido." : "Listo: ejecución terminada.");
+      setLog(
+        (sess.stopRequested ? "Detenido." : "Listo: ejecución terminada.") +
+          (omitidos.length ? ` Omitidos por no estar saturando: ${omitidos.map((o) => o.nombre.split(" (")[0]).join(", ")}.` : "")
+      );
     } catch (e) {
       setLog(`Error: ${(e as Error).message || e}`);
     } finally {
@@ -291,7 +330,7 @@ function Inner({ type }: { type: CkType }) {
               Cabecera del PDF: <span className="font-mono text-slate-700">{label}</span> · SOT: {s.sot} CID: {s.cid}
             </p>
             <div className="sm:col-span-2">
-              <LogoPicker posicion="izq" label="Logo de la empresa (el mismo del reporte fotográfico)" value={logo} onChange={(v) => setField("fibra", "logoIzq", v)} />
+              <LogoPicker posicion="izq" label="Logo del CheckList (independiente del reporte fotográfico)" value={logo} onChange={setLogo} />
             </div>
           </div>
 
@@ -337,7 +376,60 @@ function Inner({ type }: { type: CkType }) {
               </div>
             </div>
             {log && <p className="font-mono text-xs text-slate-600 break-all">{log}</p>}
+
+            {(connected || term) && (
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-medium text-slate-500">CLI del router en vivo (todo lo que se envía y devuelve)</p>
+                  <button className="text-xs text-slate-400 hover:underline" onClick={() => { termRef.current = ""; setTerm(""); }}>limpiar</button>
+                </div>
+                <pre ref={termBox} className="h-56 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-black p-3 font-mono text-[11px] leading-snug text-green-200">{term || "(esperando datos de la consola…)"}</pre>
+                <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); if (typed.trim() && connected && !busy) { void session.current?.typed(typed); setTyped(""); } }}>
+                  <input className="input flex-1 font-mono text-xs" value={typed} disabled={!connected || !!busy} placeholder="Escribe un comando y Enter (se ejecuta en el router)" onChange={(e) => setTyped(e.target.value)} />
+                  <button className="btn-secondary text-xs" disabled={!connected || !!busy || !typed.trim()}>Enviar</button>
+                </form>
+              </div>
+            )}
           </div>
+
+          <div className="card space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-sm font-semibold text-slate-700">Saturación</h3>
+              <span className={`rounded-full px-3 py-1 text-xs font-medium ${saturando ? "bg-green-100 text-green-700" : "bg-slate-200 text-slate-600"}`}>
+                {saturando ? "● Saturando: ya puedes capturar las interfaces" : "○ Sin saturar: las capturas de interfaz están bloqueadas"}
+              </span>
+            </div>
+            <p className="text-xs text-slate-500">
+              Las estadísticas de la interfaz WAN/LAN (sección de saturación) solo valen con el enlace saturado. Inicia la saturación aquí, espera a que el
+              contador del router suba (Huawei y Cisco promedian los últimos 5 min o 30 s) y recién ahí ejecuta esos ítems. Speedtest y la captura del
+              software / SUP las pegas tú como imagen.
+            </p>
+            <SaturadorPanel defaultMbps={s.ancho || undefined} onRunning={setAgentRunning} />
+            <label className="flex items-center gap-2 text-sm text-slate-700">
+              <input type="checkbox" checked={manualSat} onChange={(e) => setManualSat(e.target.checked)} />
+              Estoy saturando con otra herramienta (iperf, Ostinato…) y ya está al máximo
+            </label>
+          </div>
+
+          <details className="card text-sm text-slate-600">
+            <summary className="cursor-pointer font-medium text-slate-700">🔐 Permisos que necesita (qué te va a pedir el navegador y tu laptop)</summary>
+            <ul className="mt-2 list-disc space-y-2 pl-5">
+              <li>
+                <b>Consola (cable USB/COM):</b> al pulsar «Conectar consola» el navegador te muestra una lista de puertos y tú eliges el del cable; ese es el
+                permiso. Hace falta <b>Chrome o Edge</b> en computadora y la página en <b>https</b> (Railway ya lo es).{" "}
+                <span className={webSerialSupported() && window.isSecureContext ? "text-green-700" : "text-red-600"}>
+                  {webSerialSupported() && window.isSecureContext ? "✔ Este navegador lo permite." : "✖ Este navegador/página no lo permite."}
+                </span>{" "}
+                Si no ves tu puerto, instala el driver del adaptador (CP210x, FTDI o CH340) y revisa que ningún otro programa (PuTTY, SecureCRT…) lo tenga abierto.
+              </li>
+              <li>
+                <b>Saturación:</b> el tráfico lo genera un pequeño programa en tu laptop (<i>saturador.py --agente</i>), porque la nube no puede saturar el enlace
+                del cliente ni enviar ping desde tu red. En Linux/Mac se abre con <code>sudo</code>; en Windows no necesita administrador (el firewall puede pedirte
+                permitir Python). La página solo se comunica con él en <code>127.0.0.1</code> y con el código que te muestra.
+              </li>
+              <li><b>Cámara y ubicación</b> (reporte fotográfico): el navegador las pide la primera vez que tomas una foto.</li>
+            </ul>
+          </details>
 
           {data.sections.map((sec) => (
             <div key={sec.id} className="card space-y-3">
@@ -368,6 +460,24 @@ function Inner({ type }: { type: CkType }) {
                         <button className="btn-secondary text-xs" disabled={!connected || !!busy} onClick={() => runItems([it], it.id)} title="Ejecutar solo este ítem">▶</button>
                       )}
                     </div>
+                    {isSatItem(it) && (
+                      <p className={`text-[11px] ${saturando ? "text-green-700" : "text-amber-700"}`}>
+                        {saturando ? "Saturación activa: se puede capturar." : "⛔ Solo se captura con la saturación activa."}
+                        {readings[it.id] && (() => {
+                          const rt = readings[it.id];
+                          const bw = Number(s.ancho) || 0;
+                          const peak = Math.max(rt.inMbps, rt.outMbps);
+                          const pct = bw ? Math.round((peak / bw) * 100) : null;
+                          const low = pct !== null && pct < 70;
+                          return (
+                            <span className={low ? "ml-2 font-semibold text-red-600" : "ml-2 font-semibold"}>
+                              Router: ↓ {rt.inMbps.toFixed(1)} / ↑ {rt.outMbps.toFixed(1)} Mbps{pct !== null ? ` (${pct}% de ${bw} Mbps)` : ""}
+                              {low ? " — ⚠ parece que NO está saturando; espera y repite la captura" : ""}
+                            </span>
+                          );
+                        })()}
+                      </p>
+                    )}
                     {filled && (
                       <p className="font-mono text-[11px] text-slate-500 break-all">
                         $ {filled.cmd}
@@ -380,6 +490,9 @@ function Inner({ type }: { type: CkType }) {
                         {r.images.map((im, k) => (
                           <div key={im.path} className="relative">
                             <img src={im.url} alt="" className="h-20 w-28 rounded border object-cover" />
+                            <button type="button" aria-label="Editar captura" title="Editar (líneas, flechas, texto, recorte…)"
+                              className="absolute -left-1 -top-1 rounded-full bg-slate-700 px-1.5 text-xs text-white"
+                              onClick={() => setEditImg({ itemId: it.id, idx: k, url: im.url })}>✏️</button>
                             <button type="button" aria-label="Quitar captura"
                               className="absolute -right-1 -top-1 rounded-full bg-red-500 px-1.5 text-xs text-white"
                               onClick={() => setRow(it.id, { images: r.images.filter((_, j) => j !== k) })}>×</button>
@@ -426,6 +539,16 @@ function Inner({ type }: { type: CkType }) {
             {pdf?.warnings.map((w) => <p key={w} className="w-full text-xs text-amber-600">{w}</p>)}
           </div>
         </>
+      )}
+
+      {editImg && (
+        <ImageAnnotator
+          imageUrl={editImg.url}
+          onClose={() => setEditImg(null)}
+          onSaved={(path, url) =>
+            setRow(editImg.itemId, { images: row(editImg.itemId).images.map((im, i) => (i === editImg.idx ? { path, url } : im)) })
+          }
+        />
       )}
     </div>
   );

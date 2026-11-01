@@ -113,6 +113,9 @@ export default function ChecklistStructure({
                 <option value="texto">Texto</option>
                 <option value="foto">Foto</option>
               </select>
+              <label className="flex items-center gap-1 text-[11px] text-slate-600" title="Solo se captura mientras se satura el enlace">
+                <input type="checkbox" checked={!!it.sat} onChange={(e) => setItem(si, ii, { sat: e.target.checked })} /> Con saturación
+              </label>
               <input className="input min-w-[220px] flex-1 font-mono text-xs" value={it.cmd} placeholder="Comando (vacío = solo captura manual)" onChange={(e) => setItem(si, ii, { cmd: e.target.value })} />
               <button className="btn-secondary text-xs" onClick={() => setSec(si, (s) => ({ ...s, items: move(s.items, ii, -1) }))}>↑</button>
               <button className="btn-secondary text-xs" onClick={() => setSec(si, (s) => ({ ...s, items: move(s.items, ii, 1) }))}>↓</button>
