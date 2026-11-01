@@ -9,12 +9,18 @@ export interface Adjust {
   saturation: number; // -100..100
   sharpen: number;    // 0..100  (recuperar nitidez)
   auto: boolean;      // niveles + brillo automáticos
+  shadows: number;    // 0..100  aclarar sombras
+  highlights: number; // 0..100  recuperar luces quemadas
+  warmth: number;     // -100..100 frío ↔ cálido
+  denoise: number;    // 0..100  reducir ruido
+  gray: boolean;      // blanco y negro
 }
 
-export const NEUTRAL: Adjust = { brightness: 0, contrast: 0, saturation: 0, sharpen: 0, auto: false };
+export const NEUTRAL: Adjust = { brightness: 0, contrast: 0, saturation: 0, sharpen: 0, auto: false, shadows: 0, highlights: 0, warmth: 0, denoise: 0, gray: false };
 
 export const isNeutral = (a: Adjust) =>
-  !a.auto && !a.brightness && !a.contrast && !a.saturation && !a.sharpen;
+  !a.auto && !a.brightness && !a.contrast && !a.saturation && !a.sharpen &&
+  !a.shadows && !a.highlights && !a.warmth && !a.denoise && !a.gray;
 
 const clamp = (v: number) => (v < 0 ? 0 : v > 255 ? 255 : v);
 
@@ -80,11 +86,27 @@ export function adjustImageData(data: Uint8ClampedArray, w: number, h: number, a
 
   const sat = 1 + a.saturation / 100;
 
+  // Sombras / luces: curva suave que aclara lo oscuro y contiene lo muy claro
+  const sh = a.shadows / 100, hl = a.highlights / 100;
+  const tone = new Uint8ClampedArray(256);
+  for (let v = 0; v < 256; v++) {
+    const x = v / 255;
+    const lifted = x + sh * 0.55 * Math.pow(1 - x, 2.2) * (1 - x * 0.2);
+    const pulled = lifted - hl * 0.4 * Math.pow(lifted, 2.4);
+    tone[v] = clamp(Math.round(pulled * 255));
+  }
+  const warm = a.warmth * 0.45;
+
+  if (a.denoise > 0 && w > 2 && h > 2) denoise(data, w, h, a.denoise / 100);
+
   for (let i = 0; i < data.length; i += 4) {
     let r = data[i], g = data[i + 1], b = data[i + 2];
     if (auto) { r = auto[0][r]; g = auto[1][g]; b = auto[2][b]; }
     r = bc[r]; g = bc[g]; b = bc[b];
-    if (sat !== 1) {
+    if (sh || hl) { r = tone[r]; g = tone[g]; b = tone[b]; }
+    if (warm) { r = clamp(r + warm); b = clamp(b - warm); }
+    if (a.gray) { const y = clamp(0.299 * r + 0.587 * g + 0.114 * b); r = g = b = y; }
+    else if (sat !== 1) {
       const gray = 0.299 * r + 0.587 * g + 0.114 * b;
       r = clamp(gray + (r - gray) * sat);
       g = clamp(gray + (g - gray) * sat);
@@ -94,6 +116,27 @@ export function adjustImageData(data: Uint8ClampedArray, w: number, h: number, a
   }
 
   if (a.sharpen > 0 && w > 2 && h > 2) sharpen(data, w, h, (a.sharpen / 100) * 1.1);
+}
+
+/** Reducción de ruido: mezcla cada píxel con el promedio de sus vecinos, salvo en bordes marcados. */
+function denoise(data: Uint8ClampedArray, w: number, h: number, amount: number): void {
+  const src = new Uint8ClampedArray(data);
+  const thr = 38 - amount * 16; // más ruido eliminado → umbral de borde más alto
+  for (let y = 1; y < h - 1; y++) {
+    for (let x = 1; x < w - 1; x++) {
+      const i = (y * w + x) * 4;
+      for (let c = 0; c < 3; c++) {
+        const v = src[i + c];
+        let sum = 0, n = 0;
+        for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+          const q = src[i + (dy * w + dx) * 4 + c];
+          if (Math.abs(q - v) < thr * 2.2) { sum += q; n++; }
+        }
+        const avg = sum / Math.max(1, n);
+        data[i + c] = v + (avg - v) * Math.min(1, amount * 1.1);
+      }
+    }
+  }
 }
 
 /** Máscara de nitidez 3×3 (realza bordes y detalle). */
