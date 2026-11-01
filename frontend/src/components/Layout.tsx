@@ -9,7 +9,6 @@ import { usePersistentState } from "../store/persistentState";
 import ThemeSwitcher from "./ThemeSwitcher";
 import Mascot from "../mascot/Mascot";
 import WaterDrops, { Drop } from "./WaterDrops";
-import FloatingDock, { DockGroup } from "./FloatingDock";
 
 const NAV = [
   { to: "/pruebas", label: "Pruebas", desc: "SSH / Serial + PDF" },
@@ -92,12 +91,6 @@ export default function Layout() {
     else setOpen(!open);
   };
 
-  const dockGroups: DockGroup[] = [
-    { id: "cl", label: "Clientes", prefix: "/clientes", items: [{ to: "/clientes", label: "Todos los clientes" }, ...years.map((y) => ({ to: `/clientes/${y.year}`, label: `Clientes ${y.year}` }))] },
-    { id: "ck", label: "CheckList", prefix: "/checklist", items: ckSub },
-    { id: "ft", label: "Fotos", prefix: "/fotografico", items: fotoSub },
-    { id: "tl", label: "Pruebas", prefix: "/pruebas", items: [{ to: "/pruebas", label: "Pruebas" }, { to: "/plantillas", label: "Plantillas" }] },
-  ];
   const link = (isActive: boolean) => `side-item ${isActive ? "active" : ""}`;
   const sub = (isActive: boolean) => `side-item ${isActive ? "active" : ""}`;
   const Chev = ({ openState }: { openState: boolean }) => (
@@ -179,7 +172,7 @@ export default function Layout() {
       </aside>
 
       <div className="relative flex min-w-0 flex-1 flex-col">
-        <header className="glass flex shrink-0 items-center gap-3 px-3 py-2" style={{ borderWidth: "0 0 1px" }}>
+        <header className="glass relative z-20 flex shrink-0 items-center gap-3 px-3 py-2" style={{ borderWidth: "0 0 1px" }}>
           <button className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 transition-colors hover:border-cyan2-500 hover:bg-slate-50" onClick={toggle} aria-label="Mostrar u ocultar el menú">
             Menú
           </button>
@@ -189,12 +182,11 @@ export default function Layout() {
         </header>
 
         <main ref={mainRef} className="flex-1 overflow-y-auto overflow-x-hidden">
-          <div key={pathname} className="view-enter mx-auto max-w-5xl p-3 pb-24 sm:p-6 sm:pb-24 lg:p-8 lg:pb-24">
+          <div key={pathname} className="view-enter mx-auto max-w-5xl p-3 sm:p-6 lg:p-8">
             <Outlet />
           </div>
         </main>
       </div>
-      <FloatingDock scroller={mainRef} groups={dockGroups} />
       <Mascot />
       {creatingCk && (
         <NewChecklistModal
