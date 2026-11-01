@@ -1013,7 +1013,7 @@ export default function ImageAnnotator({ imageUrl, onClose, onSaved }: Props) {
 
   const showColors = drawTool || textMode || (tool === "select" && selected && selected.k !== "blur");
   const showWidth = (drawTool || selPoly) && !textMode;
-  const hasContext = showColors || textMode || tool === "crop" || tool === "line" || selected != null;
+  const hasContext = showColors || textMode || tool === "crop" || selected != null;
   const sel = "h-7 rounded-md border border-slate-300 bg-white px-1.5 text-[11px]";
 
   const slider = (label: string, key: keyof Adjust, min: number, max = 100) => (
