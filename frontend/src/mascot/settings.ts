@@ -6,10 +6,14 @@ export interface MascotSettings {
   idle: boolean;     // comentarios espontáneos
   right: number;     // posición (px desde el borde derecho)
   bottom: number;    // posición (px desde el borde inferior)
-  voiceName: string; // voz elegida ('' = la mejor disponible)
+  voiceName: string; // voz elegida ('' = la mejor disponible; 'nube:nova' = voz del servidor)
+  voiceStyle: string; // normal | grave | aguda | pausada | rapida | robot | dibujos
+  listen: boolean;   // conversación: micrófono siempre atento
+  needName: boolean; // solo responder si dices «Bit»
+  learn: boolean;    // aprender de ti
 }
 const KEY = "netops.mascot";
-const DEFAULTS: MascotSettings = { hidden: false, voice: false, idle: true, right: 16, bottom: 16, voiceName: "" };
+const DEFAULTS: MascotSettings = { hidden: false, voice: false, idle: true, right: 16, bottom: 16, voiceName: "", voiceStyle: "normal", listen: true, needName: false, learn: true };
 const listeners = new Set<() => void>();
 
 function load(): MascotSettings {
