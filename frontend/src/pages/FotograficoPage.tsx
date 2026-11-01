@@ -147,12 +147,12 @@ export default function FotograficoPage({
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-xl sm:text-2xl font-bold text-slate-800">
+        <h2 className="page-title">
           Reporte Fotográfico — {nombre ?? FOTO_TIPOS[tipo]}
         </h2>
         {onConfigure && (
           <button type="button" className="btn-secondary mt-1 text-xs" onClick={onConfigure}>
-            ⚙️ Configurar esta ventana (nombre y valores por defecto)
+            Configurar esta ventana (nombre y valores por defecto)
           </button>
         )}
 
@@ -162,7 +162,7 @@ export default function FotograficoPage({
         </p>
         <details className="mt-2 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
           <summary className="cursor-pointer font-medium text-slate-700">
-            📖 Cómo se usa (tutorial)
+            Cómo se usa (tutorial)
           </summary>
           <ol className="mt-2 list-decimal space-y-1 pl-5">
             <li>
@@ -176,17 +176,17 @@ export default function FotograficoPage({
               El título del PDF es «REPORTE FOTOGRAFICO» + la opción elegida.
             </li>
             <li>
-              Marca con ✔ los ítems que van, y arrástralos (⠿) para cambiar el orden.
+              Marca los ítems que van, y arrástralos (asa «Mover») para cambiar el orden.
               Si quieres, edita su descripción.
             </li>
             <li>
               En cada ítem elige su <b>opción</b> y sube la foto, o usa
-              <b> 📷 Tomar foto</b>: la cámara muestra en vivo el sello (fecha,
+              <b> Tomar foto</b>: la cámara muestra en vivo el sello (fecha,
               dirección y coordenadas) y con «Mover sello» lo cambias de esquina
               para no tapar la serie del equipo.
             </li>
             <li>
-              Usa <b>✏️ Editar</b> para dibujar líneas, flechas, texto, recortar
+              Usa <b>Editar</b> para dibujar líneas, flechas, texto, recortar
               o mejorar la imagen.
             </li>
             <li>
@@ -427,7 +427,7 @@ function RunTab({
             onClick={newReport}
             disabled={s.generating}
           >
-            🆕 Nuevo reporte
+            Nuevo reporte
           </button>
         </div>
 
@@ -544,7 +544,7 @@ function RunTab({
                       className="cursor-grab select-none text-slate-300 hover:text-slate-500 active:cursor-grabbing"
                       title="Arrastra para reordenar"
                     >
-                      ⠿
+                      Mover
                     </span>
 
                     <input
@@ -591,7 +591,7 @@ function RunTab({
                           setEditing({ id: it.id, imageUrl: r.imageUrl })
                         }
                       >
-                        ✏️ Editar (líneas punteadas)
+                        Editar (líneas punteadas)
                       </button>
                     )}
                   </div>
@@ -684,7 +684,7 @@ function RunTab({
 
       <div className="card space-y-3">
         <div>
-          <h3 className="text-sm font-semibold text-slate-700">📁 Carpeta de evidencia fotográfica</h3>
+          <h3 className="text-sm font-semibold text-slate-700">Carpeta de evidencia fotográfica</h3>
           <p className="text-xs text-slate-500">
             Descarga todas las fotos en una carpeta (ZIP) «Evidencia fotográfica SOT … cliente». Cada foto editada va con su original sin editar.
             Si usas varias opciones (site, cliente…), cada una tiene su subcarpeta; si es una sola, van directo en la carpeta principal.
@@ -700,8 +700,8 @@ function RunTab({
                 <select className="input w-full sm:w-56" value={resolveOpcion(e.lado, manager.opciones).id} onChange={(ev) => updateExtra(tipo, e.id, { lado: ev.target.value })}>
                   {manager.opciones.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
                 </select>
-                <button className="btn-secondary text-xs" onClick={() => setEditing({ id: e.id, imageUrl: e.url, extra: true })}>✏️ Editar</button>
-                <button className="btn-secondary text-xs" onClick={() => removeExtra(tipo, e.id)}>🗑</button>
+                <button className="btn-secondary text-xs" onClick={() => setEditing({ id: e.id, imageUrl: e.url, extra: true })}>Editar</button>
+                <button className="btn-secondary text-xs" onClick={() => removeExtra(tipo, e.id)}>Quitar</button>
               </li>
             ))}
           </ul>
@@ -712,11 +712,11 @@ function RunTab({
             key={s.extras.length}
             compact
             cliente={s.cliente}
-            label="➕ Agregar foto a la carpeta..."
+            label="Agregar foto a la carpeta..."
             onUploaded={(p, u) => p && addExtra(tipo, { id: `e${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`, nombre: "", path: p, url: u, lado: manager.opciones[manager.opciones.length - 1].id })}
           />
           <button className="btn-primary" onClick={makeZip} disabled={zip.busy}>
-            {zip.busy ? "Preparando carpeta..." : "📥 Descargar carpeta de evidencia"}
+            {zip.busy ? "Preparando carpeta..." : "Descargar carpeta de evidencia"}
           </button>
         </div>
         {zip.error && <p className="text-sm text-red-600">{zip.error}</p>}
@@ -915,7 +915,7 @@ function ItemsTab({
 
         <div className="flex gap-2">
           <button className="btn-primary" onClick={save} disabled={busy}>
-            💾 Guardar
+            Guardar
           </button>
 
           {selected && (
@@ -924,7 +924,7 @@ function ItemsTab({
               onClick={() => del(selected)}
               disabled={busy}
             >
-              🗑 Eliminar
+              Eliminar
             </button>
           )}
         </div>

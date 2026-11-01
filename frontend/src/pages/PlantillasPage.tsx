@@ -25,7 +25,7 @@ export default function PlantillasPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-xl sm:text-2xl font-bold text-slate-800">Plantillas</h2>
+        <h2 className="page-title">Plantillas</h2>
         <p className="text-slate-500 text-sm">Fragmentos reutilizables por marca/servicio, y generación + aplicación al equipo.</p>
       </div>
 
@@ -174,8 +174,8 @@ function FragmentsCrud({ vendors, services, onServiceCreated }:
           <textarea className="input font-mono text-xs h-64" value={texto} onChange={(e) => setTexto(e.target.value)} />
         </div>
         <div className="flex gap-2">
-          <button className="btn-primary" onClick={save}>💾 Guardar</button>
-          {selected && <button className="btn-danger" onClick={() => del(selected)}>🗑 Eliminar</button>}
+          <button className="btn-primary" onClick={save}>Guardar</button>
+          {selected && <button className="btn-danger" onClick={() => del(selected)}>Eliminar</button>}
         </div>
       </div>
     </div>
@@ -278,7 +278,7 @@ function GenerarPlantilla({ vendors, services }: { vendors: Vendor[]; services: 
         setLogs((l) => [...l, "", "===== RESPUESTA DEL EQUIPO =====", ev.result.device_log]);
         setApplying(false);
       } else if (ev.type === "error") {
-        setLogs((l) => [...l, "✖ ERROR: " + ev.message]);
+        setLogs((l) => [...l, "ERROR: " + ev.message]);
         setApplying(false);
       }
     });
@@ -334,7 +334,7 @@ function GenerarPlantilla({ vendors, services }: { vendors: Vendor[]; services: 
             <input className="input" placeholder="Red" value={row.ip} onChange={(e) => updateExtraLan(i, "ip", e.target.value)} />
             <input className="input" placeholder="Máscara" value={row.mask} onChange={(e) => updateExtraLan(i, "mask", e.target.value)} />
             <input className="input w-24" placeholder="/prefijo" value={row.prefix_len} onChange={(e) => updateExtraLan(i, "prefix_len", e.target.value)} />
-            <button className="btn-danger" onClick={() => removeExtraLan(i)}>✕</button>
+            <button className="btn-danger" onClick={() => removeExtraLan(i)}>Quitar</button>
           </div>
         ))}
         <button className="btn-secondary" onClick={addExtraLan}>+ agregar red LAN</button>
@@ -347,7 +347,7 @@ function GenerarPlantilla({ vendors, services }: { vendors: Vendor[]; services: 
 
       <div className="flex gap-2">
         <button className="btn-secondary" onClick={doPreview}>③ Vista previa</button>
-        <button className="btn-secondary" onClick={downloadTxt} disabled={!preview}>💾 Descargar .txt</button>
+        <button className="btn-secondary" onClick={downloadTxt} disabled={!preview}>Descargar .txt</button>
       </div>
 
       {preview && (
@@ -358,7 +358,7 @@ function GenerarPlantilla({ vendors, services }: { vendors: Vendor[]; services: 
         connection={connection} onConnectionChange={setConnection} showDeviceType={false} />
 
       <button className="btn-primary" disabled={applying} onClick={apply}>
-        {applying ? <><Spinner /> Aplicando...</> : "⚡ Aplicar al equipo"}
+        {applying ? <><Spinner /> Aplicando...</> : "Aplicar al equipo"}
       </button>
 
       <LiveLog lines={logs} />

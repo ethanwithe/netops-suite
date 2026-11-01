@@ -156,7 +156,7 @@ export default function PoderJudicialPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-xl sm:text-2xl font-bold text-slate-800">Reporte Fotográfico — RF Poder Judicial</h2>
+        <h2 className="page-title">Reporte Fotográfico — RF Poder Judicial</h2>
         <p className="text-slate-500 text-sm">Informe de diseño LAN Gestionada SOLAMED. Lo que escribas se conserva al cambiar de página.</p>
       </div>
 
@@ -189,7 +189,7 @@ export default function PoderJudicialPage() {
               <input key={k} className="input" placeholder={k} value={c[k]}
                 onChange={(e) => set("cambios", f.cambios.map((x, j) => (j === i ? { ...x, [k]: e.target.value } : x)))} />
             ))}
-            <button className="btn-secondary" onClick={() => set("cambios", f.cambios.filter((_, j) => j !== i))}>✕</button>
+            <button className="btn-secondary" onClick={() => set("cambios", f.cambios.filter((_, j) => j !== i))}>Quitar</button>
           </div>
         ))}
         <button className="btn-secondary text-xs" onClick={() => set("cambios", [...f.cambios, { version: "", fecha: "", modificacion: "" }])}>+ Agregar cambio</button>
@@ -205,7 +205,7 @@ export default function PoderJudicialPage() {
             onUploaded={(path, url) => set("fotoUbicacion", { path, url })} />
           {f.fotoUbicacion?.path && (
             <button type="button" className="btn-secondary text-xs"
-              onClick={() => setEditing({ target: { kind: "ubic" }, url: f.fotoUbicacion!.url })}>✏️ Editar foto</button>
+              onClick={() => setEditing({ target: { kind: "ubic" }, url: f.fotoUbicacion!.url })}>Editar foto</button>
           )}
         </div>
       </div>
@@ -228,9 +228,9 @@ export default function PoderJudicialPage() {
                       <img src={im.url} alt="" className="h-16 rounded border" />
                       <button type="button" title="Editar foto" aria-label="Editar foto"
                         className="absolute -left-1 -top-1 rounded-full bg-brand-600 px-1 text-[10px] text-white"
-                        onClick={() => setEditing({ target: { kind: "cell", sid: s.id, cid: c.id, idx: k }, url: im.url })}>✏️</button>
+                        onClick={() => setEditing({ target: { kind: "cell", sid: s.id, cid: c.id, idx: k }, url: im.url })}>Editar</button>
                       <button className="absolute -right-1 -top-1 rounded-full bg-red-600 px-1 text-[10px] text-white"
-                        onClick={() => patchCell(s.id, c.id, (x) => ({ ...x, images: x.images.filter((_, j) => j !== k) }))}>✕</button>
+                        onClick={() => patchCell(s.id, c.id, (x) => ({ ...x, images: x.images.filter((_, j) => j !== k) }))}>Quitar</button>
                     </div>
                   ))}
                 </div>
@@ -255,7 +255,7 @@ export default function PoderJudicialPage() {
           <div key={i} className="flex gap-2">
             <textarea className="input flex-1" rows={2} value={c}
               onChange={(e) => set("conclusiones", f.conclusiones.map((x, j) => (j === i ? e.target.value : x)))} />
-            <button className="btn-secondary" onClick={() => set("conclusiones", f.conclusiones.filter((_, j) => j !== i))}>✕</button>
+            <button className="btn-secondary" onClick={() => set("conclusiones", f.conclusiones.filter((_, j) => j !== i))}>Quitar</button>
           </div>
         ))}
         <button className="btn-secondary text-xs" onClick={() => set("conclusiones", [...f.conclusiones, ""])}>+ Agregar conclusión</button>

@@ -37,7 +37,7 @@ export default function ChecklistStructure({
     setMsg(null);
     try {
       await onSave(nombre.trim() || type.nombre, d);
-      setMsg("✔ Guardado");
+      setMsg("Guardado");
     } catch (e) {
       setMsg(apiErrorMessage(e, "No se pudo guardar."));
     } finally {
@@ -85,7 +85,7 @@ export default function ChecklistStructure({
       <div className="card space-y-2">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold text-slate-700">Parámetros que se piden al inicio</h3>
-          <button className="btn-secondary text-xs" onClick={() => setD({ ...d, params: [...d.params, { key: "NUEVO", label: "Nuevo parámetro", default: "" }] })}>➕ Parámetro</button>
+          <button className="btn-secondary text-xs" onClick={() => setD({ ...d, params: [...d.params, { key: "NUEVO", label: "Nuevo parámetro", default: "" }] })}>+ Parámetro</button>
         </div>
         {d.params.map((p, i) => (
           <div key={i} className="flex flex-wrap items-center gap-2">
@@ -93,7 +93,7 @@ export default function ChecklistStructure({
               onChange={(e) => setParam(i, { key: e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, "") })} />
             <input className="input min-w-[160px] flex-1" value={p.label} placeholder="Texto que verás" onChange={(e) => setParam(i, { label: e.target.value })} />
             <input className="input w-36" value={p.default} placeholder="Valor por defecto" onChange={(e) => setParam(i, { default: e.target.value })} />
-            <button className="btn-secondary text-xs" onClick={() => setD({ ...d, params: d.params.filter((_, j) => j !== i) })}>🗑</button>
+            <button className="btn-secondary text-xs" onClick={() => setD({ ...d, params: d.params.filter((_, j) => j !== i) })}>Quitar</button>
           </div>
         ))}
       </div>
@@ -102,9 +102,9 @@ export default function ChecklistStructure({
         <div key={sec.id} className="card space-y-2">
           <div className="flex flex-wrap items-center gap-2">
             <input className="input min-w-[200px] flex-1 font-semibold" value={sec.titulo} onChange={(e) => setSec(si, (s) => ({ ...s, titulo: e.target.value }))} />
-            <button className="btn-secondary text-xs" onClick={() => setD({ ...d, sections: move(d.sections, si, -1) })} title="Subir sección">↑</button>
-            <button className="btn-secondary text-xs" onClick={() => setD({ ...d, sections: move(d.sections, si, 1) })} title="Bajar sección">↓</button>
-            <button className="btn-secondary text-xs" onClick={() => confirm("¿Borrar la sección y sus ítems?") && setD({ ...d, sections: d.sections.filter((_, j) => j !== si) })}>🗑</button>
+            <button className="btn-secondary text-xs" onClick={() => setD({ ...d, sections: move(d.sections, si, -1) })} title="Subir sección">Subir</button>
+            <button className="btn-secondary text-xs" onClick={() => setD({ ...d, sections: move(d.sections, si, 1) })} title="Bajar sección">Bajar</button>
+            <button className="btn-secondary text-xs" onClick={() => confirm("¿Borrar la sección y sus ítems?") && setD({ ...d, sections: d.sections.filter((_, j) => j !== si) })}>Quitar</button>
           </div>
           {sec.items.map((it, ii) => (
             <div key={it.id} className="flex flex-wrap items-center gap-2 rounded border border-slate-200 p-2">
@@ -117,17 +117,17 @@ export default function ChecklistStructure({
                 <input type="checkbox" checked={!!it.sat} onChange={(e) => setItem(si, ii, { sat: e.target.checked })} /> Con saturación
               </label>
               <input className="input min-w-[220px] flex-1 font-mono text-xs" value={it.cmd} placeholder="Comando (vacío = solo captura manual)" onChange={(e) => setItem(si, ii, { cmd: e.target.value })} />
-              <button className="btn-secondary text-xs" onClick={() => setSec(si, (s) => ({ ...s, items: move(s.items, ii, -1) }))}>↑</button>
-              <button className="btn-secondary text-xs" onClick={() => setSec(si, (s) => ({ ...s, items: move(s.items, ii, 1) }))}>↓</button>
-              <button className="btn-secondary text-xs" onClick={() => setSec(si, (s) => ({ ...s, items: s.items.filter((_, j) => j !== ii) }))}>🗑</button>
+              <button className="btn-secondary text-xs" onClick={() => setSec(si, (s) => ({ ...s, items: move(s.items, ii, -1) }))}>Subir</button>
+              <button className="btn-secondary text-xs" onClick={() => setSec(si, (s) => ({ ...s, items: move(s.items, ii, 1) }))}>Bajar</button>
+              <button className="btn-secondary text-xs" onClick={() => setSec(si, (s) => ({ ...s, items: s.items.filter((_, j) => j !== ii) }))}>Quitar</button>
             </div>
           ))}
-          <button className="btn-secondary text-xs" onClick={() => setSec(si, (s) => ({ ...s, items: [...s.items, { id: uid(), nombre: "NUEVO ÍTEM", modo: "foto", cmd: "" }] }))}>➕ Ítem</button>
+          <button className="btn-secondary text-xs" onClick={() => setSec(si, (s) => ({ ...s, items: [...s.items, { id: uid(), nombre: "NUEVO ÍTEM", modo: "foto", cmd: "" }] }))}>+ Ítem</button>
         </div>
       ))}
 
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <button className="btn-secondary text-sm" onClick={() => setD({ ...d, sections: [...d.sections, { id: uid(), titulo: "NUEVA SECCIÓN", items: [] }] })}>➕ Sección</button>
+        <button className="btn-secondary text-sm" onClick={() => setD({ ...d, sections: [...d.sections, { id: uid(), titulo: "NUEVA SECCIÓN", items: [] }] })}>+ Sección</button>
         <div className="flex items-center gap-3">
           {msg && <span className="text-sm text-slate-600">{msg}</span>}
           <button
@@ -139,7 +139,7 @@ export default function ChecklistStructure({
               }
             }}
           >
-            🗑 Borrar checklist
+            Borrar checklist
           </button>
           <button className="btn-primary" onClick={save} disabled={busy}>{busy ? "Guardando..." : "Guardar cambios"}</button>
         </div>

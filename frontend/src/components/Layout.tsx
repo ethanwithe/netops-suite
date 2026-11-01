@@ -6,10 +6,12 @@ import { createYear, listYears } from "../store/clients";
 import NewChecklistModal from "./NewChecklistModal";
 import { checklistRoute, createChecklistType, useChecklistTypes } from "../store/checklistTypes";
 import { usePersistentState } from "../store/persistentState";
+import ThemeSwitcher from "./ThemeSwitcher";
+import Mascot from "../mascot/Mascot";
 
 const NAV = [
-  { to: "/pruebas", label: "Pruebas", icon: "🔌", desc: "SSH/Serial + PDF" },
-  { to: "/plantillas", label: "Plantillas", icon: "📝", desc: "Crear y aplicar" },
+  { to: "/pruebas", label: "Pruebas", desc: "SSH / Serial + PDF" },
+  { to: "/plantillas", label: "Plantillas", desc: "Crear y aplicar" },
 ];
 
 const FOTO_SUB = [
@@ -56,7 +58,7 @@ export default function Layout() {
   const ckShown = ckOpen || inCk;
   const ckSub = [
     ...ckTypes.map((t) => ({ to: checklistRoute(t.id), label: t.nombre })),
-    { to: "/checklist/saturador", label: "🚀 Saturador" },
+    { to: "/checklist/saturador", label: "Saturador" },
   ];
   const fotoSub = [
     ...FOTO_SUB,
@@ -87,206 +89,100 @@ export default function Layout() {
     else setOpen(!open);
   };
 
-  const link = (isActive: boolean) =>
-    `flex items-center gap-3 rounded-lg px-3 py-3 text-sm transition-colors ${
-      isActive ? "bg-brand-600 text-white" : "hover:bg-slate-800 text-slate-300"
-    }`;
+  const link = (isActive: boolean) => `side-item ${isActive ? "active" : ""}`;
+  const sub = (isActive: boolean) => `side-item ${isActive ? "active" : ""}`;
+  const Chev = ({ openState }: { openState: boolean }) => (
+    <svg width="14" height="14" viewBox="0 0 20 20" className={`shrink-0 transition-transform duration-200 ${openState ? "rotate-90" : ""}`} aria-hidden="true">
+      <path d="M7 4l6 6-6 6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+  const group = (inside: boolean) => `side-item ${inside ? "active" : ""}`;
+
+  const Group = ({ inside, shown, onToggle, title, desc, children }: { inside: boolean; shown: boolean; onToggle: () => void; title: string; desc: string; children: React.ReactNode }) => (
+    <div>
+      <button type="button" aria-expanded={shown} onClick={onToggle} className={group(inside)}>
+        <span className="flex-1">
+          <span className="block">{title}</span>
+          <span className="block text-[11px] font-normal opacity-60">{desc}</span>
+        </span>
+        <Chev openState={shown} />
+      </button>
+      {shown && <div className="side-sub animate-rise">{children}</div>}
+    </div>
+  );
+  const subLink = (o: { to: string; label: string }, end = false) => (
+    <NavLink key={o.to} to={o.to} end={end} className={({ isActive }) => sub(isActive)}>{o.label}</NavLink>
+  );
+  const addBtn = (label: string, onClick: () => void) => (
+    <button type="button" onClick={onClick} className="side-item side-add">{label}</button>
+  );
 
   return (
     <div className="flex h-[100dvh] overflow-hidden">
-      {/* Fondo oscuro detrás del panel (solo celular) */}
-      {open && (
-        <div
-          className="fixed inset-0 z-30 bg-black/50 lg:hidden"
-          onClick={() => setOpen(false)}
-          aria-hidden="true"
-        />
-      )}
+      {open && <div className="fixed inset-0 z-30 bg-black/50 backdrop-blur-sm lg:hidden" onClick={() => setOpen(false)} aria-hidden="true" />}
 
       <aside
-        className={`fixed inset-y-0 left-0 z-40 w-72 max-w-[85vw] bg-slate-900 text-slate-300 flex flex-col
-          transition-transform duration-200 lg:static lg:z-auto lg:w-64 lg:max-w-none lg:shrink-0
-          ${open ? "translate-x-0" : "-translate-x-full"}
-          ${desktopOpen ? "lg:translate-x-0" : "lg:hidden"}`}
+        className={`side fixed inset-y-0 left-0 z-40 flex w-72 max-w-[85vw] flex-col transition-transform duration-200 lg:static lg:z-auto lg:w-64 lg:max-w-none lg:shrink-0
+          ${open ? "translate-x-0" : "-translate-x-full"} ${desktopOpen ? "lg:translate-x-0" : "lg:hidden"}`}
       >
-        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-800">
-          <div>
-            <h1 className="text-white font-bold text-lg">NetOps Suite</h1>
-            <p className="text-xs text-slate-500">Panel de operaciones LAN</p>
+        <div className="flex items-center gap-3 border-b border-white/10 px-4 py-4">
+          <img src="/logo.png" alt="" width={40} height={40} className="h-10 w-10 rounded-xl shadow-glow" />
+          <div className="flex-1 leading-none">
+            <h1 className="font-display text-[19px] font-extrabold tracking-tight text-white">NetOps</h1>
+            <p className="mt-1 text-[10px] font-bold uppercase tracking-[.32em] text-cyan2-400">Suite</p>
           </div>
-          <button
-            className="lg:hidden rounded-md p-2 text-slate-400 hover:bg-slate-800"
-            onClick={() => setOpen(false)}
-            aria-label="Cerrar menú"
-          >
-            ✕
-          </button>
+          <button className="rounded-md px-2 py-1 text-xs font-semibold text-slate-300 hover:bg-white/10 lg:hidden" onClick={() => setOpen(false)}>Cerrar</button>
         </div>
 
-        <nav className="flex-1 overflow-y-auto py-3 space-y-1 px-3">
+        <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 pb-3">
+          <div className="side-group">Operación</div>
           {NAV.map((item) => (
             <NavLink key={item.to} to={item.to} className={({ isActive }) => link(isActive)}>
-              <span className="text-lg">{item.icon}</span>
               <span>
-                <span className="block font-medium">{item.label}</span>
-                <span className="block text-[11px] opacity-70">{item.desc}</span>
+                <span className="block">{item.label}</span>
+                <span className="block text-[11px] font-normal opacity-60">{item.desc}</span>
               </span>
             </NavLink>
           ))}
+          <Group inside={inCk} shown={ckShown} onToggle={() => setCkOpen(!ckShown)} title="CheckList" desc={`${ckTypes.length} tipos · estilo Claro`}>
+            {ckSub.map((o) => subLink(o))}
+            {addBtn("+ Nueva opción", () => setCreatingCk(true))}
+          </Group>
 
-          <div>
-            <button
-              type="button"
-              aria-expanded={clShown}
-              onClick={() => setClOpen(!clShown)}
-              className={`flex w-full items-center gap-3 rounded-lg px-3 py-3 text-sm text-left transition-colors ${
-                inCl ? "bg-slate-800 text-white" : "hover:bg-slate-800 text-slate-300"
-              }`}
-            >
-              <span className="text-lg">👥</span>
-              <span className="flex-1">
-                <span className="block font-medium">Datos de cliente</span>
-                <span className="block text-[11px] opacity-70">Por SOT · año y mes</span>
-              </span>
-              <span className="text-xs">{clShown ? "▾" : "▸"}</span>
-            </button>
-            {clShown && (
-              <div className="mt-1 ml-5 space-y-1 border-l border-slate-700 pl-3">
-                {[{ to: "/clientes", label: "Todos los clientes", end: true }, ...years.map((y) => ({ to: `/clientes/${y.year}`, label: `${y.year}  (${y.total})`, end: false }))].map((o) => (
-                  <NavLink
-                    key={o.to}
-                    to={o.to}
-                    end
-                    className={({ isActive }) =>
-                      `block rounded-md px-3 py-2.5 text-sm transition-colors ${
-                        isActive ? "bg-brand-600 text-white" : "hover:bg-slate-800 text-slate-300"
-                      }`
-                    }
-                  >
-                    {o.label}
-                  </NavLink>
-                ))}
-                <button
-                  type="button"
-                  onClick={newYear}
-                  className="block w-full rounded-md px-3 py-2.5 text-left text-sm text-brand-100 hover:bg-slate-800"
-                >
-                  ➕ Nuevo año
-                </button>
-              </div>
-            )}
-          </div>
-
-          <div>
-            <button
-              type="button"
-              aria-expanded={ckShown}
-              onClick={() => setCkOpen(!ckShown)}
-              className={`flex w-full items-center gap-3 rounded-lg px-3 py-3 text-sm text-left transition-colors ${
-                inCk ? "bg-slate-800 text-white" : "hover:bg-slate-800 text-slate-300"
-              }`}
-            >
-              <span className="text-lg">☑️</span>
-              <span className="flex-1">
-                <span className="block font-medium">CheckList</span>
-                <span className="block text-[11px] opacity-70">{ckTypes.length} tipos · Estilo Claro</span>
-              </span>
-              <span className="text-xs">{ckShown ? "▾" : "▸"}</span>
-            </button>
-            {ckShown && (
-              <div className="mt-1 ml-5 space-y-1 border-l border-slate-700 pl-3">
-                {ckSub.map((o) => (
-                  <NavLink
-                    key={o.to}
-                    to={o.to}
-                    className={({ isActive }) =>
-                      `block rounded-md px-3 py-2.5 text-sm transition-colors ${
-                        isActive ? "bg-brand-600 text-white" : "hover:bg-slate-800 text-slate-300"
-                      }`
-                    }
-                  >
-                    {o.label}
-                  </NavLink>
-                ))}
-                <button
-                  type="button"
-                  onClick={() => setCreatingCk(true)}
-                  className="block w-full rounded-md px-3 py-2.5 text-left text-sm text-brand-100 hover:bg-slate-800"
-                >
-                  ➕ Nueva opción
-                </button>
-              </div>
-            )}
-          </div>
-
-          <div>
-            <button
-              type="button"
-              aria-expanded={fotoShown}
-              onClick={() => setFotoOpen(!fotoShown)}
-              className={`flex w-full items-center gap-3 rounded-lg px-3 py-3 text-sm text-left transition-colors ${
-                inFoto ? "bg-slate-800 text-white" : "hover:bg-slate-800 text-slate-300"
-              }`}
-            >
-              <span className="text-lg">📷</span>
-              <span className="flex-1">
-                <span className="block font-medium">Reporte fotográfico</span>
-                <span className="block text-[11px] opacity-70">{fotoSub.length} formatos</span>
-              </span>
-              <span className="text-xs">{fotoShown ? "▾" : "▸"}</span>
-            </button>
-            {fotoShown && (
-              <div className="mt-1 ml-5 space-y-1 border-l border-slate-700 pl-3">
-                {fotoSub.map((o) => (
-                  <NavLink
-                    key={o.to}
-                    to={o.to}
-                    className={({ isActive }) =>
-                      `block rounded-md px-3 py-2.5 text-sm transition-colors ${
-                        isActive ? "bg-brand-600 text-white" : "hover:bg-slate-800 text-slate-300"
-                      }`
-                    }
-                  >
-                    {o.label}
-                  </NavLink>
-                ))}
-                <button
-                  type="button"
-                  onClick={() => setCreating(true)}
-                  className="block w-full rounded-md px-3 py-2.5 text-left text-sm text-brand-100 hover:bg-slate-800"
-                >
-                  ➕ Nueva ventana
-                </button>
-              </div>
-            )}
-          </div>
+          <div className="side-group">Documentación</div>
+          <Group inside={inFoto} shown={fotoShown} onToggle={() => setFotoOpen(!fotoShown)} title="Reporte fotográfico" desc={`${fotoSub.length} formatos`}>
+            {fotoSub.map((o) => subLink(o))}
+            {addBtn("+ Nueva ventana", () => setCreating(true))}
+          </Group>
+          <Group inside={inCl} shown={clShown} onToggle={() => setClOpen(!clShown)} title="Datos de cliente" desc="Por SOT · año y mes">
+            {subLink({ to: "/clientes", label: "Todos los clientes" }, true)}
+            {years.map((y) => subLink({ to: `/clientes/${y.year}`, label: `${y.year}  (${y.total})` }, true))}
+            {addBtn("+ Nuevo año", newYear)}
+          </Group>
         </nav>
-        <div className="px-5 py-3 text-[11px] text-slate-600 border-t border-slate-800">
-          NetOps Suite v1.0
+        <div className="flex items-center justify-between border-t border-white/10 px-5 py-3 text-[11px] text-slate-400">
+          <span>NetOps Suite v1.0</span>
+          <span className="h-1.5 w-1.5 rounded-full bg-cyan2-400 shadow-[0_0_8px_#38d0f7]" />
         </div>
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        {/* Barra superior con el botón de menú */}
-        <header className="flex shrink-0 items-center gap-3 border-b border-slate-200 bg-white px-3 py-2 shadow-sm">
-          <button
-            className="rounded-lg p-2 text-xl leading-none text-slate-700 hover:bg-slate-100"
-            onClick={toggle}
-            aria-label="Mostrar u ocultar el menú"
-          >
-            ☰
+        <header className="flex shrink-0 items-center gap-3 border-b border-slate-200 bg-white px-3 py-2">
+          <button className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 transition-colors hover:border-cyan2-500 hover:bg-slate-50" onClick={toggle} aria-label="Mostrar u ocultar el menú">
+            Menú
           </button>
-          <span className="truncate text-sm font-semibold text-slate-700">
-            {titles[pathname] ?? "NetOps Suite"}
-          </span>
+          <span className="truncate font-display text-sm font-semibold text-slate-800">{titles[pathname] ?? "NetOps Suite"}</span>
+          <div className="flex-1" />
+          <ThemeSwitcher />
         </header>
 
         <main className="flex-1 overflow-y-auto overflow-x-hidden bg-slate-100">
-          <div className="mx-auto max-w-5xl p-3 sm:p-6 lg:p-8">
+          <div key={pathname} className="view-enter mx-auto max-w-5xl p-3 sm:p-6 lg:p-8">
             <Outlet />
           </div>
         </main>
       </div>
+      <Mascot />
       {creatingCk && (
         <NewChecklistModal
           onCancel={() => setCreatingCk(false)}

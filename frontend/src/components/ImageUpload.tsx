@@ -151,7 +151,7 @@ export default function ImageUpload({ onUploaded, label = "Subir imagen...", com
                 onClick={() => setCameraOpen(true)}
                 title="Toma la foto y le agrega fecha, hora, dirección y coordenadas"
               >
-                {stamping ? "Ubicando..." : "📷 Tomar foto"}
+                {stamping ? "Ubicando..." : "Tomar foto"}
               </button>
               {/* Plan B: la cámara del propio teléfono */}
               <input

@@ -251,7 +251,7 @@ export default function CameraCapture({ cliente = "", onCapture, onClose, onNati
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-black" role="dialog" aria-label="Cámara">
       <div className="flex items-center justify-between px-3 py-2 text-white">
-        <button className="rounded-lg px-3 py-2 text-sm hover:bg-white/10" onClick={onClose}>✕ Cerrar</button>
+        <button className="rounded-lg px-3 py-2 text-sm hover:bg-white/10" onClick={onClose}>Cerrar</button>
         <button
           className="rounded-lg px-3 py-2 text-sm hover:bg-white/10"
           onClick={cyclePos}
@@ -261,7 +261,7 @@ export default function CameraCapture({ cliente = "", onCapture, onClose, onNati
         </button>
         {hasTorch && (
           <button className="rounded-lg px-3 py-2 text-sm hover:bg-white/10" onClick={toggleTorch}>
-            {torch ? "🔦 Linterna: sí" : "🔦 Linterna: no"}
+            {torch ? "Linterna: sí" : "Linterna: no"}
           </button>
         )}
       </div>

@@ -9,7 +9,7 @@ export default function ChecklistHome() {
   if (list.length) return <Navigate to={checklistRoute(list[0].id)} replace />;
   return (
     <div className="card text-sm text-slate-600">
-      {error ? "No se pudieron cargar los checklists. Recarga la página." : "Aún no hay checklists. Crea uno desde el menú: CheckList → ➕ Nueva opción."}
+      {error ? "No se pudieron cargar los checklists. Recarga la página." : "Aún no hay checklists. Crea uno desde el menú: CheckList → Nueva opción."}
     </div>
   );
 }

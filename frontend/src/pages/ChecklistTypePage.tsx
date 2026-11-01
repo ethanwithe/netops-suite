@@ -274,19 +274,19 @@ function Inner({ type }: { type: CkType }) {
   return (
     <div className="space-y-5">
       <div>
-        <h2 className="text-xl sm:text-2xl font-bold text-slate-800">CheckList — {type.nombre}</h2>
+        <h2 className="page-title">CheckList — {type.nombre}</h2>
         <p className="text-sm text-slate-500">
           Servicio <b>{data.servicio === "rpv" ? "RPV" : "Internet"}</b> · {data.vendor.toUpperCase()}. Se conecta a la
           consola desde tu navegador, ejecuta los comandos y arma el PDF.
         </p>
         <details className="mt-2 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
-          <summary className="cursor-pointer font-medium text-slate-700">📖 Cómo se usa (tutorial)</summary>
+          <summary className="cursor-pointer font-medium text-slate-700">Cómo se usa (tutorial)</summary>
           <ol className="mt-2 list-decimal space-y-1 pl-5">
             <li>Llena <b>SOT, CID, Cliente</b> y la <b>fecha</b> (se elige en el calendario). Elige el logo.</li>
             <li>Completa los <b>parámetros</b> (interfaz WAN/LAN, IP del siguiente salto, IP remota…). Los comandos los usan solos.</li>
             <li>
-              Pulsa <b>🔌 Conectar consola</b> (Chrome o Edge) y elige el puerto del cable de consola. Luego ejecuta{" "}
-              <b>un ítem (▶)</b>, <b>una sección</b> o <b>todo</b>. Puedes repetir los que quieras las veces que quieras.
+              Pulsa <b>Conectar consola</b> (Chrome o Edge) y elige el puerto del cable de consola. Luego ejecuta{" "}
+              <b>un ítem</b>, <b>una sección</b> o <b>todo</b>. Puedes repetir los que quieras las veces que quieras.
             </li>
             <li>El <b>modelo</b> y el <b>ancho de banda</b> se leen solos de la configuración; si no, escríbelos.</li>
             <li>Los ítems de <b>TEXTO</b> salen como texto en el PDF; los de <b>FOTO</b> con tus capturas (pega con Ctrl+V o sube la imagen). Speedtest e iperf van como captura.</li>
@@ -314,7 +314,7 @@ function Inner({ type }: { type: CkType }) {
             <div className="sm:col-span-2 flex flex-wrap items-center justify-between gap-2">
               <p className="text-xs text-slate-400">Tu avance se guarda solo en este navegador; los datos de la SOT, en «Datos de cliente».</p>
               <ClientPicker onPick={pickClient} />
-              <button type="button" className="btn-secondary text-xs" onClick={newReport} disabled={!!busy}>🆕 Nuevo checklist</button>
+              <button type="button" className="btn-secondary text-xs" onClick={newReport} disabled={!!busy}>Nuevo checklist</button>
             </div>
             <Field label="SOT" value={s.sot} onChange={(v) => setF("sot", v)} />
             <Field label="CID" value={s.cid} onChange={(v) => setF("cid", v)} />
@@ -354,12 +354,12 @@ function Inner({ type }: { type: CkType }) {
                 </p>
               ) : connected ? (
                 <>
-                  <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-700">● Consola conectada</span>
+                  <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-700">Consola conectada</span>
                   <button className="btn-secondary text-xs" onClick={disconnect} disabled={!!busy}>Desconectar</button>
                 </>
               ) : (
                 <>
-                  <button className="btn-primary text-sm" onClick={connect}>🔌 Conectar consola (USB/COM)</button>
+                  <button className="btn-primary text-sm" onClick={connect}>Conectar consola (USB/COM)</button>
                   <label className="text-xs text-slate-500">
                     Baudios{" "}
                     <select className="input" value={baud} onChange={(e) => setBaud(Number(e.target.value))}>
@@ -369,9 +369,9 @@ function Inner({ type }: { type: CkType }) {
                 </>
               )}
               <div className="ml-auto flex gap-2">
-                <button className="btn-primary text-sm" disabled={!connected || !!busy} onClick={() => runItems(allItems, "all")}>▶ Ejecutar todo</button>
+                <button className="btn-primary text-sm" disabled={!connected || !!busy} onClick={() => runItems(allItems, "all")}>Ejecutar todo</button>
                 {busy && busy !== "pdf" && (
-                  <button className="btn-secondary text-sm" onClick={() => { if (session.current) session.current.stopRequested = true; }}>⏹ Detener</button>
+                  <button className="btn-secondary text-sm" onClick={() => { if (session.current) session.current.stopRequested = true; }}>Detener</button>
                 )}
               </div>
             </div>
@@ -396,7 +396,7 @@ function Inner({ type }: { type: CkType }) {
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h3 className="text-sm font-semibold text-slate-700">Saturación</h3>
               <span className={`rounded-full px-3 py-1 text-xs font-medium ${saturando ? "bg-green-100 text-green-700" : "bg-slate-200 text-slate-600"}`}>
-                {saturando ? "● Saturando: ya puedes capturar las interfaces" : "○ Sin saturar: las capturas de interfaz están bloqueadas"}
+                {saturando ? "Saturando: ya puedes capturar las interfaces" : "Sin saturar: las capturas de interfaz están bloqueadas"}
               </span>
             </div>
             <p className="text-xs text-slate-500">
@@ -412,13 +412,13 @@ function Inner({ type }: { type: CkType }) {
           </div>
 
           <details className="card text-sm text-slate-600">
-            <summary className="cursor-pointer font-medium text-slate-700">🔐 Permisos que necesita (qué te va a pedir el navegador y tu laptop)</summary>
+            <summary className="cursor-pointer font-medium text-slate-700">Permisos que necesita (qué te va a pedir el navegador y tu laptop)</summary>
             <ul className="mt-2 list-disc space-y-2 pl-5">
               <li>
                 <b>Consola (cable USB/COM):</b> al pulsar «Conectar consola» el navegador te muestra una lista de puertos y tú eliges el del cable; ese es el
                 permiso. Hace falta <b>Chrome o Edge</b> en computadora y la página en <b>https</b> (Railway ya lo es).{" "}
                 <span className={webSerialSupported() && window.isSecureContext ? "text-green-700" : "text-red-600"}>
-                  {webSerialSupported() && window.isSecureContext ? "✔ Este navegador lo permite." : "✖ Este navegador/página no lo permite."}
+                  {webSerialSupported() && window.isSecureContext ? "Sí: este navegador lo permite." : "No: este navegador/página no lo permite."}
                 </span>{" "}
                 Si no ves tu puerto, instala el driver del adaptador (CP210x, FTDI o CH340) y revisa que ningún otro programa (PuTTY, SecureCRT…) lo tenga abierto.
               </li>
@@ -441,7 +441,7 @@ function Inner({ type }: { type: CkType }) {
                       onChange={(e) => sec.items.forEach((i) => setRow(i.id, { incluir: e.target.checked }))} />
                     Incluir todos
                   </label>
-                  <button className="btn-secondary text-xs" disabled={!connected || !!busy} onClick={() => runItems(sec.items, sec.id)}>▶ Ejecutar sección</button>
+                  <button className="btn-secondary text-xs" disabled={!connected || !!busy} onClick={() => runItems(sec.items, sec.id)}>Ejecutar sección</button>
                 </div>
               </div>
 
@@ -457,12 +457,12 @@ function Inner({ type }: { type: CkType }) {
                         {it.modo === "texto" ? "TEXTO" : "FOTO"}
                       </span>
                       {it.cmd && (
-                        <button className="btn-secondary text-xs" disabled={!connected || !!busy} onClick={() => runItems([it], it.id)} title="Ejecutar solo este ítem">▶</button>
+                        <button className="btn-secondary text-xs" disabled={!connected || !!busy} onClick={() => runItems([it], it.id)} title="Ejecutar solo este ítem">Ejecutar</button>
                       )}
                     </div>
                     {isSatItem(it) && (
                       <p className={`text-[11px] ${saturando ? "text-green-700" : "text-amber-700"}`}>
-                        {saturando ? "Saturación activa: se puede capturar." : "⛔ Solo se captura con la saturación activa."}
+                        {saturando ? "Saturación activa: se puede capturar." : "Solo se captura con la saturación activa."}
                         {readings[it.id] && (() => {
                           const rt = readings[it.id];
                           const bw = Number(s.ancho) || 0;
@@ -471,8 +471,8 @@ function Inner({ type }: { type: CkType }) {
                           const low = pct !== null && pct < 70;
                           return (
                             <span className={low ? "ml-2 font-semibold text-red-600" : "ml-2 font-semibold"}>
-                              Router: ↓ {rt.inMbps.toFixed(1)} / ↑ {rt.outMbps.toFixed(1)} Mbps{pct !== null ? ` (${pct}% de ${bw} Mbps)` : ""}
-                              {low ? " — ⚠ parece que NO está saturando; espera y repite la captura" : ""}
+                              Router: bajada {rt.inMbps.toFixed(1)} / subida {rt.outMbps.toFixed(1)} Mbps{pct !== null ? ` (${pct}% de ${bw} Mbps)` : ""}
+                              {low ? " — Atención: parece que NO está saturando; espera y repite la captura" : ""}
                             </span>
                           );
                         })()}
@@ -492,7 +492,7 @@ function Inner({ type }: { type: CkType }) {
                             <img src={im.url} alt="" className="h-20 w-28 rounded border object-cover" />
                             <button type="button" aria-label="Editar captura" title="Editar (líneas, flechas, texto, recorte…)"
                               className="absolute -left-1 -top-1 rounded-full bg-slate-700 px-1.5 text-xs text-white"
-                              onClick={() => setEditImg({ itemId: it.id, idx: k, url: im.url })}>✏️</button>
+                              onClick={() => setEditImg({ itemId: it.id, idx: k, url: im.url })}>Editar</button>
                             <button type="button" aria-label="Quitar captura"
                               className="absolute -right-1 -top-1 rounded-full bg-red-500 px-1.5 text-xs text-white"
                               onClick={() => setRow(it.id, { images: r.images.filter((_, j) => j !== k) })}>×</button>
@@ -528,12 +528,12 @@ function Inner({ type }: { type: CkType }) {
 
           <div className="card flex flex-wrap items-center gap-3">
             <button className="btn-primary" onClick={generate} disabled={!!busy}>
-              {busy === "pdf" ? "Generando PDF..." : "📄 Generar PDF"}
+              {busy === "pdf" ? "Generando PDF..." : "Generar PDF"}
             </button>
             {pdfError && <span className="text-sm text-red-600">{pdfError}</span>}
             {pdf && (
               <a href={pdf.url} target="_blank" rel="noreferrer" download={pdf.filename} className="text-sm font-medium text-brand-600 hover:underline break-all">
-                ⬇ {pdf.filename}
+                Descargar {pdf.filename}
               </a>
             )}
             {pdf?.warnings.map((w) => <p key={w} className="w-full text-xs text-amber-600">{w}</p>)}

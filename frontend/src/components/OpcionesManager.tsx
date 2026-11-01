@@ -53,7 +53,7 @@ export default function OpcionesManager({ manager }: { manager: Manager }) {
               onClick={() => manager.remove(o.id)}
               title="Borrar opción"
             >
-              🗑
+              Quitar
             </button>
           </li>
         ))}
@@ -68,7 +68,7 @@ export default function OpcionesManager({ manager }: { manager: Manager }) {
           onKeyDown={(e) => e.key === "Enter" && add()}
         />
         <button type="button" className="btn-primary text-xs" onClick={add} disabled={!text.trim()}>
-          ➕ Agregar
+          Agregar
         </button>
       </div>
     </div>

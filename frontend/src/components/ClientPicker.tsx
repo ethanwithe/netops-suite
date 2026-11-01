@@ -21,7 +21,7 @@ export default function ClientPicker({ onPick }: { onPick: (c: ClientRecord) => 
   return (
     <div className="relative">
       <button type="button" className="btn-secondary text-xs" onClick={() => setOpen(!open)}>
-        👥 Elegir cliente guardado
+        Elegir cliente guardado
       </button>
       {open && (
         <div className="absolute left-0 top-full z-20 mt-1 w-[min(92vw,26rem)] rounded-lg border border-slate-200 bg-white p-2 shadow-lg">

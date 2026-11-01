@@ -2,78 +2,146 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ============ Temas ============
+   Los colores neutros (slate) y las superficies se definen como variables
+   para que todo el sistema cambie de tema sin tocar cada pantalla. */
+:root {
+  --s50: 248 250 252; --s100: 238 242 247; --s200: 222 229 239; --s300: 200 210 226;
+  --s400: 148 163 184; --s500: 100 116 139; --s600: 71 85 105; --s700: 51 65 85;
+  --s800: 30 41 59; --s900: 15 23 42;
+  --surface: 255 255 255;
+  --page: 238 242 247;
+  --side-from: 8 29 66; --side-to: 14 43 94;
+  color-scheme: light;
+}
+:root[data-theme="dark"] {
+  --s50: 24 29 40; --s100: 15 18 26; --s200: 42 49 66; --s300: 58 67 88;
+  --s400: 120 132 156; --s500: 148 160 182; --s600: 176 187 206; --s700: 203 212 227;
+  --s800: 226 232 242; --s900: 243 246 251;
+  --surface: 22 27 38;
+  --page: 12 15 22;
+  --side-from: 10 13 20; --side-to: 16 22 36;
+  color-scheme: dark;
+}
+:root[data-theme="ocean"] {
+  --s50: 15 35 74; --s100: 7 20 46; --s200: 28 56 104; --s300: 40 74 130;
+  --s400: 118 150 198; --s500: 146 176 220; --s600: 176 202 238; --s700: 205 223 247;
+  --s800: 228 239 252; --s900: 243 248 255;
+  --surface: 12 29 62;
+  --page: 6 17 40;
+  --side-from: 4 12 30; --side-to: 9 28 64;
+  color-scheme: dark;
+}
+
+html { -webkit-font-smoothing: antialiased; }
 body {
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  background: rgb(var(--page));
+  color: rgb(var(--s800));
+  transition: background-color .25s ease, color .25s ease;
 }
+h1, h2, h3 { font-family: 'Sora', 'Inter', system-ui, sans-serif; letter-spacing: -0.01em; }
+::selection { background: rgb(56 208 247 / .35); }
 
-/* =========================
-   LAYOUT BASE RESPONSIVE
-========================= */
+/* Superficies y colores de estado en temas oscuros */
+.dark .bg-white { background-color: rgb(var(--surface)); }
+.dark .bg-white\/90 { background-color: rgb(var(--surface) / .9); }
+.dark .bg-slate-100 { background-color: rgb(var(--page)); }
+.dark .bg-red-50 { background-color: rgb(127 29 29 / .28); }
+.dark .bg-red-100 { background-color: rgb(127 29 29 / .4); }
+.dark .bg-amber-50, .dark .bg-yellow-50 { background-color: rgb(120 80 10 / .3); }
+.dark .bg-amber-100, .dark .bg-yellow-100 { background-color: rgb(120 80 10 / .4); }
+.dark .bg-green-50, .dark .bg-emerald-50 { background-color: rgb(20 83 45 / .3); }
+.dark .bg-green-100, .dark .bg-emerald-100 { background-color: rgb(20 83 45 / .45); }
+.dark .bg-blue-50, .dark .bg-brand-50 { background-color: rgb(43 114 230 / .16); }
+.dark .bg-blue-100, .dark .bg-brand-100 { background-color: rgb(43 114 230 / .26); }
+.dark .text-red-600, .dark .text-red-700, .dark .text-red-800 { color: rgb(252 165 165); }
+.dark .text-amber-700, .dark .text-amber-800, .dark .text-yellow-800 { color: rgb(252 211 77); }
+.dark .text-green-600, .dark .text-green-700, .dark .text-green-800, .dark .text-emerald-700 { color: rgb(134 239 172); }
+.dark .text-blue-700, .dark .text-blue-800, .dark .text-brand-700, .dark .text-brand-800 { color: rgb(147 197 253); }
+.dark .border-red-200, .dark .border-red-300 { border-color: rgb(153 27 27 / .6); }
+.dark .border-amber-200, .dark .border-amber-300, .dark .border-yellow-200 { border-color: rgb(146 100 14 / .6); }
+.dark .border-green-200, .dark .border-green-300 { border-color: rgb(22 101 52 / .6); }
+.dark .border-blue-200, .dark .border-brand-200 { border-color: rgb(43 114 230 / .4); }
+.dark .hover\:bg-slate-50:hover { background-color: rgb(var(--s100)); }
+.dark .bg-slate-900 { background-color: rgb(4 8 18); }
 
-.app-layout {
-  @apply flex min-h-screen bg-slate-50;
-}
-
-/* SIDEBAR */
-.sidebar {
-  @apply fixed lg:static z-40 w-64 h-full bg-white border-r border-slate-200 transition-transform duration-300;
-}
-
-/* oculto en mobile */
-.sidebar-hidden {
-  @apply -translate-x-full lg:translate-x-0;
-}
-
-/* contenido principal */
-.main-content {
-  @apply flex-1 w-full lg:ml-0 transition-all duration-300;
-}
-
-/* overlay mobile */
-.sidebar-overlay {
-  @apply fixed inset-0 bg-black/40 z-30 lg:hidden;
-}
-
-/* =========================
-   COMPONENTES UI
-========================= */
-
+/* ============ Componentes ============ */
 .card {
-  @apply bg-white rounded-xl shadow-sm border border-slate-200 p-5;
+  @apply rounded-2xl border border-slate-200 p-5 shadow-soft;
+  background-color: rgb(var(--surface));
+  transition: box-shadow .2s ease, border-color .2s ease, transform .2s ease;
 }
+.card:hover { border-color: rgb(var(--s300)); }
 
 .btn {
-  @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
+  @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold tracking-tight
+    transition-all duration-150 active:scale-[.97] disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100
+    focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan2-400 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent;
 }
-
 .btn-primary {
-  @apply btn bg-brand-600 text-white hover:bg-brand-700;
+  @apply btn text-white shadow-sm hover:shadow-glow;
+  background-image: linear-gradient(135deg, #1d5fd0, #174ca8 60%, #133b80);
 }
-
+.btn-primary:hover:not(:disabled) { filter: brightness(1.1); }
 .btn-secondary {
   @apply btn bg-slate-100 text-slate-700 hover:bg-slate-200;
 }
-
-.btn-danger {
-  @apply btn bg-red-50 text-red-600 hover:bg-red-100;
-}
+.btn-danger { @apply btn bg-red-50 text-red-600 hover:bg-red-100; }
 
 .input {
-  @apply w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent;
+  @apply w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400
+    transition-shadow focus:outline-none focus:ring-2 focus:ring-cyan2-400/70 focus:border-cyan2-500;
+}
+.input { background-color: rgb(var(--surface)); }
+.dark .btn-danger { background-color: rgb(127 29 29 / .3); color: rgb(252 165 165); }
+.dark select.input option { background: rgb(var(--surface)); color: rgb(var(--s800)); }
+.label { @apply block text-[11px] font-bold text-slate-500 uppercase tracking-[.08em] mb-1; }
+
+/* Encabezado de pantalla: título grande + línea de acento */
+.page-title { @apply font-display text-2xl font-bold tracking-tight text-slate-900; }
+.page-title::after {
+  content: ""; display: block; width: 44px; height: 3px; margin-top: 8px; border-radius: 3px;
+  background: linear-gradient(90deg, #38d0f7, #2b72e6);
 }
 
-.label {
-  @apply block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1;
+/* Entrada suave de cada pantalla */
+.view-enter { @apply animate-rise; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; }
 }
 
-/* =========================
-   RESPONSIVE HELPERS
-========================= */
-
-.hide-mobile {
-  @apply hidden lg:block;
+/* ============ Barra lateral ============ */
+.side {
+  background: linear-gradient(180deg, rgb(var(--side-from)), rgb(var(--side-to)));
+  color: rgb(203 219 245);
+  border-right: 1px solid rgb(255 255 255 / .06);
 }
-
-.show-mobile {
-  @apply block lg:hidden;
+.side-item {
+  @apply relative flex w-full items-center rounded-lg px-3 py-2.5 text-left text-[13.5px] font-medium transition-all duration-150;
+  color: rgb(203 219 245);
 }
+.side-item:hover { background: rgb(255 255 255 / .07); color: #fff; }
+.side-item.active { background: linear-gradient(90deg, rgb(56 208 247 / .22), rgb(56 208 247 / .04)); color: #fff; }
+.side-item.active::before {
+  content: ""; position: absolute; left: 0; top: 20%; bottom: 20%; width: 3px; border-radius: 3px;
+  background: #38d0f7; box-shadow: 0 0 10px #38d0f7;
+}
+.side-group { @apply px-3 pt-4 pb-1 text-[10px] font-bold uppercase tracking-[.16em]; color: rgb(125 160 214 / .75); }
+.side-sub { @apply mt-1 ml-3 space-y-0.5 pl-3; border-left: 1px solid rgb(255 255 255 / .1); }
+.side-sub .side-item { @apply py-2 text-[13px]; }
+.side-add { color: rgb(126 227 255); }
+
+/* ============ Mascota ============ */
+@keyframes bob { 0%,100% { transform: translateY(0) } 50% { transform: translateY(-3px) } }
+@keyframes wiggle { 0%,100% { transform: rotate(0) } 25% { transform: rotate(-6deg) } 75% { transform: rotate(6deg) } }
+@keyframes shake { 0%,100% { transform: translateX(0) } 20%,60% { transform: translateX(-3px) } 40%,80% { transform: translateX(3px) } }
+@keyframes hop { 0%,100% { transform: translateY(0) } 40% { transform: translateY(-10px) } }
+.mascot-idle { animation: bob 3.2s ease-in-out infinite; }
+.mascot-laugh { animation: shake .35s ease 3; }
+.mascot-wiggle { animation: wiggle .5s ease 2; }
+.mascot-hop { animation: hop .5s ease 2; }
+
+/* Utilidades heredadas */
+.hide-mobile { @apply hidden lg:block; }
+.show-mobile { @apply block lg:hidden; }

@@ -64,10 +64,10 @@ export default function SaturadorPanel({
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
-        {res?.kind === "ok" && st?.icmp && <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-700">● Agente conectado</span>}
-        {res?.kind === "ok" && !st?.icmp && <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-medium text-amber-700">● Agente sin permisos ICMP (ábrelo con sudo)</span>}
+        {res?.kind === "ok" && st?.icmp && <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-700">Agente conectado</span>}
+        {res?.kind === "ok" && !st?.icmp && <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-medium text-amber-700">Agente sin permisos ICMP (ábrelo con sudo)</span>}
         {res?.kind === "codigo" && <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-medium text-amber-700">Agente encontrado: falta el código</span>}
-        {(!res || res.kind === "ausente") && <span className="rounded-full bg-slate-200 px-3 py-1 text-xs font-medium text-slate-600">○ Agente no detectado</span>}
+        {(!res || res.kind === "ausente") && <span className="rounded-full bg-slate-200 px-3 py-1 text-xs font-medium text-slate-600">Agente no detectado</span>}
         <label className="ml-auto flex items-center gap-1 text-xs text-slate-500">
           Código del agente
           <input className="input w-24 font-mono uppercase" value={code} onChange={(e) => setCode(e.target.value.trim())} placeholder="A1B2C3" />
@@ -105,9 +105,9 @@ export default function SaturadorPanel({
         </label>
         <div className="flex items-end gap-2">
           {!running ? (
-            <button className="btn-primary w-full text-sm" onClick={start} disabled={res?.kind !== "ok" || !st?.icmp || !dest.trim() || !(Number(mbps) > 0)}>▶ Iniciar saturación</button>
+            <button className="btn-primary w-full text-sm" onClick={start} disabled={res?.kind !== "ok" || !st?.icmp || !dest.trim() || !(Number(mbps) > 0)}>Iniciar saturación</button>
           ) : (
-            <button className="btn-secondary w-full text-sm" onClick={stop}>⏹ Detener</button>
+            <button className="btn-secondary w-full text-sm" onClick={stop}>Detener</button>
           )}
         </div>
       </div>
@@ -118,11 +118,11 @@ export default function SaturadorPanel({
           <p className="text-xs text-slate-500">
             {running ? `Saturando ${st.destino} · ${st.segundos}s${st.duracion ? ` de ${st.duracion}s` : ""}` : `Última saturación a ${st.destino} (detenida)`}
           </p>
-          {bar("▲ Subida", st.tx_mbps, "bg-blue-500")}
-          {bar("▼ Bajada", st.rx_mbps, "bg-emerald-500")}
+          {bar("Subida", st.tx_mbps, "bg-blue-500")}
+          {bar("Bajada", st.rx_mbps, "bg-emerald-500")}
           <p className="text-xs text-slate-500">
-            Pérdida {st.perdida}% · picos ▲ {st.pico_tx} / ▼ {st.pico_rx} Mbps
-            {running && st.rx_mbps < target * 0.7 && " · ⚠ la bajada está por debajo del objetivo (el destino puede estar limitando el ping)"}
+            Pérdida {st.perdida}% · picos: subida {st.pico_tx} / bajada {st.pico_rx} Mbps
+            {running && st.rx_mbps < target * 0.7 && " · Atención: la bajada está por debajo del objetivo (el destino puede estar limitando el ping)"}
           </p>
         </div>
       )}
