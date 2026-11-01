@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import MascotFace from "./MascotFace";
-import { Action, GREET, IDLE_LINES, Mood, QUICK, answer, routeComment } from "./brain";
+import { Action, GREET, IDLE_LINES, Mood, QUICK, Reply, answer, norm, routeComment } from "./brain";
+import { Listener, listenOnce, onVoicesReady, speakText, spanishVoices, stopSpeaking, sttSupported } from "./voice";
 import { setMascot, useMascotSettings } from "./settings";
 import { THEME_OPTIONS, setTheme, useTheme } from "../store/theme";
 
@@ -24,6 +25,11 @@ export default function Mascot() {
   const [msgs, setMsgs] = useState<Msg[]>([{ who: "bot", text: "Hola, soy Bit. Pregúntame lo que quieras de la suite, pídeme un chiste o una cuenta. Escribe «ayuda» para ver todo lo que sé hacer." }]);
   const [typing, setTyping] = useState(false);
   const [draft, setDraft] = useState("");
+  const [aiOn, setAiOn] = useState(false);
+  const [live, setLive] = useState(false);
+  const [listening, setListening] = useState(false);
+  const [interim, setInterim] = useState("");
+  const [voices, setVoices] = useState<string[]>([]);
   const [vp, setVp] = useState({ w: window.innerWidth, h: window.innerHeight });
 
   const root = useRef<HTMLButtonElement>(null);
@@ -33,8 +39,15 @@ export default function Mascot() {
   const lastSay = useRef(0);
   const listEnd = useRef<HTMLDivElement>(null);
   const clicks = useRef<number[]>([]);
+  const liveRef = useRef(false);
+  const busyRef = useRef(false);
+  const emptyRuns = useRef(0);
+  const listenerRef = useRef<Listener | null>(null);
+  const msgsRef = useRef<Msg[]>([]);
+  const aiRef = useRef(false);
   const cfgRef = useRef(cfg); cfgRef.current = cfg;
   const openRef = useRef(open); openRef.current = open;
+  msgsRef.current = msgs; aiRef.current = aiOn;
 
   const express = useCallback((m: Mood, ms = 3200) => {
     setMood(m);
@@ -42,27 +55,20 @@ export default function Mascot() {
     if (m !== "neutral") moodT.current = window.setTimeout(() => setMood("neutral"), ms);
   }, []);
 
-  const speak = useCallback((text: string) => {
-    const ms = Math.min(5000, 600 + text.length * 38);
+  const speak = useCallback((text: string): Promise<void> => {
+    const loud = cfgRef.current.voice || liveRef.current;
     setTalking(true);
     window.clearTimeout(talkT.current);
-    talkT.current = window.setTimeout(() => setTalking(false), ms);
-    if (!cfgRef.current.voice) return;
-    try {
-      const synth = window.speechSynthesis;
-      if (!synth) return;
-      synth.cancel();
-      const u = new SpeechSynthesisUtterance(text.replace(/[«»<>]/g, ""));
-      u.lang = "es-ES"; u.pitch = 1.5; u.rate = 1.05;
-      const v = synth.getVoices().find((x) => x.lang.toLowerCase().startsWith("es"));
-      if (v) u.voice = v;
-      synth.speak(u);
-    } catch { /* sin voz */ }
+    if (!loud) {
+      talkT.current = window.setTimeout(() => setTalking(false), Math.min(5000, 600 + text.length * 38));
+      return Promise.resolve();
+    }
+    return speakText(text, cfgRef.current.voiceName).then(() => setTalking(false));
   }, []);
 
   // Comentario flotante (no invasivo: pequeño, se va solo)
   const say = useCallback((text: string, m: Mood = "neutral") => {
-    if (cfgRef.current.hidden) return;
+    if (cfgRef.current.hidden || liveRef.current) return;
     lastSay.current = Date.now();
     express(m);
     speak(text);
@@ -72,6 +78,17 @@ export default function Mascot() {
       bubbleT.current = window.setTimeout(() => setBubble(null), Math.min(9000, 4500 + text.length * 40));
     }
   }, [express, speak]);
+
+  // ¿Hay IA en el servidor?
+  useEffect(() => {
+    fetch("/api/mascot/status").then((r) => (r.ok ? r.json() : null)).then((j) => setAiOn(!!j?.ai)).catch(() => {});
+  }, []);
+  useEffect(() => {
+    const load = () => setVoices(spanishVoices().map((v) => v.name));
+    load();
+    return onVoicesReady(load);
+  }, []);
+  useEffect(() => () => { liveRef.current = false; listenerRef.current?.stop(); stopSpeaking(); }, []);
 
   // ---- parpadeo
   useEffect(() => {
@@ -172,7 +189,7 @@ export default function Mascot() {
   // Esc cierra el panel
   useEffect(() => {
     if (!open) return;
-    const k = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    const k = (e: KeyboardEvent) => { if (e.key === "Escape") { stopLive(); setOpen(false); } };
     window.addEventListener("keydown", k);
     return () => window.removeEventListener("keydown", k);
   }, [open]);
@@ -186,19 +203,93 @@ export default function Mascot() {
     else if (a.kind === "hide") setTimeout(() => { setOpen(false); setMascot({ hidden: true }); }, 900);
   }
 
+  async function askAI(text: string): Promise<Reply | null> {
+    if (!aiRef.current) return null;
+    try {
+      const history = msgsRef.current.slice(-10).map((m) => ({ role: m.who === "me" ? "user" : "assistant", content: m.text }));
+      const r = await fetch("/api/mascot/chat", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ messages: [...history, { role: "user", content: text }], pathname, theme: theme.resolved }),
+      });
+      if (!r.ok) return null;
+      return (await r.json()) as Reply;
+    } catch { return null; }
+  }
+
+  function stopLive() {
+    liveRef.current = false; setLive(false); setListening(false); setInterim("");
+    listenerRef.current?.stop(); listenerRef.current = null;
+    stopSpeaking(); setTalking(false); express("neutral");
+  }
+  const addBot = (text: string) => setMsgs((m) => [...m.slice(-39), { who: "bot", text }]);
+
   async function ask(q: string) {
     const text = q.trim();
     if (!text) return;
+    busyRef.current = true;
+    stopSpeaking();
     setMsgs((m) => [...m.slice(-39), { who: "me", text }]);
     setDraft("");
-    setTyping(true); express("think", 900);
-    await sleep(350 + Math.random() * 450);
-    const r = answer(text, { pathname, hour: new Date().getHours(), themeLabel: THEME_OPTIONS.find((o) => o.id === theme.pref)?.label ?? "" });
+    setTyping(true); express("think", 6000);
+    const bye = liveRef.current && /^(adios|chao|chau|hasta luego|terminar|terminemos|basta|ya esta|nos vemos)( .*)?$/.test(norm(text));
+    let r: Reply | null = bye ? { text: "¡Chao, crack! Cuando quieras volvemos a conversar.", mood: "happy" } : await askAI(text);
+    if (!r) {
+      await sleep(300 + Math.random() * 400);
+      r = answer(text, { pathname, hour: new Date().getHours(), themeLabel: theme.pref });
+    }
     setTyping(false);
-    setMsgs((m) => [...m.slice(-39), { who: "bot", text: r.text }]);
-    express(r.mood, 3600);
-    speak(r.text);
+    setMsgs((m) => [...m.slice(-39), { who: "bot", text: r!.text }]);
+    express(r.mood, Math.min(9000, 2500 + r.text.length * 45));
     runAction(r.action);
+    const spoken = speak(r.text);
+    if (liveRef.current) await spoken;
+    busyRef.current = false;
+    if (bye) stopLive();
+  }
+
+  // Conversación en vivo: escucha → responde en voz alta → vuelve a escuchar
+  function listen() {
+    if (!liveRef.current || busyRef.current) return;
+    setListening(true); setInterim(""); express("listening", 120000);
+    listenerRef.current = listenOnce({
+      onInterim: setInterim,
+      onDone: async (text, err) => {
+        listenerRef.current = null; setListening(false); setInterim("");
+        if (!liveRef.current) return;
+        if (err === "not-allowed" || err === "service-not-allowed") { stopLive(); addBot("No tengo permiso para usar el micrófono. Actívalo en el candado de la barra de direcciones y vuelve a pulsar Conversar."); express("sad"); return; }
+        if (err === "network") { stopLive(); addBot("El reconocimiento de voz del navegador necesita internet. Mientras tanto escríbeme."); express("sad"); return; }
+        if (!text) {
+          if (++emptyRuns.current >= 4) { stopLive(); addBot("No te oigo nada… toca «Conversar» cuando quieras seguir."); express("sleepy"); return; }
+          window.setTimeout(listen, 250); return;
+        }
+        emptyRuns.current = 0;
+        await ask(text);
+        if (liveRef.current) window.setTimeout(listen, 150);
+      },
+    });
+    if (!listenerRef.current) { stopLive(); addBot("Tu navegador no permite reconocimiento de voz. Usa Chrome o Edge."); }
+  }
+  function toggleLive() {
+    if (liveRef.current) { stopLive(); return; }
+    if (!sttSupported()) { addBot("Este navegador no tiene reconocimiento de voz. Usa Chrome o Edge y hablamos."); express("sad"); return; }
+    liveRef.current = true; setLive(true); emptyRuns.current = 0;
+    const hi = "Te escucho. Háblame normal; cuando quieras terminar di «chao».";
+    addBot(hi); express("happy", 1500);
+    busyRef.current = true;
+    void speak(hi).then(() => { busyRef.current = false; listen(); });
+  }
+  function dictate() {
+    if (listening) { listenerRef.current?.stop(); return; }
+    stopSpeaking(); setListening(true); express("listening", 120000);
+    listenerRef.current = listenOnce({
+      onInterim: setDraft,
+      onDone: (t, err) => {
+        listenerRef.current = null; setListening(false); express("neutral");
+        if (t) void ask(t); else if (err === "not-allowed") addBot("No tengo permiso del micrófono.");
+      },
+    });
+    if (!listenerRef.current) { setListening(false); addBot("Tu navegador no permite reconocimiento de voz. Usa Chrome o Edge."); }
   }
 
   // ---- arrastre (la mascota se puede mover si estorba)
@@ -251,13 +342,25 @@ export default function Mascot() {
             <MascotFace mood={mood} talking={talking} blink={blink} look={look} size={34} />
             <div className="min-w-0 flex-1 leading-tight">
               <div className="font-display text-sm font-bold text-white">Bit</div>
-              <div className="truncate text-[11px] text-cyan2-300">Asistente · bromista oficial</div>
+              <div className="truncate text-[11px] text-cyan2-300">{aiOn ? "Con inteligencia artificial" : "Modo básico (sin IA)"}</div>
             </div>
             <button type="button" onClick={() => setMascot({ voice: !cfg.voice })} className="rounded-md px-2 py-1 text-[11px] font-semibold text-white/90 hover:bg-white/10" title="Hablar en voz alta">
               Voz: {cfg.voice ? "sí" : "no"}
             </button>
-            <button type="button" onClick={() => setOpen(false)} className="rounded-md px-2 py-1 text-[11px] font-semibold text-white/90 hover:bg-white/10">Cerrar</button>
+            <button type="button" onClick={() => { stopLive(); setOpen(false); }} className="rounded-md px-2 py-1 text-[11px] font-semibold text-white/90 hover:bg-white/10">Cerrar</button>
           </header>
+
+          <div className="flex items-center gap-2 border-b border-slate-200 px-3 py-2">
+            <button type="button" onClick={toggleLive} className={live ? "btn-danger flex-1 py-1.5 text-xs" : "btn-primary flex-1 py-1.5 text-xs"}>
+              {live ? "Terminar conversación" : "Conversar con voz"}
+            </button>
+            {live && (
+              <span className="flex h-5 items-end gap-0.5" aria-hidden="true">
+                {[0, 1, 2, 3, 4].map((i) => <span key={i} className={`w-1 rounded-full bg-cyan2-400 ${listening ? "mf-bar" : "opacity-30"}`} style={{ height: 18, animationDelay: `${i * 0.12}s` }} />)}
+              </span>
+            )}
+          </div>
+          {live && <div className="px-3 pt-2 text-[11px] text-slate-500">{listening ? (interim ? `Te oigo: «${interim}»` : "Escuchando…") : typing ? "Pensando…" : "Hablando…"}</div>}
 
           <div className="min-h-[120px] flex-1 space-y-2 overflow-y-auto px-3 py-3" aria-live="polite">
             {msgs.map((m, i) => (
@@ -281,11 +384,23 @@ export default function Mascot() {
 
           <form className="flex gap-2 border-t border-slate-200 p-2" onSubmit={(e) => { e.preventDefault(); void ask(draft); }}>
             <input className="input py-1.5" placeholder="Escríbeme algo…" value={draft} onChange={(e) => setDraft(e.target.value)} autoFocus />
+            <button type="button" className={`btn-secondary px-3 py-1.5 text-xs ${listening && !live ? "ring-2 ring-cyan2-400" : ""}`} onClick={dictate} disabled={live} title="Dictar con el micrófono">Hablar</button>
             <button className="btn-primary px-3 py-1.5 text-xs" type="submit">Enviar</button>
           </form>
+          <details className="border-t border-slate-200 px-3 py-1.5 text-[11px] text-slate-500">
+            <summary className="cursor-pointer select-none">Ajustes de voz</summary>
+            <div className="mt-1.5 flex gap-2 pb-1">
+              <select className="input py-1 text-[11px]" value={cfg.voiceName} onChange={(e) => setMascot({ voiceName: e.target.value })}>
+                <option value="">Automática (la más natural)</option>
+                {voices.map((v) => <option key={v} value={v}>{v}</option>)}
+              </select>
+              <button type="button" className="btn-secondary px-2 py-1 text-[11px]" onClick={() => { const t = "Hola, así suena mi voz. ¿Te gusta?"; express("happy"); setTalking(true); void speakText(t, cfgRef.current.voiceName).then(() => setTalking(false)); }}>Probar</button>
+            </div>
+            {!voices.length && <p className="pb-1">Tu navegador no muestra voces en español. En Edge hay voces «Natural» muy humanas.</p>}
+          </details>
           <div className="flex justify-between border-t border-slate-200 px-3 py-1.5 text-[11px] text-slate-500">
             <button type="button" className="hover:text-slate-800" onClick={() => setMascot({ idle: !cfg.idle })}>Comentarios solos: {cfg.idle ? "sí" : "no"}</button>
-            <button type="button" className="hover:text-slate-800" onClick={() => { setOpen(false); setMascot({ hidden: true }); }}>Ocultar a Bit</button>
+            <button type="button" className="hover:text-slate-800" onClick={() => { stopLive(); setOpen(false); setMascot({ hidden: true }); }}>Ocultar a Bit</button>
           </div>
         </section>
       )}
@@ -310,6 +425,7 @@ export default function Mascot() {
         className={`fixed z-40 flex h-[54px] w-[54px] touch-none select-none items-center justify-center rounded-full border border-white/20 shadow-glow transition-transform hover:scale-105 active:scale-95 ${mood === "laugh" ? "mascot-laugh" : mood === "surprised" ? "mascot-hop" : mood === "wink" || mood === "smug" ? "mascot-wiggle" : "mascot-idle"}`}
         style={{ right: cfg.right, bottom: cfg.bottom, background: "radial-gradient(circle at 30% 25%, #2b72e6, #0e2b5e 75%)" }}
       >
+        {(listening || live) && <span className="mf-ring pointer-events-none absolute inset-0 rounded-full border-2 border-cyan2-400" />}
         <MascotFace mood={mood} talking={talking} blink={blink} look={look} size={46} />
       </button>
     </>

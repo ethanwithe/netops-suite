@@ -176,3 +176,14 @@ Dockerfile) y salida a Internet hacia el sitio de speedtest elegido.
 **Nota sobre Ostinato**: el endpoint solo orquesta "arrancar → esperar → capturar" — el comando exacto que arranca
 el tráfico depende 100% de cómo tengas armado tu script/CLI de Ostinato en esa máquina; no lo controla
 directamente porque la configuración de streams varía mucho de un caso a otro.
+
+## Mascota «Bit» con inteligencia artificial (opcional)
+
+Sin configurar nada, Bit responde con su cerebro local (palabras clave). Para que converse de forma
+inteligente, agrega en Railway (servicio del backend) las variables:
+
+- `ANTHROPIC_API_KEY`: tu clave de la API de Anthropic (solo como variable de entorno, nunca en el repo).
+- `MASCOT_MODEL` (opcional): modelo a usar; por defecto `claude-haiku-5-5` (rápido y barato).
+
+La conversación por voz usa el reconocimiento de voz del navegador (Chrome o Edge) y las voces del
+sistema; en Edge las voces «Natural» en español suenan mucho más humanas.

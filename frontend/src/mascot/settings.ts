@@ -6,9 +6,10 @@ export interface MascotSettings {
   idle: boolean;     // comentarios espontáneos
   right: number;     // posición (px desde el borde derecho)
   bottom: number;    // posición (px desde el borde inferior)
+  voiceName: string; // voz elegida ('' = la mejor disponible)
 }
 const KEY = "netops.mascot";
-const DEFAULTS: MascotSettings = { hidden: false, voice: false, idle: true, right: 16, bottom: 16 };
+const DEFAULTS: MascotSettings = { hidden: false, voice: false, idle: true, right: 16, bottom: 16, voiceName: "" };
 const listeners = new Set<() => void>();
 
 function load(): MascotSettings {

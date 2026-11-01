@@ -145,3 +145,41 @@ h1, h2, h3 { font-family: 'Sora', 'Inter', system-ui, sans-serif; letter-spacing
 /* Utilidades heredadas */
 .hide-mobile { @apply hidden lg:block; }
 .show-mobile { @apply block lg:hidden; }
+
+/* ============ Movimiento de la mascota ============ */
+@keyframes mf-wave { 0%,100% { transform: rotate(0) } 30% { transform: rotate(-150deg) } 50% { transform: rotate(-125deg) } 70% { transform: rotate(-150deg) } }
+@keyframes mf-clap { 0%,100% { transform: rotate(0) } 50% { transform: rotate(-35deg) } }
+@keyframes mf-clapR { 0%,100% { transform: rotate(0) } 50% { transform: rotate(35deg) } }
+@keyframes mf-stomp { 0%,100% { transform: rotate(0) } 25% { transform: rotate(8deg) } 75% { transform: rotate(-8deg) } }
+@keyframes mf-chin { 0%,100% { transform: rotate(0) } 20%,80% { transform: rotate(-140deg) } }
+@keyframes mf-tilt { 0%,100% { transform: rotate(0) } 25%,75% { transform: rotate(7deg) } }
+@keyframes mf-shake { 0%,100% { transform: translateX(0) } 20%,60% { transform: translateX(-2.5px) } 40%,80% { transform: translateX(2.5px) } }
+@keyframes mf-sway { 0%,100% { transform: rotate(-9deg) } 50% { transform: rotate(9deg) } }
+@keyframes mf-lean { 0%,100% { transform: rotate(-4deg) translateY(0) } 50% { transform: rotate(-4deg) translateY(-1.5px) } }
+@keyframes mf-jig { 0%,100% { transform: translateY(0) rotate(0) } 25% { transform: translateY(-3px) rotate(-4deg) } 75% { transform: translateY(-3px) rotate(4deg) } }
+@keyframes mf-nod { 0%,100% { transform: translateY(0) } 50% { transform: translateY(1.8px) } }
+@keyframes mf-droop { 0%,100% { transform: rotate(0) translateY(1px) } 50% { transform: rotate(-3deg) translateY(2px) } }
+@keyframes mf-beat { 0%,100% { transform: scale(1) } 50% { transform: scale(1.18) } }
+@keyframes mf-spin { to { transform: rotate(360deg) } }
+@keyframes mf-twinkle { 0%,100% { opacity: 1 } 50% { opacity: .35 } }
+@keyframes mf-tear { 0% { transform: translateY(0); opacity: 0 } 30% { opacity: 1 } 100% { transform: translateY(8px); opacity: 0 } }
+@keyframes mf-ring { 0% { transform: scale(1); opacity: .6 } 100% { transform: scale(1.6); opacity: 0 } }
+@keyframes mf-bar { 0%,100% { transform: scaleY(.3) } 50% { transform: scaleY(1) } }
+.mf-wave { animation: mf-wave 1.1s ease-in-out 2; }
+.mf-clap { animation: mf-clap .3s ease-in-out infinite; }
+.mf-clapR { animation: mf-clapR .3s ease-in-out infinite; }
+.mf-stomp { animation: mf-stomp .25s linear infinite; }
+.mf-chin { animation: mf-chin 2.4s ease-in-out infinite; }
+.mf-tilt { animation: mf-tilt 2.4s ease-in-out infinite; }
+.mf-shake { animation: mf-shake .22s linear infinite; }
+.mf-sway { animation: mf-sway 1.1s ease-in-out infinite; }
+.mf-lean { animation: mf-lean 1.4s ease-in-out infinite; }
+.mf-jig { animation: mf-jig .35s ease-in-out infinite; }
+.mf-nod { animation: mf-nod .42s ease-in-out infinite; }
+.mf-droop { animation: mf-droop 2.4s ease-in-out infinite; }
+.mf-beat { animation: mf-beat .6s ease-in-out infinite; }
+.mf-spin { animation: mf-spin 1.2s linear infinite; }
+.mf-twinkle { animation: mf-twinkle 1s ease-in-out infinite; }
+.mf-tear { animation: mf-tear 1.8s ease-in infinite; }
+.mf-ring { animation: mf-ring 1.4s ease-out infinite; }
+.mf-bar { transform-origin: center bottom; animation: mf-bar .9s ease-in-out infinite; }
