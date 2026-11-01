@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import WindowEditor from "./WindowEditor";
 import { createWindow, usePhotoWindows, windowRoute } from "../store/photoWindows";
@@ -8,6 +8,8 @@ import { checklistRoute, createChecklistType, useChecklistTypes } from "../store
 import { usePersistentState } from "../store/persistentState";
 import ThemeSwitcher from "./ThemeSwitcher";
 import Mascot from "../mascot/Mascot";
+import WaterDrops, { Drop } from "./WaterDrops";
+import FloatingDock from "./FloatingDock";
 
 const NAV = [
   { to: "/pruebas", label: "Pruebas", desc: "SSH / Serial + PDF" },
@@ -72,6 +74,7 @@ export default function Layout() {
   // Menú: en celular es un panel que se oculta al elegir una opción;
   // en pantalla grande se puede ocultar/mostrar con el botón ☰.
   const [open, setOpen] = useState(false);
+  const mainRef = useRef<HTMLElement>(null);
   const [desktopOpen, setDesktopOpen] = usePersistentState("layout.sidebar", true);
 
   // Al cambiar de pantalla se cierra el panel (modo celular).
@@ -118,11 +121,12 @@ export default function Layout() {
   );
 
   return (
-    <div className="flex h-[100dvh] overflow-hidden">
+    <div className="relative flex h-[100dvh] overflow-hidden">
+      <WaterDrops />
       {open && <div className="fixed inset-0 z-30 bg-black/50 backdrop-blur-sm lg:hidden" onClick={() => setOpen(false)} aria-hidden="true" />}
 
       <aside
-        className={`side fixed inset-y-0 left-0 z-40 flex w-72 max-w-[85vw] flex-col transition-transform duration-200 lg:static lg:z-auto lg:w-64 lg:max-w-none lg:shrink-0
+        className={`side z-40 fixed inset-y-0 left-0 z-40 flex w-72 max-w-[85vw] flex-col transition-transform duration-200 lg:relative lg:z-auto lg:w-64 lg:max-w-none lg:shrink-0
           ${open ? "translate-x-0" : "-translate-x-full"} ${desktopOpen ? "lg:translate-x-0" : "lg:hidden"}`}
       >
         <div className="flex items-center gap-3 border-b border-white/10 px-4 py-4">
@@ -160,14 +164,16 @@ export default function Layout() {
             {addBtn("+ Nuevo año", newYear)}
           </Group>
         </nav>
-        <div className="flex items-center justify-between border-t border-white/10 px-5 py-3 text-[11px] text-slate-400">
+        <div className="side-drop" style={{ right: -14, bottom: 34, ["--dur" as any]: "11s" }}><Drop size={74} kind="bead" /></div>
+        <div className="side-drop" style={{ left: 18, bottom: 54, ["--dur" as any]: "9s", ["--delay" as any]: "-3s" }}><Drop size={30} kind="tear" /></div>
+        <div className="relative flex items-center justify-between border-t border-white/10 px-5 py-3 text-[11px] text-slate-400">
           <span>NetOps Suite v1.0</span>
           <span className="h-1.5 w-1.5 rounded-full bg-cyan2-400 shadow-[0_0_8px_#38d0f7]" />
         </div>
       </aside>
 
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex shrink-0 items-center gap-3 border-b border-slate-200 bg-white px-3 py-2">
+      <div className="relative z-10 flex min-w-0 flex-1 flex-col">
+        <header className="glass flex shrink-0 items-center gap-3 px-3 py-2" style={{ borderWidth: "0 0 1px" }}>
           <button className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 transition-colors hover:border-cyan2-500 hover:bg-slate-50" onClick={toggle} aria-label="Mostrar u ocultar el menú">
             Menú
           </button>
@@ -176,12 +182,13 @@ export default function Layout() {
           <ThemeSwitcher />
         </header>
 
-        <main className="flex-1 overflow-y-auto overflow-x-hidden bg-slate-100">
-          <div key={pathname} className="view-enter mx-auto max-w-5xl p-3 sm:p-6 lg:p-8">
+        <main ref={mainRef} className="flex-1 overflow-y-auto overflow-x-hidden">
+          <div key={pathname} className="view-enter mx-auto max-w-5xl p-3 pb-24 sm:p-6 sm:pb-24 lg:p-8 lg:pb-24">
             <Outlet />
           </div>
         </main>
       </div>
+      <FloatingDock scroller={mainRef} />
       <Mascot />
       {creatingCk && (
         <NewChecklistModal

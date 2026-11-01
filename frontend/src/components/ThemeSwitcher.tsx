@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { THEME_OPTIONS, useTheme } from "../store/theme";
+import { THEME_OPTIONS, THEME_SWATCH, useTheme } from "../store/theme";
 import { setMascot, useMascotSettings } from "../mascot/settings";
 
 /** Selector de tema (claro / oscuro / océano / predeterminado) y acceso al asistente. */
@@ -36,7 +36,7 @@ export default function ThemeSwitcher() {
         Tema: {current.label}
       </button>
       {open && (
-        <div role="menu" className="absolute right-0 top-full z-50 mt-2 w-56 animate-pop overflow-hidden rounded-xl border border-slate-200 bg-white p-1 shadow-soft">
+        <div role="menu" className="absolute right-0 top-full z-50 mt-2 w-60 animate-pop overflow-hidden rounded-xl border border-slate-200 bg-white p-1 shadow-soft">
           {THEME_OPTIONS.map((o) => (
             <button
               key={o.id}
@@ -45,7 +45,8 @@ export default function ThemeSwitcher() {
               onClick={() => { setTheme(o.id); setOpen(false); }}
               className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition-colors hover:bg-slate-100 ${pref === o.id ? "font-semibold text-brand-700" : "text-slate-700"}`}
             >
-              <span>
+              <span className="mr-3 h-6 w-6 shrink-0 rounded-full border border-white/40 shadow-sm" style={{ background: THEME_SWATCH[o.id] }} />
+              <span className="flex-1">
                 <span className="block">{o.label}</span>
                 <span className="block text-[11px] font-normal text-slate-500">{o.hint}</span>
               </span>
