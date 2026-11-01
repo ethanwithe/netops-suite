@@ -4,7 +4,7 @@
 export type Mood = "neutral" | "happy" | "laugh" | "wink" | "surprised" | "sad" | "think" | "smug" | "sleepy" | "listening" | "love" | "angry" | "wow" | "dizzy";
 export type Action =
   | { kind: "go"; to: string }
-  | { kind: "theme"; id: "system" | "light" | "dark" | "ocean" }
+  | { kind: "theme"; id: "system" | "light" | "sky" | "dark" | "ocean" | "aurora" }
   | { kind: "voice"; on: boolean }
   | { kind: "hide" }
   | { kind: "idle"; on: boolean };
@@ -137,6 +137,8 @@ const INTENTS: Intent[] = [
   { keys: ["tema oscuro", "modo oscuro", "ponte oscuro", "oscuro"], reply: () => ({ text: "Luces fuera. Tema oscuro activado.", mood: "smug", action: { kind: "theme", id: "dark" } }) },
   { keys: ["tema claro", "modo claro", "claro"], reply: () => ({ text: "¡Hágase la luz! Tema claro.", mood: "happy", action: { kind: "theme", id: "light" } }) },
   { keys: ["oceano", "azul profundo", "tema azul"], reply: () => ({ text: "Sumergiéndonos: tema Océano.", mood: "wink", action: { kind: "theme", id: "ocean" } }) },
+  { keys: ["cielo", "tema cielo", "azul claro"], reply: () => ({ text: "Cielo despejado: tema Cielo.", mood: "happy", action: { kind: "theme", id: "sky" } }) },
+  { keys: ["aurora", "tema aurora", "morado", "violeta"], reply: () => ({ text: "Aurora activada. Brillo cósmico al máximo.", mood: "wow", action: { kind: "theme", id: "aurora" } }) },
   { keys: ["tema automatico", "tema sistema", "predeterminado", "tema del sistema"], reply: () => ({ text: "Listo: seguiré el tema de tu sistema.", mood: "neutral", action: { kind: "theme", id: "system" } }) },
   { keys: ["tema", "colores", "apariencia"], reply: (c) => ({ text: `Ahora usas «${c.themeLabel}». Dime: claro, oscuro, océano o predeterminado, o usa el selector «Tema» arriba.`, mood: "think" }) },
   { keys: ["activa voz", "habla", "con voz", "voz", "hablame"], reply: () => ({ text: "Voz activada. Ahora hablo de verdad (si tu navegador me deja).", mood: "happy", action: { kind: "voice", on: true } }) },

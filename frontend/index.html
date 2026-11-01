@@ -15,7 +15,7 @@
           var t = p === "system" ? (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light") : p;
           var d = document.documentElement;
           d.dataset.theme = t;
-          if (t !== "light") d.classList.add("dark");
+          if (t === "dark" || t === "ocean" || t === "aurora") d.classList.add("dark");
         } catch (e) {}
       })();
     </script>

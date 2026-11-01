@@ -155,7 +155,7 @@ export default function Mascot() {
   const firstTheme = useRef(true);
   useEffect(() => {
     if (firstTheme.current) { firstTheme.current = false; return; }
-    const m: Record<string, string> = { light: "¡Qué luminosidad! Mis ojos agradecen el modo claro… o no.", dark: "Modo oscuro: ahora sí parecemos hackers.", ocean: "Océano: me siento un pez robot.", system: "Seguiré el tema de tu sistema." };
+    const m: Record<string, string> = { light: "¡Qué luminosidad! Mis ojos agradecen el modo claro… o no.", dark: "Modo oscuro: ahora sí parecemos hackers.", ocean: "Océano: me siento un pez robot.", sky: "Cielo despejado, conexión estable.", aurora: "Aurora: ahora sí parece película de ciencia ficción.", system: "Seguiré el tema de tu sistema." };
     say(m[theme.pref], theme.pref === "dark" ? "smug" : "happy");
   }, [theme.pref, say]);
 
