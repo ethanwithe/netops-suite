@@ -11,7 +11,7 @@ from sqlalchemy import inspect, text
 
 from app.database import Base, engine, SessionLocal
 from app import db_seed
-from app.routers import services, vendors, templates, checklist, photos, tests, files, serial_ports, tools, logos, clients, mascot
+from app.routers import services, vendors, templates, checklist, photos, tests, files, serial_ports, tools, logos, clients, mascot, imageai
 
 app = FastAPI(title="NetOps Suite API", version="1.0.0")
 
@@ -30,6 +30,7 @@ app.include_router(checklist.router)
 app.include_router(photos.router)
 app.include_router(clients.router)
 app.include_router(mascot.router)
+app.include_router(imageai.router)
 app.include_router(logos.router)
 app.include_router(tests.router)
 app.include_router(files.router)

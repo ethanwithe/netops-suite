@@ -187,3 +187,10 @@ inteligente, agrega en Railway (servicio del backend) las variables:
 
 La conversación por voz usa el reconocimiento de voz del navegador (Chrome o Edge) y las voces del
 sistema; en Edge las voces «Natural» en español suenan mucho más humanas.
+
+## IA en el editor de imágenes (opcional)
+
+- `ANTHROPIC_API_KEY`: activa «Analizar y ajustar» (Claude mira la foto y decide brillo, sombras, nitidez,
+  recortes y zonas a difuminar; no inventa contenido). Modelo con `IMAGE_AI_MODEL` (por defecto `claude-sonnet-5-5`).
+- `OPENAI_API_KEY`: activa «Transformar con IA» (edición generativa de la imagen). Modelo con `IMAGE_EDIT_MODEL`
+  (por defecto `gpt-image-1`). Modifica el contenido de la foto: no usar en evidencias que no deban alterarse.
