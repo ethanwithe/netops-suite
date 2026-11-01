@@ -97,6 +97,7 @@ def _clean_template(data: dict) -> dict:
                 "nombre": str(it.get("nombre") or "")[:200],
                 "modo": "texto" if it.get("modo") == "texto" else "foto",
                 "cmd": str(it.get("cmd") or "")[:500],
+                **({"sat": bool(it["sat"])} if "sat" in it else {}),
             })
         out["sections"].append({
             "id": str(sec.get("id") or f"sec{si}")[:40],

@@ -9,6 +9,8 @@ export interface CkItem {
   modo: "texto" | "foto";
   /** Comando a ejecutar; puede llevar {WAN}, {NEXTHOP}, ... */
   cmd: string;
+  /** Solo se captura con la saturación activa (estadísticas de interfaz). */
+  sat?: boolean;
 }
 export interface CkSection {
   id: string;
