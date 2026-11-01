@@ -4,7 +4,7 @@ export const api = axios.create({ baseURL: "/api" });
 
 export function wsUrl(path: string): string {
   const proto = window.location.protocol === "https:" ? "wss" : "ws";
-  return ${proto}://${window.location.host}/api${path};
+  return `${proto}://${window.location.host}/api${path}`;
 }
 
 export type WsEvent =
