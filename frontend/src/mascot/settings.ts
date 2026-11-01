@@ -11,9 +11,10 @@ export interface MascotSettings {
   listen: boolean;   // conversación: micrófono siempre atento
   needName: boolean; // solo responder si dices «Bit»
   learn: boolean;    // aprender de ti
+  mute: boolean;     // voz de Bit apagada (independiente del micrófono)
 }
 const KEY = "netops.mascot";
-const DEFAULTS: MascotSettings = { hidden: false, voice: false, idle: true, right: 16, bottom: 16, voiceName: "", voiceStyle: "normal", listen: true, needName: false, learn: true };
+const DEFAULTS: MascotSettings = { hidden: false, voice: false, idle: true, right: 16, bottom: 16, voiceName: "", voiceStyle: "normal", listen: true, needName: false, learn: true, mute: false };
 const listeners = new Set<() => void>();
 
 function load(): MascotSettings {
