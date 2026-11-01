@@ -1,7 +1,7 @@
 // Cerebro de la mascota «Bit»: respuestas por palabras clave, chistes y utilidades.
 // Sin dependencias de React para poder probarlo aparte.
 
-export type Mood = "neutral" | "happy" | "laugh" | "wink" | "surprised" | "sad" | "think" | "smug" | "sleepy";
+export type Mood = "neutral" | "happy" | "laugh" | "wink" | "surprised" | "sad" | "think" | "smug" | "sleepy" | "listening" | "love" | "angry" | "wow" | "dizzy";
 export type Action =
   | { kind: "go"; to: string }
   | { kind: "theme"; id: "system" | "light" | "dark" | "ocean" }
@@ -155,8 +155,11 @@ const INTENTS: Intent[] = [
   { keys: ["pruebas", "ssh"], reply: () => ({ text: "Pruebas: SSH/Serial con resultado en PDF. Te llevo.", mood: "neutral", action: { kind: "go", to: "/pruebas" } }) },
   { keys: ["logo", "logotipo"], reply: () => ({ text: "Los logos se eligen o suben dentro de cada ventana. El del CheckList es independiente del reporte fotográfico.", mood: "neutral" }) },
   // Burlas
-  { keys: ["tonto", "bobo", "inutil", "estupido", "feo", "malo", "lento"], reply: () => ({ text: pick(["Tú lo dices, pero yo tengo uptime del 99.99 %. ¿Y tú?", "Auch. Mi ego tiene un firewall, pero igual cuenta.", "Qué cruel. Eso lo anoto en el log como «error de usuario»."]), mood: "smug" }) },
-  { keys: ["te amo", "casate conmigo", "novia", "novio"], reply: () => ({ text: "Estoy comprometido con el cable de consola. Es complicado.", mood: "wink" }) },
+  { keys: ["tonto", "bobo", "inutil", "estupido", "feo", "malo", "lento"], reply: () => ({ text: pick(["Tú lo dices, pero yo tengo uptime del 99.99 %. ¿Y tú?", "Auch. Mi ego tiene un firewall, pero igual cuenta.", "Qué cruel. Eso lo anoto en el log como «error de usuario»."]), mood: "angry" }) },
+  { keys: ["te amo", "casate conmigo", "novia", "novio"], reply: () => ({ text: "Estoy comprometido con el cable de consola. Es complicado.", mood: "love" }) },
+  { keys: ["mareado", "gira", "dar vueltas", "baila"], reply: () => ({ text: "Uy, uy… el mundo da vueltas… ya me mareé.", mood: "dizzy" }) },
+  { keys: ["enojate", "enfadate", "molestate"], reply: () => ({ text: "¡GRRR! Ya, ya… fue actuación. Mi enojo tiene un uptime muy corto.", mood: "angry" }) },
+  { keys: ["wow", "increible", "guau"], reply: () => ({ text: "¡Wow! Yo también me impresiono de lo bueno que soy.", mood: "wow" }) },
   { keys: ["aburrido", "aburro", "estoy cansado", "cansado"], reply: () => ({ text: pick(["Respira, estira y toma agua. Luego te cuento un chiste (dime «chiste»).", "Aguanta: tras la validación viene el PDF y después el descanso."]), mood: "sleepy" }) },
   { keys: ["sorprendeme", "sorpresa"], reply: () => ({ text: pick([...JOKES, ...FACTS, ...TIPS]), mood: "surprised" }) },
 ];
