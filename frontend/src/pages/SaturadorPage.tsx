@@ -5,7 +5,7 @@ export default function SaturadorPage() {
   return (
     <div className="space-y-5">
       <div>
-        <h2 className="text-xl sm:text-2xl font-bold text-slate-800">Saturador bidireccional</h2>
+        <h2 className="page-title">Saturador bidireccional</h2>
         <p className="text-sm text-slate-500">
           Sube y baja tráfico <b>al mismo tiempo</b> (como iperf) hacia una IP que conteste ping, sin servidor al otro lado.
           La página lo controla, pero el tráfico sale de <b>tu laptop</b> (la nube no puede saturar el enlace del cliente).
@@ -16,7 +16,7 @@ export default function SaturadorPage() {
         <h3 className="text-sm font-semibold text-slate-700">Instalación (una sola vez por laptop)</h3>
         <ol className="list-decimal space-y-1 pl-5 text-sm text-slate-600">
           <li>
-            <a className="font-medium text-brand-600 hover:underline" href="/api/tools/saturador.py" download>⬇ Descarga saturador.py</a>{" "}
+            <a className="font-medium text-brand-600 hover:underline" href="/api/tools/saturador.py" download>Descarga saturador.py</a>{" "}
             (necesita Python 3; no instala nada más).
           </li>
           <li>

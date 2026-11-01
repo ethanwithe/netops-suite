@@ -838,20 +838,20 @@ export default function ImageAnnotator({ imageUrl, onClose, onSaved }: Props) {
   const [showEnhance, setShowEnhance] = useState(false);
 
   const ib = (active = false, extra = "") =>
-    `inline-flex h-8 min-w-8 shrink-0 items-center justify-center rounded-md px-1.5 text-sm leading-none transition-colors disabled:opacity-40 ${
+    `inline-flex h-8 min-w-8 shrink-0 items-center justify-center rounded-md px-2.5 text-xs font-semibold leading-none transition-colors disabled:opacity-40 ${
       active ? "bg-brand-600 text-white" : "bg-slate-100 text-slate-700 hover:bg-slate-200"
     } ${extra}`;
 
   const TOOLS: [Tool, string, string][] = [
-    ["select", "👆", "Mover / seleccionar"],
-    ["path", "✏️", "Recorrido (línea punteada por puntos)"],
-    ["line", "📏", "Línea recta por puntos"],
-    ["arrow", "↗", "Flecha"],
-    ["rect", "▭", "Rectángulo"],
-    ["ellipse", "◯", "Círculo"],
-    ["text", "🔤", "Texto"],
-    ["blur", "▦", "Difuminar zona"],
-    ["crop", "✂️", "Recortar"],
+    ["select", "Mover", "Mover / seleccionar"],
+    ["path", "Trazo", "Recorrido (línea punteada por puntos)"],
+    ["line", "Línea", "Línea recta por puntos"],
+    ["arrow", "Flecha", "Flecha"],
+    ["rect", "Rect.", "Rectángulo"],
+    ["ellipse", "Círculo", "Círculo"],
+    ["text", "Texto", "Texto"],
+    ["blur", "Difuminar", "Difuminar zona"],
+    ["crop", "Recortar", "Recortar"],
   ];
 
   function pickTool(t: Tool) {
@@ -889,14 +889,14 @@ export default function ImageAnnotator({ imageUrl, onClose, onSaved }: Props) {
     <div className="fixed inset-0 z-50 flex flex-col bg-white" role="dialog" aria-label="Editar imagen">
       {/* Barra superior: cerrar, deshacer/rehacer y guardar */}
       <div className="flex shrink-0 items-center gap-1.5 border-b border-slate-200 px-2 py-1">
-        <button onClick={close} className={ib()} aria-label="Cerrar" title="Cerrar">✕</button>
+        <button onClick={close} className={ib()} aria-label="Cerrar" title="Cerrar">Cerrar</button>
         <span className="hidden truncate text-sm font-semibold text-slate-700 sm:block">Editar imagen</span>
         <div className="flex-1" />
         {saveError && <span role="alert" className="max-w-[40%] truncate text-xs text-red-600" title={saveError}>{saveError}</span>}
-        <button onClick={undo} disabled={!past.length} className={ib()} aria-label="Deshacer" title="Deshacer (Ctrl+Z)">↶</button>
-        <button onClick={redo} disabled={!future.length} className={ib()} aria-label="Rehacer" title="Rehacer (Ctrl+Y)">↷</button>
+        <button onClick={undo} disabled={!past.length} className={ib()} aria-label="Deshacer" title="Deshacer (Ctrl+Z)">Deshacer</button>
+        <button onClick={redo} disabled={!future.length} className={ib()} aria-label="Rehacer" title="Rehacer (Ctrl+Y)">Rehacer</button>
         <button onClick={save} disabled={saving || !doc} className="inline-flex h-8 shrink-0 items-center rounded-md bg-brand-600 px-3 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-50">
-          {saving ? "Guardando..." : "💾 Guardar"}
+          {saving ? "Guardando..." : "Guardar"}
         </button>
       </div>
 
@@ -910,9 +910,9 @@ export default function ImageAnnotator({ imageUrl, onClose, onSaved }: Props) {
         <span className="mx-1 h-5 w-px shrink-0 bg-slate-300" />
         <button type="button" className={ib()} onClick={() => rotate(false)} title="Girar a la izquierda" aria-label="Girar a la izquierda">⟲</button>
         <button type="button" className={ib()} onClick={() => rotate(true)} title="Girar a la derecha" aria-label="Girar a la derecha">⟳</button>
-        <button type="button" className={ib(showEnhance || !isNeutral(adj))} onClick={() => setShowEnhance(!showEnhance)} title="Mejorar imagen (brillo, contraste, nitidez)" aria-label="Mejorar imagen">🖼</button>
-        <button type="button" className={ib()} onClick={deleteSelected} disabled={selId == null} title="Borrar la marca seleccionada" aria-label="Borrar selección">🗑</button>
-        <button type="button" className={ib()} onClick={clearAll} disabled={!objects.length} title="Quitar todas las marcas" aria-label="Limpiar marcas">🧹</button>
+        <button type="button" className={ib(showEnhance || !isNeutral(adj))} onClick={() => setShowEnhance(!showEnhance)} title="Mejorar imagen (brillo, contraste, nitidez)" aria-label="Mejorar imagen">Mejorar</button>
+        <button type="button" className={ib()} onClick={deleteSelected} disabled={selId == null} title="Borrar la marca seleccionada" aria-label="Borrar selección">Borrar</button>
+        <button type="button" className={ib()} onClick={clearAll} disabled={!objects.length} title="Quitar todas las marcas" aria-label="Limpiar marcas">Limpiar</button>
       </div>
 
       {/* Opciones de la herramienta actual: una sola línea */}
@@ -982,8 +982,8 @@ export default function ImageAnnotator({ imageUrl, onClose, onSaved }: Props) {
 
           {showLineActions && (
             <>
-              <button className={ib(false, "px-2 text-xs")} onClick={finishLine} disabled={draftPts.length < 2}>✓ Terminar línea</button>
-              <button className={ib(false, "px-2 text-xs")} onClick={() => setDraftPts(draftPts.slice(0, -1))} disabled={!draftPts.length}>↶ Quitar punto</button>
+              <button className={ib(false, "px-2 text-xs")} onClick={finishLine} disabled={draftPts.length < 2}>Terminar línea</button>
+              <button className={ib(false, "px-2 text-xs")} onClick={() => setDraftPts(draftPts.slice(0, -1))} disabled={!draftPts.length}>Quitar punto</button>
             </>
           )}
 
@@ -993,7 +993,7 @@ export default function ImageAnnotator({ imageUrl, onClose, onSaved }: Props) {
                 {RATIOS.map(([l, v]) => <option key={l} value={v ?? ""}>{l}</option>)}
               </select>
               <button className={ib(false, "px-2 text-xs")} onClick={startCrop}>Todo</button>
-              <button className="inline-flex h-8 shrink-0 items-center rounded-md bg-brand-600 px-3 text-xs font-semibold text-white disabled:opacity-50" onClick={applyCrop} disabled={!cropRect}>✓ Aplicar recorte</button>
+              <button className="inline-flex h-8 shrink-0 items-center rounded-md bg-brand-600 px-3 text-xs font-semibold text-white disabled:opacity-50" onClick={applyCrop} disabled={!cropRect}>Aplicar recorte</button>
               <span className="shrink-0 text-[11px] text-slate-500">Arrastra las esquinas o los bordes; mueve el recuadro desde dentro</span>
             </>
           )}
@@ -1010,9 +1010,9 @@ export default function ImageAnnotator({ imageUrl, onClose, onSaved }: Props) {
             {slider("Nitidez", "sharpen", 0)}
           </div>
           <div className="mt-1.5 flex flex-wrap gap-1.5">
-            <button className={ib(adj.auto, "px-2 text-xs")} onClick={() => setAdj({ ...adj, auto: !adj.auto })} title="Corrige fotos oscuras o apagadas">✨ Mejora automática</button>
-            <button className={ib(false, "px-2 text-xs")} onClick={() => setAdj({ ...NEUTRAL, sharpen: 60, auto: true })} title="Mejora automática + nitidez">🔍 Recuperar calidad</button>
-            <button className={ib(false, "px-2 text-xs")} onClick={() => setAdj(NEUTRAL)} disabled={isNeutral(adj)}>↺ Quitar ajustes</button>
+            <button className={ib(adj.auto, "px-2 text-xs")} onClick={() => setAdj({ ...adj, auto: !adj.auto })} title="Corrige fotos oscuras o apagadas">Mejora automática</button>
+            <button className={ib(false, "px-2 text-xs")} onClick={() => setAdj({ ...NEUTRAL, sharpen: 60, auto: true })} title="Mejora automática + nitidez">Recuperar calidad</button>
+            <button className={ib(false, "px-2 text-xs")} onClick={() => setAdj(NEUTRAL)} disabled={isNeutral(adj)}>Quitar ajustes</button>
           </div>
         </div>
       )}

@@ -120,7 +120,7 @@ export default function WindowEditor({ initial, onSave, onCancel, onDelete }: Pr
                 }
               }}
             >
-              🗑 Borrar ventana
+              Borrar ventana
             </button>
           ) : (
             <span />

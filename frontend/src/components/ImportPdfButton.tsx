@@ -52,7 +52,7 @@ export default function ImportPdfButton({
         onClick={() => input.current?.click()}
         title="Carga un PDF generado antes con esta aplicación para seguir editándolo"
       >
-        {busy ? <><Spinner /> Abriendo PDF...</> : "📂 Abrir PDF para editar"}
+        {busy ? <><Spinner /> Abriendo PDF...</> : "Abrir PDF para editar"}
       </button>
       {error && <p role="alert" className="text-xs text-red-600">{error}</p>}
     </div>

@@ -10,7 +10,7 @@ export default function LiveLog({ lines }: { lines: string[] }) {
   return (
     <div
       ref={ref}
-      className="bg-slate-900 text-slate-200 rounded-lg p-3 font-mono text-xs h-56 overflow-y-auto whitespace-pre-wrap"
+      className="bg-[#0a1428] text-[#dbe4f5] rounded-lg p-3 font-mono text-xs h-56 overflow-y-auto whitespace-pre-wrap"
     >
       {lines.length === 0 ? (
         <span className="text-slate-500">Esperando ejecución...</span>

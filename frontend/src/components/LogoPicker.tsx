@@ -187,7 +187,7 @@ export default function LogoPicker({ posicion, label, value, onChange }: Props) 
             —
           </span>
           <span className="mt-1 block truncate text-[11px] font-medium text-slate-600">
-            {noneSelected ? "✓ " : ""}Sin logo
+            {noneSelected ? "· " : ""}Sin logo
           </span>
         </button>
 
@@ -210,7 +210,7 @@ export default function LogoPicker({ posicion, label, value, onChange }: Props) 
                   />
                 </span>
                 <span className="mt-1 block truncate text-[11px] font-medium text-slate-600">
-                  {selected ? "✓ " : ""}
+                  {selected ? "· " : ""}
                   {l.nombre}
                 </span>
               </button>
@@ -222,7 +222,7 @@ export default function LogoPicker({ posicion, label, value, onChange }: Props) 
                 onClick={() => remove(l)}
                 className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full border border-slate-200 bg-white text-[10px] text-slate-400 shadow-sm hover:border-red-200 hover:bg-red-50 hover:text-red-600"
               >
-                ✕
+                ×
               </button>
             </div>
           );
@@ -239,7 +239,7 @@ export default function LogoPicker({ posicion, label, value, onChange }: Props) 
                 />
               </span>
               <span className="mt-1 block truncate text-[11px] font-medium text-slate-600">
-                ✓ Solo esta vez
+                Solo esta vez
               </span>
             </div>
 
@@ -250,7 +250,7 @@ export default function LogoPicker({ posicion, label, value, onChange }: Props) 
               onClick={() => onChange(NO_LOGO)}
               className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full border border-slate-200 bg-white text-[10px] text-slate-400 shadow-sm hover:border-red-200 hover:bg-red-50 hover:text-red-600"
             >
-              ✕
+              ×
             </button>
           </div>
         )}
@@ -305,7 +305,7 @@ export default function LogoPicker({ posicion, label, value, onChange }: Props) 
             disabled={busy}
             onClick={saveAndUse}
           >
-            {busy ? "Guardando..." : "💾 Guardar logo"}
+            {busy ? "Guardando..." : "Guardar logo"}
           </button>
 
           <button

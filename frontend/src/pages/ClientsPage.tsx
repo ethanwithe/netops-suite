@@ -47,7 +47,7 @@ export default function ClientsPage() {
   return (
     <div className="space-y-5">
       <div>
-        <h2 className="text-xl sm:text-2xl font-bold text-slate-800">{y ? `Clientes ${y}` : "Datos de clientes"}</h2>
+        <h2 className="page-title">{y ? `Clientes ${y}` : "Datos de clientes"}</h2>
         <p className="text-sm text-slate-500">
           Cada cliente se guarda por <b>SOT</b>, nombre y fecha, y queda en el año y el mes de la <b>fecha de sus datos</b> (no la de creación).
           Lo que se agregue de esa SOT en cualquier ventana (IPs, CID, reportes generados…) se suma aquí solo.
@@ -56,7 +56,7 @@ export default function ClientsPage() {
 
       <div className="card flex flex-wrap items-center gap-2">
         <input className="input min-w-[200px] flex-1" placeholder="Buscar por SOT, nombre, CID o proyecto..." value={q} onChange={(e) => setQ(e.target.value)} />
-        <button className="btn-primary text-sm" onClick={() => setEditing("new")}>➕ Agregar cliente</button>
+        <button className="btn-primary text-sm" onClick={() => setEditing("new")}>Agregar cliente</button>
       </div>
 
       {y && (
@@ -104,7 +104,7 @@ function ClientCard({ c, onEdit, showMonth }: { c: ClientRecord; onEdit: () => v
         <span className="font-semibold text-slate-800">SOT {c.sot}</span>
         <span className="flex-1 min-w-[160px] text-slate-700">{c.nombre || <i className="text-slate-400">(sin nombre)</i>}</span>
         <span className="text-xs text-slate-500">{c.fecha}{showMonth && m ? ` · ${MESES[m - 1]}` : ""}</span>
-        <span className="text-xs">{open ? "▾" : "▸"}</span>
+        <span className="text-xs">{open ? "Ocultar" : "Ver"}</span>
       </button>
       {open && (
         <div className="space-y-2 border-t border-slate-100 pt-2 text-sm">
@@ -134,7 +134,7 @@ function ClientCard({ c, onEdit, showMonth }: { c: ClientRecord; onEdit: () => v
               </ul>
             </div>
           )}
-          <button className="btn-secondary text-xs" onClick={onEdit}>✏️ Editar</button>
+          <button className="btn-secondary text-xs" onClick={onEdit}>Editar</button>
         </div>
       )}
     </div>
@@ -196,19 +196,19 @@ function ClientEditor({ initial, defaultDate, onClose, onSaved }: {
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <p className="text-xs font-medium text-slate-500">Datos asociados (IPs, interfaces…)</p>
-            <button className="btn-secondary text-xs" onClick={() => setDatos([...datos, ["", ""]])}>➕ Dato</button>
+            <button className="btn-secondary text-xs" onClick={() => setDatos([...datos, ["", ""]])}>+ Dato</button>
           </div>
           {datos.map(([k, v], i) => (
             <div key={i} className="flex gap-2">
               <input className="input w-36 font-mono text-xs" placeholder="Nombre (IP WAN)" value={k} onChange={(e) => setDatos(datos.map((d, j) => (j === i ? [e.target.value, d[1]] : d)))} />
               <input className="input flex-1" placeholder="Valor" value={v} onChange={(e) => setDatos(datos.map((d, j) => (j === i ? [d[0], e.target.value] : d)))} />
-              <button className="btn-secondary text-xs" onClick={() => setDatos(datos.filter((_, j) => j !== i))}>🗑</button>
+              <button className="btn-secondary text-xs" onClick={() => setDatos(datos.filter((_, j) => j !== i))}>Quitar</button>
             </div>
           ))}
         </div>
         {error && <p className="text-sm text-red-600">{error}</p>}
         <div className="flex flex-wrap items-center justify-between gap-2">
-          {initial ? <button className="text-sm text-red-500 hover:underline" onClick={remove} disabled={busy}>🗑 Borrar cliente</button> : <span />}
+          {initial ? <button className="text-sm text-red-500 hover:underline" onClick={remove} disabled={busy}>Borrar cliente</button> : <span />}
           <div className="flex gap-2">
             <button className="btn-secondary" onClick={onClose} disabled={busy}>Cancelar</button>
             <button className="btn-primary" onClick={save} disabled={busy}>{busy ? "Guardando..." : "Guardar"}</button>

@@ -59,7 +59,7 @@ export default function PruebasPage() {
     }, (ev) => {
       if (ev.type === "log") setLogs((l) => [...l, ev.message]);
       else if (ev.type === "done") { setResult(ev.result); setRunning(false); }
-      else if (ev.type === "error") { setLogs((l) => [...l, "✖ ERROR: " + ev.message]); setRunning(false); }
+      else if (ev.type === "error") { setLogs((l) => [...l, "ERROR: " + ev.message]); setRunning(false); }
     });
   }
 
@@ -95,7 +95,7 @@ export default function PruebasPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-xl sm:text-2xl font-bold text-slate-800">Pruebas automáticas</h2>
+        <h2 className="page-title">Pruebas automáticas</h2>
         <p className="text-slate-500 text-sm">Conecta al equipo, ejecuta las pruebas de la marca elegida, y arma el PDF de evidencia.</p>
       </div>
 
