@@ -73,7 +73,7 @@ export default function Mascot() {
   const speak = useCallback((text: string, force = false): Promise<void> => {
     setTalking(true);
     window.clearTimeout(talkT.current);
-    if (!(cfgRef.current.voice || force)) {
+    if (cfgRef.current.mute || !(cfgRef.current.voice || force)) {
       talkT.current = window.setTimeout(() => setTalking(false), Math.min(5000, 600 + text.length * 38));
       return Promise.resolve();
     }
@@ -389,6 +389,11 @@ export default function Mascot() {
     say(cfg.listen ? "Micrófono apagado. Ya no te escucho." : "Te escucho. Háblame cuando quieras.", cfg.listen ? "sleepy" : "listening");
   };
 
+  const toggleVoice = () => {
+    if (!cfg.mute) { stopSpeaking(); setTalking(false); }
+    setMascot({ mute: !cfg.mute });
+  };
+
   const micLabel = !cfg.listen ? "Conversación apagada" : micState === "on" ? (busyRef.current ? "Pensando…" : "Escuchando") : micState === "denied" ? "Sin permiso de micrófono" : micState === "unsupported" ? "Este navegador no oye (usa Chrome o Edge)" : "Conectando micrófono…";
 
   const effMood: Mood = mood === "neutral" && cfg.listen && micState === "on" && !talking && !busyRef.current ? "neutral" : mood;
@@ -422,7 +427,10 @@ export default function Mascot() {
 
           <div className="flex items-center gap-2 border-b border-slate-200 px-3 py-2">
             <button type="button" onClick={toggleMic} className={cfg.listen && micState === "on" ? "btn-primary flex-1 py-1.5 text-xs" : "btn-secondary flex-1 py-1.5 text-xs"}>
-              Conversación por voz: {cfg.listen ? "activada" : "desactivada"}
+              Micrófono: {cfg.listen ? "activado" : "apagado"}
+            </button>
+            <button type="button" onClick={toggleVoice} className={!cfg.mute ? "btn-primary flex-1 py-1.5 text-xs" : "btn-secondary flex-1 py-1.5 text-xs"}>
+              Voz de Bit: {cfg.mute ? "apagada" : "activada"}
             </button>
             {cfg.listen && micState === "on" && (
               <span className="flex h-5 items-end gap-0.5" aria-hidden="true">
@@ -537,6 +545,18 @@ export default function Mascot() {
         <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="#fff" strokeWidth="2.4" strokeLinecap="round" aria-hidden="true">
           <rect x="9" y="3" width="6" height="11" rx="3" fill="#fff" stroke="none" /><path d="M5 11a7 7 0 0014 0M12 18v3" />
           {!cfg.listen && <path d="M4 4l16 16" stroke="#fff" />}
+        </svg>
+      </button>
+
+      {/* Interruptor de la voz de Bit (independiente del micrófono) */}
+      <button
+        type="button" onClick={toggleVoice} title={`Voz de Bit: ${cfg.mute ? "apagada" : "activada"} · clic para ${cfg.mute ? "encender" : "apagar"}`} aria-label={`Voz de Bit: ${cfg.mute ? "apagada" : "activada"}`}
+        className="fixed z-40 flex h-[22px] w-[22px] items-center justify-center rounded-full border-2 border-white shadow-md transition-transform hover:scale-110"
+        style={{ right: cfg.right + 40, bottom: cfg.bottom + 38, background: cfg.mute ? "#94a3b8" : "#3b82f6" }}
+      >
+        <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="#fff" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M4 9v6h4l5 4V5L8 9H4z" fill="#fff" />
+          {cfg.mute ? <path d="M16 9l5 6M21 9l-5 6" /> : <path d="M16 9a4 4 0 010 6M18.5 6.5a8 8 0 010 11" />}
         </svg>
       </button>
     </div>
