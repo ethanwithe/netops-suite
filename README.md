@@ -184,6 +184,7 @@ inteligente, agrega en Railway (servicio del backend) las variables:
 
 - `ANTHROPIC_API_KEY`: tu clave de la API de Anthropic (solo como variable de entorno, nunca en el repo).
 - `MASCOT_MODEL` (opcional): modelo a usar; por defecto `claude-sonnet-5-5`.
+- **IA gratis (alternativa):** `GEMINI_API_KEY` (aistudio.google.com) o `GROQ_API_KEY` (console.groq.com). Se usan si no hay `ANTHROPIC_API_KEY`, tanto para Bit como para «Mejorar con IA» del editor. Modelos con `GEMINI_MODEL`, `GROQ_MODEL`, `GROQ_VISION_MODEL`.
 - `MASCOT_WEB` (opcional): `0` desactiva la búsqueda web de Bit.
 - `OPENAI_API_KEY` también activa las **voces naturales** de Bit (modelo con `TTS_MODEL`). Sin ella usa las voces del navegador.
 - El micrófono de Bit queda siempre escuchando (se activa/desactiva desde Bit); la memoria de gustos se guarda en cada navegador.

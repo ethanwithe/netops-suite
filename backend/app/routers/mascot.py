@@ -17,6 +17,8 @@ from typing import List, Optional
 from fastapi import APIRouter, HTTPException, Response
 from pydantic import BaseModel, Field
 
+from . import llm
+
 router = APIRouter(prefix="/api/mascot", tags=["mascot"])
 
 MODEL = os.getenv("MASCOT_MODEL", "claude-sonnet-5-5").strip() or "claude-sonnet-5-5"
@@ -76,13 +78,13 @@ def _key() -> str:
 
 @router.get("/status")
 def status():
-    return {"ai": bool(_key()), "model": MODEL if _key() else None, "tts": bool(_openai_key()), "voices": TTS_VOICES if _openai_key() else []}
+    return {"ai": bool(_key()) or bool(llm.free_provider()), "model": MODEL if _key() else None, "tts": bool(_openai_key()), "voices": TTS_VOICES if _openai_key() else []}
 
 
 @router.post("/chat")
 def chat(body: ChatIn):
     key = _key()
-    if not key:
+    if not key and not llm.free_provider():
         raise HTTPException(503, "IA no configurada")
     now = time.time()
     while _recent and now - _recent[0] > 60:
@@ -112,37 +114,39 @@ def chat(body: ChatIn):
         + ("\nDatos recordados:\n- " + "\n- ".join(mem) if mem else "\nAún no recuerdas nada más de ella.")
         + (f"\nHábitos observados: {body.habits}" if body.habits else "")
     )
-    payload = {"model": MODEL, "max_tokens": 700, "system": SYSTEM + ctx, "messages": fused}
-    if WEB:
-        payload["tools"] = [{"type": "web_search_20250305", "name": "web_search", "max_uses": 3}]
-    req = urllib.request.Request(
-        "https://api.anthropic.com/v1/messages",
-        data=json.dumps(payload).encode(),
-        headers={"content-type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01"},
-        method="POST",
-    )
-    def _call(pl):
-        rq = urllib.request.Request(
-            "https://api.anthropic.com/v1/messages", data=json.dumps(pl).encode(),
-            headers={"content-type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01"}, method="POST")
-        with urllib.request.urlopen(rq, timeout=60) as r:
-            return json.loads(r.read())
+    if key:
+        payload = {"model": MODEL, "max_tokens": 700, "system": SYSTEM + ctx, "messages": fused}
+        if WEB:
+            payload["tools"] = [{"type": "web_search_20250305", "name": "web_search", "max_uses": 3}]
 
-    try:
+        def _call(pl):
+            rq = urllib.request.Request(
+                "https://api.anthropic.com/v1/messages", data=json.dumps(pl).encode(),
+                headers={"content-type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01"}, method="POST")
+            with urllib.request.urlopen(rq, timeout=60) as r:
+                return json.loads(r.read())
+
         try:
-            data = _call(payload)
-        except urllib.error.HTTPError as e:
-            if e.code in (400, 403) and "tools" in payload:  # búsqueda web no habilitada en la cuenta: se reintenta sin ella
-                payload.pop("tools")
+            try:
                 data = _call(payload)
-            else:
-                raise
-    except urllib.error.HTTPError as e:
-        raise HTTPException(502, f"La IA respondió {e.code}")
-    except Exception:
-        raise HTTPException(502, "No se pudo contactar a la IA")
-
-    text = "".join(b.get("text", "") for b in data.get("content", []) if b.get("type") == "text").strip()
+            except urllib.error.HTTPError as e:
+                if e.code in (400, 403) and "tools" in payload:  # búsqueda web no habilitada en la cuenta: se reintenta sin ella
+                    payload.pop("tools")
+                    data = _call(payload)
+                else:
+                    raise
+        except urllib.error.HTTPError as e:
+            raise HTTPException(502, f"La IA respondió {e.code}")
+        except Exception:
+            raise HTTPException(502, "No se pudo contactar a la IA")
+        text = "".join(b.get("text", "") for b in data.get("content", []) if b.get("type") == "text").strip()
+    else:
+        try:
+            text = llm.complete(SYSTEM + ctx, fused, 700).strip()
+        except urllib.error.HTTPError as e:
+            raise HTTPException(502, f"La IA respondió {e.code}")
+        except Exception:
+            raise HTTPException(502, "No se pudo contactar a la IA")
     mood = "neutral"
     m = re.search(r"\[mood:\s*(\w+)\s*\]", text)
     if m and m.group(1) in MOODS:
