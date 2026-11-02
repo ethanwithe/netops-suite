@@ -21,6 +21,9 @@ export default function Mascot() {
   const navigate = useNavigate();
   const theme = useTheme();
   const overlay = useOverlayOpen();
+  // En pantallas pequeñas la barra de pestañas inferior ocupa el borde: Bit se sube sobre ella.
+  const [lift, setLift] = useState(() => (window.innerWidth < 1024 ? 78 : 0));
+  useEffect(() => { const f = () => setLift(window.innerWidth < 1024 ? 78 : 0); window.addEventListener("resize", f); return () => window.removeEventListener("resize", f); }, []);
 
   const [open, setOpen] = useState(false);
   const [mood, setMood] = useState<Mood>("neutral");
@@ -401,7 +404,7 @@ export default function Mascot() {
 
   const panelW = Math.min(350, vp.w - 16);
   const panelRight = Math.max(8, Math.min(cfg.right, vp.w - panelW - 8));
-  const panelBottom = cfg.bottom + 62;
+  const panelBottom = cfg.bottom + lift + 62;
   const panelMax = Math.max(240, Math.min(vp.h * 0.7, vp.h - panelBottom - 12));
 
   if (cfg.hidden) return null;
@@ -516,7 +519,7 @@ export default function Mascot() {
           role="status" data-persist
           onClick={() => setBubble(null)}
           className="fixed z-40 max-w-[min(280px,calc(100vw-90px))] animate-pop cursor-pointer rounded-2xl rounded-br-sm border border-slate-200 bg-white px-3 py-2 text-[12.5px] leading-snug text-slate-700 shadow-soft"
-          style={{ right: cfg.right + 4, bottom: cfg.bottom + 62 }}
+          style={{ right: cfg.right + 4, bottom: cfg.bottom + lift + 62 }}
         >
           {(interim || bubble?.heard) && <div className="mb-1 text-[11px] italic text-slate-500">«{interim || bubble?.heard}»</div>}
           {!interim && bubble?.text}
@@ -530,7 +533,7 @@ export default function Mascot() {
         title="Bit · toca para chatear, arrastra para moverme"
         onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={() => { drag.current = null; }}
         className={`fixed z-40 flex h-[54px] w-[54px] touch-none select-none items-center justify-center rounded-full border border-white/20 shadow-glow transition-transform hover:scale-105 active:scale-95 ${faceMood === "laugh" ? "mascot-laugh" : faceMood === "surprised" ? "mascot-hop" : faceMood === "wink" || faceMood === "smug" ? "mascot-wiggle" : "mascot-idle"}`}
-        style={{ right: cfg.right, bottom: cfg.bottom, background: "radial-gradient(circle at 30% 25%, #2b72e6, #0e2b5e 75%)" }}
+        style={{ right: cfg.right, bottom: cfg.bottom + lift, background: "radial-gradient(circle at 30% 25%, #2b72e6, #0e2b5e 75%)" }}
       >
         {cfg.listen && micState === "on" && <span className="mf-ring pointer-events-none absolute inset-0 rounded-full border-2 border-emerald-400" />}
         <MascotFace mood={faceMood} talking={talking} blink={blink} look={look} size={46} />
@@ -540,7 +543,7 @@ export default function Mascot() {
       <button
         type="button" onClick={toggleMic} title={`${micLabel} · clic para ${cfg.listen ? "apagar" : "encender"}`} aria-label={`Micrófono: ${micLabel}`}
         className="fixed z-40 flex h-[22px] w-[22px] items-center justify-center rounded-full border-2 border-white shadow-md transition-transform hover:scale-110"
-        style={{ right: cfg.right - 4, bottom: cfg.bottom + 38, background: !cfg.listen ? "#94a3b8" : micState === "on" ? "#22c55e" : micState === "denied" ? "#ef4444" : "#f59e0b" }}
+        style={{ right: cfg.right - 4, bottom: cfg.bottom + lift + 38, background: !cfg.listen ? "#94a3b8" : micState === "on" ? "#22c55e" : micState === "denied" ? "#ef4444" : "#f59e0b" }}
       >
         <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="#fff" strokeWidth="2.4" strokeLinecap="round" aria-hidden="true">
           <rect x="9" y="3" width="6" height="11" rx="3" fill="#fff" stroke="none" /><path d="M5 11a7 7 0 0014 0M12 18v3" />
@@ -552,7 +555,7 @@ export default function Mascot() {
       <button
         type="button" onClick={toggleVoice} title={`Voz de Bit: ${cfg.mute ? "apagada" : "activada"} · clic para ${cfg.mute ? "encender" : "apagar"}`} aria-label={`Voz de Bit: ${cfg.mute ? "apagada" : "activada"}`}
         className="fixed z-40 flex h-[22px] w-[22px] items-center justify-center rounded-full border-2 border-white shadow-md transition-transform hover:scale-110"
-        style={{ right: cfg.right + 40, bottom: cfg.bottom + 38, background: cfg.mute ? "#94a3b8" : "#3b82f6" }}
+        style={{ right: cfg.right + 40, bottom: cfg.bottom + lift + 38, background: cfg.mute ? "#94a3b8" : "#3b82f6" }}
       >
         <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="#fff" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <path d="M4 9v6h4l5 4V5L8 9H4z" fill="#fff" />
