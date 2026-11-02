@@ -198,3 +198,6 @@ sistema; en Edge las voces «Natural» en español suenan mucho más humanas.
   recortes y zonas a difuminar; no inventa contenido). Modelo con `IMAGE_AI_MODEL` (por defecto `claude-sonnet-5-5`).
 - `OPENAI_API_KEY`: activa «Transformar con IA» (edición generativa de la imagen). Modelo con `IMAGE_EDIT_MODEL`
   (por defecto `gpt-image-1`). Modifica el contenido de la foto: no usar en evidencias que no deban alterarse.
+
+## Personalización visual
+Menú «Tema» → «Personalizar fondo y colores»: fondo 3D (burbujas, esferas, olas, cristales, estrellas), gotas, color del fondo/gotas/botones, intensidad y efecto «cristal líquido» al pasar el cursor. Se guarda en cada navegador.

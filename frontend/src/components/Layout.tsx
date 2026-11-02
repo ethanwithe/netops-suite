@@ -8,7 +8,9 @@ import { checklistRoute, createChecklistType, useChecklistTypes } from "../store
 import { usePersistentState } from "../store/persistentState";
 import ThemeSwitcher from "./ThemeSwitcher";
 import Mascot from "../mascot/Mascot";
-import WaterDrops, { Drop } from "./WaterDrops";
+import { Drop } from "./WaterDrops";
+import Backdrop from "./Backdrop";
+import { initLiquid } from "../liquid";
 
 const NAV = [
   { to: "/pruebas", label: "Pruebas", desc: "SSH / Serial + PDF" },
@@ -76,6 +78,8 @@ export default function Layout() {
   const mainRef = useRef<HTMLElement>(null);
   const [desktopOpen, setDesktopOpen] = usePersistentState("layout.sidebar", true);
 
+  useEffect(() => initLiquid(), []);
+
   // Al cambiar de pantalla se cierra el panel (modo celular).
   useEffect(() => setOpen(false), [pathname]);
 
@@ -121,11 +125,11 @@ export default function Layout() {
 
   return (
     <div className="relative flex h-[100dvh] overflow-hidden">
-      <WaterDrops />
+      <Backdrop />
       {open && <div className="fixed inset-0 z-30 bg-black/50 backdrop-blur-sm lg:hidden" onClick={() => setOpen(false)} aria-hidden="true" />}
 
       <aside
-        className={`side z-40 fixed inset-y-0 left-0 z-40 flex w-72 max-w-[85vw] flex-col transition-transform duration-200 lg:relative lg:z-auto lg:w-64 lg:max-w-none lg:shrink-0
+        className={`side z-40 fixed inset-y-0 left-0 z-40 flex w-72 max-w-[85vw] flex-col transition-transform duration-200 lg:relative lg:z-auto lg:w-[clamp(15rem,17vw,20rem)] lg:max-w-none lg:shrink-0
           ${open ? "translate-x-0" : "-translate-x-full"} ${desktopOpen ? "lg:translate-x-0" : "lg:hidden"}`}
       >
         <div className="flex items-center gap-3 border-b border-white/10 px-4 py-4">
@@ -172,8 +176,8 @@ export default function Layout() {
       </aside>
 
       <div className="relative flex min-w-0 flex-1 flex-col">
-        <header className="glass relative z-20 flex shrink-0 items-center gap-3 px-3 py-2" style={{ borderWidth: "0 0 1px" }}>
-          <button className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 transition-colors hover:border-cyan2-500 hover:bg-slate-50" onClick={toggle} aria-label="Mostrar u ocultar el menú">
+        <header className="glass relative z-20 flex shrink-0 items-center gap-3 px-3 py-2" style={{ borderWidth: "0 0 1px", paddingTop: "max(.5rem, env(safe-area-inset-top))" }}>
+          <button className="lg rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 transition-colors hover:border-cyan2-500 hover:bg-slate-50" onClick={toggle} aria-label="Mostrar u ocultar el menú">
             Menú
           </button>
           <span className="truncate font-display text-sm font-semibold text-slate-800">{titles[pathname] ?? "NetOps Suite"}</span>
@@ -182,7 +186,7 @@ export default function Layout() {
         </header>
 
         <main ref={mainRef} className="flex-1 overflow-y-auto overflow-x-hidden">
-          <div key={pathname} className="view-enter mx-auto max-w-5xl p-3 sm:p-6 lg:p-8">
+          <div key={pathname} className="view-enter page-pad w-full">
             <Outlet />
           </div>
         </main>
