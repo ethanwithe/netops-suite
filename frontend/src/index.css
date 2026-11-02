@@ -88,7 +88,7 @@ body { min-height: 100dvh; overscroll-behavior-y: none; }
   .input { min-height: 44px; font-size: 16px; }  /* 16px evita el zoom automático en iPhone */
 }
 body {
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', Inter, system-ui, 'Segoe UI', Roboto, sans-serif;
   color: rgb(var(--s800));
   background-color: rgb(var(--page));
   background-image:
@@ -98,7 +98,7 @@ body {
   background-attachment: fixed;
   transition: background-color .3s ease, color .3s ease;
 }
-h1, h2, h3 { font-family: 'Sora', 'Inter', system-ui, sans-serif; letter-spacing: -0.01em; }
+h1, h2, h3 { font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', Inter, system-ui, sans-serif; letter-spacing: -0.022em; }
 ::selection { background: rgb(56 208 247 / .35); }
 :focus-visible { outline: 2px solid rgb(var(--accent2)); outline-offset: 2px; }
 
@@ -188,7 +188,7 @@ h1, h2, h3 { font-family: 'Sora', 'Inter', system-ui, sans-serif; letter-spacing
 .label { @apply block text-[11px] font-bold text-slate-500 uppercase tracking-[.08em] mb-1; }
 
 /* Encabezado de pantalla: título grande + gota brillante + línea de acento */
-.page-title { @apply font-display text-2xl font-bold tracking-tight text-slate-900; }
+.page-title { @apply text-slate-900; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', Inter, system-ui, sans-serif; font-size: clamp(1.7rem, 1.2rem + 1.4vw, 2.5rem); font-weight: 700; letter-spacing: -0.03em; line-height: 1.1; }
 .page-title::after {
   content: ""; display: block; width: 56px; height: 4px; margin-top: 9px; border-radius: 4px;
   background: linear-gradient(90deg, rgb(var(--accent2)), rgb(var(--accent)));
@@ -431,3 +431,34 @@ html[data-glass="on"] :is(.btn-primary, .btn-secondary, .btn-danger, .side-item,
 html[data-glass="on"] .lg:hover { box-shadow: 0 0 0 1px rgb(var(--accent2) / .35), 0 8px 22px -10px rgb(var(--accent2) / .6); }
 .hue-range::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%; background: #fff; border: 2px solid rgb(var(--accent)); box-shadow: 0 2px 6px rgb(0 0 0 / .35); }
 .hue-range::-moz-range-thumb { width: 16px; height: 16px; border-radius: 50%; background: #fff; border: 2px solid rgb(var(--accent)); box-shadow: 0 2px 6px rgb(0 0 0 / .35); }
+
+
+/* ============ Barra de pestañas (iOS) ============ */
+.tabbar {
+  position: fixed; z-index: 35; left: 50%; transform: translateX(-50%);
+  bottom: max(.75rem, env(safe-area-inset-bottom));
+  display: flex; gap: 2px; padding: 6px; width: min(26rem, calc(100vw - 1.5rem));
+  border-radius: 2rem;
+  background: rgb(var(--surface) / .62);
+  -webkit-backdrop-filter: blur(22px) saturate(1.8); backdrop-filter: blur(22px) saturate(1.8);
+  border: 1px solid rgb(var(--edge) / .6);
+  box-shadow: 0 1px 0 rgb(255 255 255 / .7) inset, 0 -1px 0 rgb(255 255 255 / .12) inset, 0 18px 40px -14px rgb(8 29 66 / .5), 0 4px 10px rgb(8 29 66 / .12);
+}
+.dark .tabbar { border-color: rgb(var(--edge) / .2); box-shadow: 0 1px 0 rgb(255 255 255 / .1) inset, 0 20px 40px -14px rgb(0 0 0 / .85); }
+.tab {
+  flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 7px 2px 6px;
+  border-radius: 1.5rem; font-size: 10.5px; font-weight: 600; letter-spacing: -.005em;
+  color: rgb(var(--s500)); background: transparent; border: 0;
+  transition: color .2s ease, background .25s ease, transform .35s cubic-bezier(.34, 1.56, .64, 1);
+}
+.tab:active { transform: scale(.92); }
+.tab-on { color: rgb(var(--accent)); background: rgb(var(--s900) / .07); }
+.dark .tab-on { color: rgb(var(--accent2)); background: rgb(255 255 255 / .1); }
+
+/* ============ Hojas inferiores (en celular las ventanas suben desde abajo) ============ */
+@media (max-width: 639px) {
+  .sheet-wrap { align-items: flex-end !important; padding: 0 !important; }
+  .card.sheet { max-width: none !important; border-radius: 1.75rem 1.75rem 0 0; padding-top: 1.6rem; padding-bottom: max(1.25rem, env(safe-area-inset-bottom)); animation: sheet-up .42s cubic-bezier(.2, .9, .3, 1) both; max-height: 92dvh; overflow-y: auto; }
+  .card.sheet::before { content: ""; position: absolute; top: 8px; left: 50%; width: 38px; height: 5px; margin-left: -19px; border-radius: 3px; background: rgb(var(--s300)); }
+}
+@keyframes sheet-up { from { transform: translateY(100%); } to { transform: none; } }

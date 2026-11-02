@@ -30,8 +30,8 @@ export default function NewChecklistModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-3 sm:p-8">
-      <div className="card w-full max-w-lg space-y-3">
+    <div className="sheet-wrap fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-3 sm:p-8">
+      <div className="card sheet w-full max-w-lg space-y-3">
         <h3 className="text-lg font-semibold text-slate-800">Nueva opción de CheckList</h3>
         <label className="block text-sm">
           <span className="mb-1 block text-xs font-medium text-slate-500">Nombre (ej. Internet Huawei con HA)</span>

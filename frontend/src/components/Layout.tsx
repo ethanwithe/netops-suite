@@ -10,6 +10,7 @@ import ThemeSwitcher from "./ThemeSwitcher";
 import Mascot from "../mascot/Mascot";
 import { Drop } from "./WaterDrops";
 import Backdrop from "./Backdrop";
+import TabBar from "./TabBar";
 import { initLiquid } from "../liquid";
 
 const NAV = [
@@ -186,11 +187,12 @@ export default function Layout() {
         </header>
 
         <main ref={mainRef} className="flex-1 overflow-y-auto overflow-x-hidden">
-          <div key={pathname} className="view-enter page-pad w-full">
+          <div key={pathname} className="view-enter page-pad w-full max-lg:pb-28">
             <Outlet />
           </div>
         </main>
       </div>
+      <TabBar onMenu={() => setOpen(true)} />
       <Mascot />
       {creatingCk && (
         <NewChecklistModal
