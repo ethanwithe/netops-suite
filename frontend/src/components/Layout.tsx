@@ -8,7 +8,9 @@ import { checklistRoute, createChecklistType, useChecklistTypes } from "../store
 import { usePersistentState } from "../store/persistentState";
 import ThemeSwitcher from "./ThemeSwitcher";
 import Mascot from "../mascot/Mascot";
-import WaterDrops, { Drop } from "./WaterDrops";
+import { Drop } from "./WaterDrops";
+import Backdrop from "./Backdrop";
+import { initLiquid } from "../liquid";
 
 const NAV = [
   { to: "/pruebas", label: "Pruebas", desc: "SSH / Serial + PDF" },
@@ -76,6 +78,8 @@ export default function Layout() {
   const mainRef = useRef<HTMLElement>(null);
   const [desktopOpen, setDesktopOpen] = usePersistentState("layout.sidebar", true);
 
+  useEffect(() => initLiquid(), []);
+
   // Al cambiar de pantalla se cierra el panel (modo celular).
   useEffect(() => setOpen(false), [pathname]);
 
@@ -121,7 +125,7 @@ export default function Layout() {
 
   return (
     <div className="relative flex h-[100dvh] overflow-hidden">
-      <WaterDrops />
+      <Backdrop />
       {open && <div className="fixed inset-0 z-30 bg-black/50 backdrop-blur-sm lg:hidden" onClick={() => setOpen(false)} aria-hidden="true" />}
 
       <aside
@@ -173,7 +177,7 @@ export default function Layout() {
 
       <div className="relative flex min-w-0 flex-1 flex-col">
         <header className="glass relative z-20 flex shrink-0 items-center gap-3 px-3 py-2" style={{ borderWidth: "0 0 1px" }}>
-          <button className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 transition-colors hover:border-cyan2-500 hover:bg-slate-50" onClick={toggle} aria-label="Mostrar u ocultar el menú">
+          <button className="lg rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 transition-colors hover:border-cyan2-500 hover:bg-slate-50" onClick={toggle} aria-label="Mostrar u ocultar el menú">
             Menú
           </button>
           <span className="truncate font-display text-sm font-semibold text-slate-800">{titles[pathname] ?? "NetOps Suite"}</span>
