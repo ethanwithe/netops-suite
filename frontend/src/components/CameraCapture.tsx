@@ -45,6 +45,8 @@ export default function CameraCapture({ cliente = "", onCapture, onClose, onNati
   const [torch, setTorch] = useState(false);
   const [hasTorch, setHasTorch] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [flash, setFlash] = useState(false);
+  const [hq, setHq] = useState(() => { try { return localStorage.getItem("netops.camHQ") === "1"; } catch { return false; } });
   const [ring, setRing] = useState<{ x: number; y: number } | null>(null);
 
   // Vista previa en vivo del sello (para ver si taparía la serie del equipo)
@@ -75,8 +77,8 @@ export default function CameraCapture({ cliente = "", onCapture, onClose, onNati
           audio: false,
           video: {
             facingMode: { ideal: "environment" },
-            width: { ideal: 4032 },
-            height: { ideal: 3024 },
+            width: { ideal: 1920 },   // el sello se hace a 1600 px: pedir más solo retrasa la cámara
+            height: { ideal: 1440 },
           },
         });
         if (cancelled) {
@@ -210,36 +212,47 @@ export default function CameraCapture({ cliente = "", onCapture, onClose, onNati
     }
   }
 
+  function toggleHq() {
+    const n = !hq;
+    setHq(n);
+    try { localStorage.setItem("netops.camHQ", n ? "1" : "0"); } catch { /* ignorar */ }
+  }
+
+  /** Disparo instantáneo: se toma el cuadro que ya está en pantalla (≈0,1 s). «Alta calidad» usa el sensor completo (más lento). */
   async function shoot() {
     const track = trackRef.current;
     const video = videoRef.current;
-    if (!track || !video || busy) return;
+    if (!track || !video || busy || !video.videoWidth) return;
     setBusy(true);
+    setFlash(true);
+    window.setTimeout(() => setFlash(false), 140);
+    try { navigator.vibrate?.(25); } catch { /* sin vibración */ }
 
     try {
       let blob: Blob | null = null;
 
-      const IC = (window as unknown as { ImageCapture?: new (t: MediaStreamTrack) => { takePhoto: (o?: object) => Promise<Blob> } }).ImageCapture;
-      if (IC) {
-        try {
-          // Resolución por defecto del teléfono: nítida y mucho más rápida que pedir la máxima.
-          blob = await new IC(track).takePhoto();
-        } catch {
-          blob = null; // se usa el cuadro de video
+      if (hq) {
+        const IC = (window as unknown as { ImageCapture?: new (t: MediaStreamTrack) => { takePhoto: (o?: object) => Promise<Blob> } }).ImageCapture;
+        if (IC) {
+          try { blob = await new IC(track).takePhoto(); } catch { blob = null; }
         }
       }
 
       if (!blob) {
+        const MAX = 1600; // el sello también se hace a este tamaño
+        const k = Math.min(1, MAX / Math.max(video.videoWidth, video.videoHeight));
         const canvas = document.createElement("canvas");
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        canvas.getContext("2d")?.drawImage(video, 0, 0);
-        blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, "image/jpeg", 0.95));
+        canvas.width = Math.round(video.videoWidth * k);
+        canvas.height = Math.round(video.videoHeight * k);
+        canvas.getContext("2d")?.drawImage(video, 0, 0, canvas.width, canvas.height);
+        blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, "image/jpeg", 0.92));
       }
 
       if (blob) {
+        const file = new File([blob], `foto-${Date.now()}.jpg`, { type: blob.type || "image/jpeg" });
+        const where = placeRef.current;
+        onCapture(file, where);   // se cierra la cámara ya; el sello y la subida siguen por detrás
         stop();
-        onCapture(new File([blob], `foto-${Date.now()}.jpg`, { type: blob.type || "image/jpeg" }), placeRef.current);
       } else {
         setError("No se pudo tomar la foto. Inténtalo otra vez.");
       }
@@ -247,6 +260,16 @@ export default function CameraCapture({ cliente = "", onCapture, onClose, onNati
       setBusy(false);
     }
   }
+
+  // Atajos: Espacio / Enter / tecla de volumen (en algunos teléfonos) disparan; Esc cierra.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === " " || e.key === "Enter" || e.key === "AudioVolumeUp" || e.key === "AudioVolumeDown") { e.preventDefault(); void shoot(); }
+      else if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-black" role="dialog" aria-label="Cámara">
@@ -267,6 +290,7 @@ export default function CameraCapture({ cliente = "", onCapture, onClose, onNati
       </div>
 
       <div ref={areaRef} className="relative flex-1 overflow-hidden" onClick={refocus}>
+        <div className={`pointer-events-none absolute inset-0 z-10 bg-white transition-opacity ${flash ? "opacity-80 duration-75" : "opacity-0 duration-200"}`} aria-hidden="true" />
         <video ref={videoRef} playsInline muted className="h-full w-full object-contain" />
         {box && ready && (
           <div
@@ -312,17 +336,19 @@ export default function CameraCapture({ cliente = "", onCapture, onClose, onNati
         )}
       </div>
 
-      <div className="flex flex-col items-center gap-2 px-4 pb-6 pt-3">
-        <p className="text-[11px] text-white/60">El texto blanco es el sello tal como saldrá. Si tapa la serie, usa «Mover sello». Toca la pantalla para enfocar.</p>
+      <div className="flex flex-col items-center gap-2 px-4 pt-3" style={{ paddingBottom: "max(1.5rem, env(safe-area-inset-bottom))" }}>
+        <p className="text-[11px] text-white/60">El texto blanco es el sello tal como saldrá. Toca la pantalla para enfocar · Espacio o Enter disparan.</p>
         <div className="flex w-full items-center justify-between">
           <button className="w-28 text-left text-xs text-white/70 underline" onClick={onNative}>Cámara del teléfono</button>
           <button
             aria-label="Tomar foto"
             disabled={!ready || busy}
             onClick={shoot}
-            className="h-16 w-16 rounded-full border-4 border-white bg-white/90 active:scale-95 disabled:opacity-40"
+            className="h-[72px] w-[72px] rounded-full border-4 border-white bg-white/90 shadow-[0_0_0_4px_rgba(255,255,255,.25)] transition-transform active:scale-90 disabled:opacity-40"
           />
-          <span className="w-28" />
+          <button className="w-28 text-right text-xs text-white/70 underline" onClick={toggleHq} title="Rápida: toma el cuadro que ves (instantánea). Alta calidad: usa el sensor completo y tarda más.">
+            {hq ? "Alta calidad" : "Rápida"}
+          </button>
         </div>
       </div>
     </div>

@@ -68,7 +68,25 @@
   color-scheme: dark;
 }
 
-html { -webkit-font-smoothing: antialiased; }
+html {
+  -webkit-font-smoothing: antialiased; -webkit-text-size-adjust: 100%;
+  /* Toda la interfaz escala con la pantalla (rem): cómoda en celular, laptop, monitor grande o TV */
+  font-size: clamp(15px, .3vw + 12.2px, 19px);
+}
+body { min-height: 100dvh; overscroll-behavior-y: none; }
+/* Contenido a pantalla completa, con márgenes fluidos y respetando muescas (safe area) */
+.page-pad {
+  padding: clamp(.75rem, 2.2vw, 2.5rem);
+  padding-left: max(clamp(.75rem, 2.2vw, 2.5rem), env(safe-area-inset-left));
+  padding-right: max(clamp(.75rem, 2.2vw, 2.5rem), env(safe-area-inset-right));
+  padding-bottom: max(clamp(1rem, 2.4vw, 2.5rem), env(safe-area-inset-bottom));
+}
+/* Táctil: zonas de toque de al menos 44 px (guía de Apple) */
+@media (pointer: coarse) {
+  .btn, .btn-primary, .btn-secondary, .btn-danger { min-height: 44px; }
+  .side-item { min-height: 44px; }
+  .input { min-height: 44px; font-size: 16px; }  /* 16px evita el zoom automático en iPhone */
+}
 body {
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
   color: rgb(var(--s800));
@@ -116,7 +134,7 @@ h1, h2, h3 { font-family: 'Sora', 'Inter', system-ui, sans-serif; letter-spacing
 .dark .glass { border-color: rgb(var(--edge) / .14); }
 
 .card {
-  @apply rounded-2xl p-5;
+  @apply p-5; border-radius: clamp(1rem, 1.2vw, 1.5rem);
   position: relative;
   /* sin backdrop-filter: rompería los elementos fixed (editor, cámara) dentro de la tarjeta */
   background-color: rgb(var(--surface) / calc(var(--glass-a) + .14));

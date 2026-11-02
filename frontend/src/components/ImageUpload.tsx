@@ -71,6 +71,11 @@ export default function ImageUpload({ onUploaded, label = "Subir imagen...", com
   async function handleCamera(file: File, known?: Place | null) {
     if (!file.type.startsWith("image/")) return;
     setStamping(true);
+    // Vista previa inmediata con la foto recién tomada; el sello y la subida siguen por detrás.
+    const quick = URL.createObjectURL(file);
+    if (blobRef.current) URL.revokeObjectURL(blobRef.current);
+    blobRef.current = quick;
+    setPreview(quick);
     try {
       const when = new Date();
       const place = known !== undefined ? known : await getPlaceFast();
