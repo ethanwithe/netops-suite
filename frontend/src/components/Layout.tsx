@@ -10,7 +10,7 @@ import ThemeSwitcher from "./ThemeSwitcher";
 import Mascot from "../mascot/Mascot";
 import { Drop } from "./WaterDrops";
 import Backdrop from "./Backdrop";
-import TabBar from "./TabBar";
+import TabBar, { TabGroup } from "./TabBar";
 import { initLiquid } from "../liquid";
 
 const NAV = [
@@ -96,6 +96,12 @@ export default function Layout() {
     else setOpen(!open);
   };
 
+  const tabGroups: TabGroup[] = [
+    { id: "tl", label: "Pruebas", prefixes: ["/pruebas", "/plantillas"], items: [{ to: "/pruebas", label: "Pruebas" }, { to: "/plantillas", label: "Plantillas" }] },
+    { id: "ck", label: "CheckList", prefixes: ["/checklist"], items: ckSub },
+    { id: "ft", label: "Fotos", prefixes: ["/fotografico"], items: fotoSub },
+    { id: "cl", label: "Clientes", prefixes: ["/clientes"], items: [{ to: "/clientes", label: "Todos los clientes" }, ...years.map((y) => ({ to: `/clientes/${y.year}`, label: `Clientes ${y.year}` }))] },
+  ];
   const link = (isActive: boolean) => `side-item ${isActive ? "active" : ""}`;
   const sub = (isActive: boolean) => `side-item ${isActive ? "active" : ""}`;
   const Chev = ({ openState }: { openState: boolean }) => (
@@ -142,7 +148,7 @@ export default function Layout() {
           <button className="rounded-md px-2 py-1 text-xs font-semibold text-slate-300 hover:bg-white/10 lg:hidden" onClick={() => setOpen(false)}>Cerrar</button>
         </div>
 
-        <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 pb-3">
+        <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 pb-28 lg:pb-3">
           <div className="side-group">Operación</div>
           {NAV.map((item) => (
             <NavLink key={item.to} to={item.to} className={({ isActive }) => link(isActive)}>
@@ -192,7 +198,7 @@ export default function Layout() {
           </div>
         </main>
       </div>
-      <TabBar onMenu={() => setOpen(true)} />
+      <TabBar groups={tabGroups} menuOpen={open} onMenu={() => setOpen((o) => !o)} />
       <Mascot />
       {creatingCk && (
         <NewChecklistModal

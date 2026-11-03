@@ -3,7 +3,7 @@
  * especular sigue al puntero sobre la superficie, un destello recorre el borde y al pulsar se forma
  * una onda de agua desde el punto de contacto. Los estilos están en index.css (html[data-glass="on"]).
  */
-const HOVER = ".btn-primary,.btn-secondary,.btn-danger,.side-item,.card,.lg";
+const HOVER = ".btn-primary,.btn-secondary,.btn-danger,.side-item,.card,.lg,.tabbar";
 const WAVE = ".btn-primary,.btn-secondary,.btn-danger,.side-item,.lg";
 
 export function initLiquid(): () => void {
@@ -33,7 +33,15 @@ export function initLiquid(): () => void {
     el.appendChild(w);
     window.setTimeout(() => w.remove(), 750);
   };
+  const up = (e: PointerEvent) => {
+    if (document.documentElement.dataset.glass === "off") return;
+    const el = (e.target as Element | null)?.closest?.(".btn-primary,.btn-secondary,.btn-danger,.tab,.side-item") as HTMLElement | null;
+    if (!el) return;
+    el.classList.remove("lg-jelly"); void el.offsetWidth; el.classList.add("lg-jelly");
+    window.setTimeout(() => el.classList.remove("lg-jelly"), 700);
+  };
+  window.addEventListener("pointerup", up, { passive: true });
   window.addEventListener("pointermove", move, { passive: true });
   window.addEventListener("pointerdown", down, { passive: true });
-  return () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerdown", down); cancelAnimationFrame(raf); };
+  return () => { window.removeEventListener("pointerup", up); window.removeEventListener("pointermove", move); window.removeEventListener("pointerdown", down); cancelAnimationFrame(raf); };
 }
