@@ -34,7 +34,8 @@ def resolve_logo(
         )
 
     if logo_path:
-        path = str(UPLOADS_DIR / os.path.basename(logo_path))
+        from app.services.filestore import ensure_upload
+        path = str(ensure_upload(os.path.basename(logo_path)))
         if os.path.isfile(path):
             return path
         warnings.append(f"No se encontró el archivo del logo {label}; se omitió.")

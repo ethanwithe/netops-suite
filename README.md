@@ -201,3 +201,8 @@ sistema; en Edge las voces «Natural» en español suenan mucho más humanas.
 
 ## Personalización visual
 Menú «Tema» → «Personalizar fondo y colores»: fondo 3D (burbujas, esferas, olas, cristales, estrellas), gotas, color del fondo/gotas/botones, intensidad y efecto «cristal líquido» al pasar el cursor. Se guarda en cada navegador.
+
+## Todo por cliente (SOT)
+- Al escribir la SOT en el reporte fotográfico, el CheckList o Poder Judicial, **todo lo de esa ventana se guarda solo** en el servidor (textos, opciones, fotos, capturas) asociado a la SOT. Si la SOT ya tenía datos, la ventana pregunta si quieres traerlos para seguir editando; si es un cliente existente sin nada guardado en esa ventana, trae sus datos base (nombre, CID, IPs, interfaces…).
+- En **Datos de cliente → (cliente) → Trabajo guardado** puedes abrir cada ventana tal como la dejaste.
+- Las **fotos subidas y los PDF/ZIP generados** se copian a la base de datos (tablas `stored_files` y `client_workspaces`, que se crean solas), así no se pierden en los despliegues de Railway y se pueden volver a descargar desde el cliente.

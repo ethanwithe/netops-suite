@@ -24,6 +24,13 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Sora:wght@600;700;800&family=Dancing+Script:wght@500;600&display=swap" rel="stylesheet" />
   </head>
   <body>
+    <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+      <!-- Lente de cristal líquido: curva lo que hay detrás de los bordes (solo Chrome/Edge; el resto ve el desenfoque normal) -->
+      <filter id="lens" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
+        <feImage href="data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%27http%3A//www.w3.org/2000/svg%27%20width%3D%27300%27%20height%3D%27120%27%3E%3Cdefs%3E%3ClinearGradient%20id%3D%27x%27%3E%3Cstop%20offset%3D%270%27%20stop-color%3D%27rgb%28255%2C0%2C0%29%27/%3E%3Cstop%20offset%3D%27.15%27%20stop-color%3D%27rgb%28128%2C0%2C0%29%27/%3E%3Cstop%20offset%3D%27.85%27%20stop-color%3D%27rgb%28128%2C0%2C0%29%27/%3E%3Cstop%20offset%3D%271%27%20stop-color%3D%27rgb%280%2C0%2C0%29%27/%3E%3C/linearGradient%3E%3ClinearGradient%20id%3D%27y%27%20x1%3D%270%27%20y1%3D%270%27%20x2%3D%270%27%20y2%3D%271%27%3E%3Cstop%20offset%3D%270%27%20stop-color%3D%27rgb%280%2C255%2C0%29%27/%3E%3Cstop%20offset%3D%27.3%27%20stop-color%3D%27rgb%280%2C128%2C0%29%27/%3E%3Cstop%20offset%3D%27.7%27%20stop-color%3D%27rgb%280%2C128%2C0%29%27/%3E%3Cstop%20offset%3D%271%27%20stop-color%3D%27rgb%280%2C0%2C0%29%27/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect%20width%3D%27300%27%20height%3D%27120%27%20fill%3D%27rgb%280%2C0%2C128%29%27/%3E%3Crect%20width%3D%27300%27%20height%3D%27120%27%20fill%3D%27url%28%23x%29%27%20style%3D%27mix-blend-mode%3Ascreen%27/%3E%3Crect%20width%3D%27300%27%20height%3D%27120%27%20fill%3D%27url%28%23y%29%27%20style%3D%27mix-blend-mode%3Ascreen%27/%3E%3C/svg%3E" x="0" y="0" width="100%" height="100%" preserveAspectRatio="none" result="m" />
+        <feDisplacementMap in="SourceGraphic" in2="m" scale="34" xChannelSelector="R" yChannelSelector="G" />
+      </filter>
+    </svg>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

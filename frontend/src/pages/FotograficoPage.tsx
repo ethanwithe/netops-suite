@@ -26,7 +26,9 @@ import type { ImportedProject } from "../components/ImportPdfButton";
 import { savePjForm } from "../store/pjForm";
 import { useNavigate } from "react-router-dom";
 import type { FotoTipo } from "../store/photoReportStore";
-import { addExtra, removeExtra, resolveOpcion, updateExtra, useOpciones } from "../store/photoReportStore";
+import { addExtra, importReport, removeExtra, resolveOpcion, updateExtra, useOpciones } from "../store/photoReportStore";
+import { useWorkspace } from "../store/workspaces";
+import WorkspaceBar from "../components/WorkspaceBar";
 import ClientPicker from "../components/ClientPicker";
 import { syncClient, toISODate, useSotSync } from "../store/clients";
 import OpcionesManager from "../components/OpcionesManager";
@@ -289,6 +291,23 @@ function RunTab({
   // Los datos de la SOT se guardan solos en "Datos de cliente" (año y mes según la fecha).
   useSotSync({ sot: s.sot, nombre: s.cliente, fecha: s.fecha, cid: s.cid, proy: s.proy, contrata: s.contrata });
   const isoToLocal = (iso: string) => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso); return m ? `${m[3]}/${m[2]}/${m[1]}` : iso; };
+  // Todo lo de esta ventana (fotos, textos, opciones) se guarda solo por SOT y se puede traer de vuelta.
+  const wsState = useMemo(() => ({
+    titulo: s.titulo, proy: s.proy, cliente: s.cliente, sot: s.sot, fecha: s.fecha, cid: s.cid, contrata: s.contrata,
+    logoIzq: s.logoIzq, logoDer: s.logoDer, rows: s.rows, extras: s.extras,
+  }), [s.titulo, s.proy, s.cliente, s.sot, s.fecha, s.cid, s.contrata, s.logoIzq, s.logoDer, s.rows, s.extras]);
+  const ws = useWorkspace({
+    key: `foto:${tipo}`, label: `Fotos · ${nombre}`, sot: s.sot, nombre: s.cliente, fecha: toISODate(s.fecha),
+    state: wsState,
+    apply: (saved) => importReport(tipo, saved),
+    // Lo que necesita esta ventana de un cliente que ya existe: sus datos base (solo en campos vacíos).
+    fill: (c) => {
+      if (!s.cliente && c.nombre) setField(tipo, "cliente", c.nombre);
+      if (!s.cid && c.cid) setField(tipo, "cid", c.cid);
+      if (!s.proy && c.proy) setField(tipo, "proy", c.proy);
+      if (!s.contrata && c.contrata) setField(tipo, "contrata", c.contrata);
+    },
+  });
   function pickClient(c: { sot: string; nombre: string; fecha: string; cid: string; proy: string; contrata: string }) {
     setField(tipo, "sot", c.sot);
     setField(tipo, "cliente", c.nombre);
@@ -416,6 +435,7 @@ function RunTab({
           <p className="text-xs text-slate-400">
             Tu avance se guarda automáticamente en este navegador.
           </p>
+          <div className="w-full"><WorkspaceBar ws={ws} /></div>
 
           <ClientPicker onPick={pickClient} />
 

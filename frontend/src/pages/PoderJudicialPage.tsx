@@ -13,6 +13,8 @@ import Spinner from "../components/Spinner";
 import { NO_LOGO, logoPayload } from "../logo";
 import type { LogoSel } from "../logo";
 import { usePersistentState } from "../store/persistentState";
+import { useWorkspace } from "../store/workspaces";
+import WorkspaceBar from "../components/WorkspaceBar";
 
 interface Img { path: string; url: string }
 interface Cell { id: string; caption: string; images: Img[] }
@@ -71,6 +73,13 @@ export default function PoderJudicialPage() {
   const [error, setError] = usePersistentState<string | null>("poderjudicial.error", null, mem);
 
   const navigate = useNavigate();
+
+  // Todo lo del informe (textos, fotos, secciones) se guarda solo por SOT y se puede traer de vuelta.
+  const ws = useWorkspace({
+    key: "pj", label: "Poder Judicial", sot: f.sot, nombre: f.sede,
+    state: f,
+    apply: (saved) => setF({ ...INITIAL, ...saved }),
+  });
 
   // Edición de fotos (líneas, flechas, texto, recorte, mejora...), igual que en el resto de reportes.
   type EditTarget = { kind: "ubic" } | { kind: "cell"; sid: string; cid: string; idx: number };
@@ -159,6 +168,8 @@ export default function PoderJudicialPage() {
         <h2 className="page-title">Reporte Fotográfico — RF Poder Judicial</h2>
         <p className="text-slate-500 text-sm">Informe de diseño LAN Gestionada SOLAMED. Lo que escribas se conserva al cambiar de página.</p>
       </div>
+
+      <WorkspaceBar ws={ws} />
 
       <div className="card">
         <ImportPdfButton onLoaded={openPdf} />

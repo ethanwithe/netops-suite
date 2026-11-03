@@ -155,3 +155,31 @@ class GeneratedDocument(Base):
     nombre_archivo = Column(String, nullable=False)
     meta = Column(JSON, default=dict)
     created_at = Column(DateTime, default=dt.datetime.utcnow)
+
+
+class StoredFile(Base):
+    """Copia durable (en la base de datos) de fotos subidas y de PDF/ZIP generados.
+
+    El disco de Railway se borra en cada despliegue; esto permite volver a descargar
+    y volver a usar las fotos y los reportes de un cliente cuando quieras.
+    """
+    __tablename__ = "stored_files"
+
+    name = Column(String, primary_key=True)          # nombre en disco (uuid.ext o el del PDF/ZIP)
+    kind = Column(String, nullable=False, index=True)  # 'upload' | 'output'
+    content_type = Column(String, nullable=False, default="application/octet-stream")
+    data = Column(LargeBinary, nullable=False)
+    created_at = Column(DateTime, default=dt.datetime.utcnow)
+
+
+class ClientWorkspace(Base):
+    """Lo que había en pantalla en una ventana (reporte fotográfico, checklist, Poder Judicial...)
+    para una SOT, guardado solo para poder volver a abrirlo y seguir editando."""
+    __tablename__ = "client_workspaces"
+
+    sot = Column(String, primary_key=True)
+    key = Column(String, primary_key=True)           # p. ej. 'foto:gpon_ont', 'checklist:<id>', 'pj'
+    label = Column(String, nullable=False, default="")
+    route = Column(String, nullable=False, default="")
+    state = Column(JSON, nullable=False, default=dict)
+    updated_at = Column(DateTime, default=dt.datetime.utcnow)

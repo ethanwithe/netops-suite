@@ -5,6 +5,8 @@ import Spinner from "../components/Spinner";
 import { usePersistentState } from "../store/persistentState";
 import { createClient, deleteClient, listClients, updateClient } from "../store/clients";
 import type { ClientInput, ClientRecord } from "../store/clients";
+import { deleteWorkspace, listWorkspaces, requestOpen } from "../store/workspaces";
+import type { WorkspaceInfo } from "../store/workspaces";
 
 const MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
 
@@ -98,6 +100,15 @@ function ClientCard({ c, onEdit, showMonth }: { c: ClientRecord; onEdit: () => v
   const [open, setOpen] = useState(false);
   const m = Number(c.fecha.slice(5, 7));
   const datos = Object.entries(c.datos || {});
+  const navigate = useNavigate();
+  const [wins, setWins] = useState<WorkspaceInfo[]>([]);
+  useEffect(() => {
+    if (!open) return;
+    let dead = false;
+    listWorkspaces(c.sot).then((w) => { if (!dead) setWins(w); }).catch(() => undefined);
+    return () => { dead = true; };
+  }, [open, c.sot]);
+  const when = (iso: string) => (iso ? new Date(iso + (iso.endsWith("Z") ? "" : "Z")).toLocaleString("es-PE", { dateStyle: "short", timeStyle: "short" }) : "");
   return (
     <div className="card space-y-2">
       <button className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 text-left" onClick={() => setOpen(!open)}>
@@ -121,6 +132,24 @@ function ClientCard({ c, onEdit, showMonth }: { c: ClientRecord; onEdit: () => v
               </ul>
             </div>
           )}
+          <div>
+            <p className="text-xs font-medium text-slate-500">Trabajo guardado (fotos, textos, opciones) — ábrelo para seguir editando</p>
+            {wins.length === 0 ? (
+              <p className="text-xs text-slate-400">Todavía no hay ventanas guardadas para esta SOT. Se guardan solas al escribir la SOT en el reporte fotográfico, el CheckList o Poder Judicial.</p>
+            ) : (
+              <ul className="mt-1 space-y-1">
+                {wins.map((w) => (
+                  <li key={w.key} className="flex flex-wrap items-center gap-2 text-xs">
+                    <button className="btn-secondary px-2.5 py-1 text-xs" disabled={!w.route} onClick={() => { requestOpen(c.sot, w.key); navigate(w.route); }}>
+                      Abrir · {w.label || w.key}
+                    </button>
+                    <span className="text-slate-400">{when(w.updated_at)}</span>
+                    <button className="text-red-500 hover:underline" onClick={() => { if (confirm(`¿Borrar lo guardado de «${w.label || w.key}» para la SOT ${c.sot}?`)) void deleteWorkspace(c.sot, w.key).then(() => setWins((x) => x.filter((q) => q.key !== w.key))); }}>borrar</button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
           {c.reportes.length > 0 && (
             <div>
               <p className="text-xs font-medium text-slate-500">Reportes generados</p>

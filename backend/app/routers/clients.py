@@ -7,7 +7,10 @@ Cualquier ventana puede mandar lo que sabe de una SOT (/sync) y se junta aquí.
 import datetime as dt
 import re
 
+import json
+
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app import models, schemas
@@ -115,6 +118,75 @@ def _apply(row: models.Client, data: dict, overwrite: bool):
     row.updated_at = dt.datetime.utcnow()
 
 
+
+# ---------------------------------------------------------------
+# Ventanas guardadas por SOT (lo que había en pantalla, para volver a abrirlo y editarlo)
+# ---------------------------------------------------------------
+
+class WorkspaceIn(BaseModel):
+    sot: str
+    key: str = Field(max_length=120)
+    label: str = Field(default="", max_length=120)
+    route: str = Field(default="", max_length=300)
+    state: dict
+    nombre: str = ""
+    fecha: str = ""
+
+
+def _ws_out(w: models.ClientWorkspace, with_state: bool = True) -> dict:
+    d = {"sot": w.sot, "key": w.key, "label": w.label, "route": w.route,
+         "updated_at": w.updated_at.isoformat() if w.updated_at else ""}
+    if with_state:
+        d["state"] = w.state or {}
+    return d
+
+
+@router.put("/workspace")
+def save_workspace(payload: WorkspaceIn, db: Session = Depends(get_db)):
+    """Guarda (o reemplaza) lo de una ventana para una SOT. Crea el cliente si no existe."""
+    sot = norm_sot(payload.sot)
+    if not sot:
+        raise HTTPException(400, "La SOT es obligatoria.")
+    if len(json.dumps(payload.state)) > 3_000_000:
+        raise HTTPException(413, "Los datos de la ventana son demasiado grandes.")
+    if not db.query(models.Client).filter(models.Client.sot == sot).first():
+        row = models.Client(sot=sot, fecha=norm_fecha(payload.fecha) or _today(), datos={}, reportes=[])
+        if payload.nombre.strip():
+            row.nombre = payload.nombre.strip()
+        db.add(row)
+    w = db.get(models.ClientWorkspace, (sot, payload.key))
+    if not w:
+        w = models.ClientWorkspace(sot=sot, key=payload.key)
+        db.add(w)
+    w.label, w.route, w.state = payload.label, payload.route, payload.state
+    w.updated_at = dt.datetime.utcnow()
+    db.commit()
+    return _ws_out(w, with_state=False)
+
+
+@router.get("/workspace")
+def get_workspace(sot: str, key: str, db: Session = Depends(get_db)):
+    w = db.get(models.ClientWorkspace, (norm_sot(sot), key))
+    if not w:
+        raise HTTPException(404, "No hay datos guardados para esa SOT en esta ventana.")
+    return _ws_out(w)
+
+
+@router.get("/workspaces/{sot}")
+def list_workspaces(sot: str, db: Session = Depends(get_db)):
+    rows = db.query(models.ClientWorkspace).filter(models.ClientWorkspace.sot == norm_sot(sot)).all()
+    rows.sort(key=lambda w: w.updated_at or dt.datetime.min, reverse=True)
+    return [_ws_out(w, with_state=False) for w in rows]
+
+
+@router.delete("/workspace")
+def delete_workspace(sot: str, key: str, db: Session = Depends(get_db)):
+    w = db.get(models.ClientWorkspace, (norm_sot(sot), key))
+    if w:
+        db.delete(w)
+        db.commit()
+    return {"ok": True}
+
 @router.post("", response_model=schemas.ClientOut)
 def create_client(payload: schemas.ClientIn, db: Session = Depends(get_db)):
     sot = norm_sot(payload.sot)
@@ -160,6 +232,7 @@ def delete_client(client_id: str, db: Session = Depends(get_db)):
     row = db.get(models.Client, client_id)
     if not row:
         raise HTTPException(404, "El cliente ya no existe.")
+    db.query(models.ClientWorkspace).filter(models.ClientWorkspace.sot == row.sot).delete()
     db.delete(row)
     db.commit()
     return {"ok": True}

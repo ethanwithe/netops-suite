@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.config import OUTPUTS_DIR, UPLOADS_DIR
+from app.services import filestore
 from app import models, schemas
 from app.services import cache
 from app.services.logo_store import resolve_logo
@@ -168,7 +169,7 @@ def delete_template(tpl_id: str, db: Session = Depends(get_db)):
 
 def _resolve_upload_path(rel_path: str) -> str:
     """rel_path es lo que devolvió /api/files/upload (nombre de archivo)."""
-    return str(UPLOADS_DIR / os.path.basename(rel_path))
+    return str(filestore.ensure_upload(os.path.basename(rel_path)))
 
 
 @router.post("/report-pdf")
@@ -207,6 +208,7 @@ def generate_checklist_report_pdf(
     try:
         _, pages = build_checklist_pdf(meta, sections, str(tmp_path))
         os.replace(tmp_path, out_path)
+        filestore.save_output(out_path)
     finally:
         if tmp_path.exists():
             tmp_path.unlink()
