@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.config import OUTPUTS_DIR, UPLOADS_DIR
+from app.services import filestore
 from app import models, schemas
 from app.seed_data import CATEGORIAS, TIPO_CATEGORIAS
 from app.services import cache
@@ -252,8 +253,7 @@ def delete_item(item_id: str, db: Session = Depends(get_db)):
 def _resolve_upload_path(rel_path: Optional[str]) -> Optional[str]:
     if not rel_path:
         return None
-    name = os.path.basename(rel_path)
-    return str(UPLOADS_DIR / name)
+    return str(filestore.ensure_upload(os.path.basename(rel_path)))
 
 
 @router.post("/pdf")
@@ -315,6 +315,7 @@ def generate_photo_report_pdf(
             if msg:
                 warnings.append(msg)
         os.replace(tmp_path, out_path)
+        filestore.save_output(out_path)
     except Exception as exc:
         raise HTTPException(500, f"No se pudo generar el PDF: {exc}")
     finally:
@@ -351,6 +352,7 @@ def generate_pj_report_pdf(
             if msg:
                 pj_warnings.append(msg)
         os.replace(tmp_path, out_path)
+        filestore.save_output(out_path)
     except Exception as exc:
         raise HTTPException(500, f"No se pudo generar el PDF: {exc}")
     finally:
@@ -453,6 +455,7 @@ def build_evidence_zip(payload: schemas.EvidenceRequest):
                     ext = os.path.splitext(orig)[1] or ".jpg"
                     z.write(orig, f"{folder}/{unique(folder, base + ' (sin editar)' + ext)}")
         os.replace(tmp_path, out_path)
+        filestore.save_output(out_path)
     finally:
         if tmp_path.exists():
             tmp_path.unlink()

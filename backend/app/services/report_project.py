@@ -53,7 +53,8 @@ def embed_project(pdf_path: str, project: dict, uploads_dir: Path) -> Optional[s
                 v = d.get(k)
                 if isinstance(v, str) and v and Path(v).suffix.lower() in ALLOWED_EXT:
                     name = os.path.basename(v)
-                    f = uploads_dir / name
+                    from app.services.filestore import ensure_upload
+                    f = ensure_upload(name)
                     if name not in images and f.is_file():
                         images[name] = base64.b64encode(f.read_bytes()).decode("ascii")
 
@@ -125,6 +126,11 @@ def load_project(pdf_bytes: bytes, uploads_dir: Path) -> dict:
             raise ValueError("El proyecto del PDF es demasiado grande.")
         name = f"{uuid.uuid4().hex}{ext}"
         (uploads_dir / name).write_bytes(raw)
+        try:
+            from app.services.filestore import save_upload
+            save_upload(name, raw)
+        except Exception:
+            pass
         new_names[os.path.basename(old)] = name
 
     def remap(d: dict) -> None:
