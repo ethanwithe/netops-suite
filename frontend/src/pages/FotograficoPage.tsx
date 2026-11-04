@@ -13,6 +13,11 @@ import {
   isCustom,
   isGpon,
   buildSections,
+  upgradeSections,
+  blockNames,
+  renameBlock,
+  removeBlock,
+  moveBlock,
   patchCell,
   patchSection,
   addCell,
@@ -356,11 +361,27 @@ function RunTab({
   // Primera vez (o reporte guardado en el formato anterior): se arman las secciones con las descripciones actuales.
   useEffect(() => {
     if (s.sections === null) setSections(tipo, buildSections(tipo, ordered, s.rows, manager.opciones));
+    // Primer formato de secciones (sin bloques) -> con bloques, sin perder fotos ni textos.
+    else if (s.sections.some((x) => x.cells.some((c) => c.bloque === undefined))) setSections(tipo, upgradeSections(tipo, s.sections, ordered, manager.opciones));
   }, [s.sections, tipo, ordered, s.rows, manager.opciones]);
 
   const sections = s.sections ?? [];
   const usedLados = new Set(sections.map((x) => resolveOpcion(x.lado, manager.opciones).id));
   const freeOpciones = manager.opciones.filter((o) => !usedLados.has(o.id));
+
+  /** Título: elegir otro de la lista, o «Otro título…» para escribir uno propio. */
+  function pickTitle(sid: string, value: string) {
+    if (value !== "__new__") { patchSection(tipo, sid, { lado: value }); return; }
+    const t = prompt("Escribe el título (por ejemplo: INSTALACION EN POP):");
+    if (!t || !t.trim()) return;
+    const id = manager.add(t);
+    if (id) patchSection(tipo, sid, { lado: id });
+  }
+
+  function renameTitle(lado: string, current: string) {
+    const t = prompt("Nuevo nombre para este título:", current);
+    if (t && t.trim()) manager.rename(lado, t.trim());
+  }
 
   function onAddSection(value: string) {
     if (!value) return;
@@ -371,7 +392,7 @@ function RunTab({
       id = manager.add(t);
       if (!id) return;
     }
-    addSection(tipo, id, ordered.map((it) => it.nombre));
+    addSection(tipo, id, []);
   }
 
   const navigate = useNavigate();
@@ -493,22 +514,23 @@ function RunTab({
 
       {sections.map((sec, si) => {
         const op = resolveOpcion(sec.lado, manager.opciones);
-        const shown = sec.cells.filter((c) => !onlyUsed || c.incluir || c.imagePath);
+        const bloques = blockNames(sec.cells);
         const allOn = sec.cells.length > 0 && sec.cells.every((c) => c.incluir);
-        const catalogLeft = ordered.filter((it) => !sec.cells.some((c) => c.descripcion === it.nombre));
         return (
-          <div key={sec.id} className="card space-y-3">
+          <div key={sec.id} className="card space-y-4">
             <div className="flex flex-wrap items-center gap-2">
               <select
                 className="input min-w-[220px] flex-1 font-semibold"
                 aria-label="Título de la sección"
                 value={op.id}
-                onChange={(e) => patchSection(tipo, sec.id, { lado: e.target.value })}
+                onChange={(e) => pickTitle(sec.id, e.target.value)}
               >
                 {manager.opciones.map((o) => (
                   <option key={o.id} value={o.id} disabled={o.id !== op.id && usedLados.has(o.id)}>{o.label}</option>
                 ))}
+                <option value="__new__">Otro título…</option>
               </select>
+              <button className="btn-secondary text-xs" onClick={() => renameTitle(op.id, op.label)} title="Cambiar el texto de este título">Editar título</button>
               <label className="flex items-center gap-2 text-xs text-slate-500">
                 <input type="checkbox" checked={allOn} onChange={(e) => sec.cells.forEach((c) => patchCell(tipo, sec.id, c.id, { incluir: e.target.checked }))} />
                 Marcar todas
@@ -521,62 +543,90 @@ function RunTab({
               >Quitar sección</button>
             </div>
 
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 2xl:grid-cols-3">
-              {shown.map((c) => {
-                const idx = sec.cells.findIndex((x) => x.id === c.id);
-                return (
-                  <div key={c.id} className={`space-y-2 rounded-lg border p-3 ${c.incluir ? "border-brand-300 bg-brand-50/40" : "border-slate-200"}`}>
-                    <textarea
-                      className="input"
-                      rows={2}
-                      placeholder="Texto sobre la foto"
-                      value={c.descripcion}
-                      onChange={(e) => patchCell(tipo, sec.id, c.id, { descripcion: e.target.value })}
+            {bloques.map((bl, bi) => {
+              const cells = sec.cells.filter((c) => (c.bloque ?? "") === bl);
+              const shown = cells.filter((c) => !onlyUsed || c.incluir || c.imagePath);
+              if (onlyUsed && shown.length === 0) return null;
+              return (
+                <div key={bl || "__sin__"} className="space-y-2 rounded-xl border border-slate-200/70 p-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <input
+                      className="input min-w-[200px] flex-1 text-sm font-semibold uppercase tracking-wide"
+                      aria-label="Nombre del bloque"
+                      placeholder="Nombre del bloque"
+                      defaultValue={bl}
+                      key={`${sec.id}:${bl}`}
+                      onBlur={(e) => { const v = e.target.value.trim(); if (v !== bl) renameBlock(tipo, sec.id, bl, v); }}
                     />
-                    <div className="flex flex-wrap items-center gap-2">
-                      <ImageUpload
-                        compact
-                        cliente={s.cliente}
-                        initialUrl={c.imageUrl}
-                        onUploaded={(p, u) => patchCell(tipo, sec.id, c.id, { imagePath: p, imageUrl: u, originalPath: "", originalUrl: "", incluir: p ? true : c.incluir })}
-                      />
-                      {c.imagePath && (
-                        <button className="btn-secondary text-xs" onClick={() => setEditing({ id: c.id, sid: sec.id, imageUrl: c.imageUrl })}>
-                          Editar foto
-                        </button>
-                      )}
-                    </div>
-                    <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-                      <label className="flex items-center gap-1.5 text-slate-600">
-                        <input type="checkbox" checked={c.incluir} onChange={(e) => patchCell(tipo, sec.id, c.id, { incluir: e.target.checked })} />
-                        Va en el PDF
-                      </label>
-                      <span className="flex items-center gap-1">
-                        <button className="rounded px-1.5 py-0.5 text-slate-500 hover:bg-slate-100 disabled:opacity-30" disabled={idx === 0} onClick={() => moveCell(tipo, sec.id, c.id, -1)} aria-label="Subir celda">↑</button>
-                        <button className="rounded px-1.5 py-0.5 text-slate-500 hover:bg-slate-100 disabled:opacity-30" disabled={idx === sec.cells.length - 1} onClick={() => moveCell(tipo, sec.id, c.id, 1)} aria-label="Bajar celda">↓</button>
-                        <button className="rounded px-1.5 py-0.5 text-red-600 hover:bg-red-50" onClick={() => removeCell(tipo, sec.id, c.id)}>Quitar celda</button>
-                      </span>
-                    </div>
+                    <button className="rounded px-1.5 py-0.5 text-slate-500 hover:bg-slate-100 disabled:opacity-30" disabled={bi === 0} onClick={() => moveBlock(tipo, sec.id, bl, -1)} aria-label="Subir bloque">↑</button>
+                    <button className="rounded px-1.5 py-0.5 text-slate-500 hover:bg-slate-100 disabled:opacity-30" disabled={bi === bloques.length - 1} onClick={() => moveBlock(tipo, sec.id, bl, 1)} aria-label="Bajar bloque">↓</button>
+                    <button className="rounded px-1.5 py-0.5 text-xs text-red-600 hover:bg-red-50" onClick={() => { if (confirm(`¿Quitar el bloque «${bl || "sin nombre"}» con sus ${cells.length} celdas?`)) removeBlock(tipo, sec.id, bl); }}>Quitar bloque</button>
                   </div>
-                );
-              })}
-            </div>
 
-            {shown.length === 0 && <p className="text-xs text-slate-400">{sec.cells.length ? "Ninguna celda tiene foto todavía (quita el filtro de arriba para verlas)." : "Esta sección no tiene celdas todavía."}</p>}
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 2xl:grid-cols-3">
+                    {shown.map((c) => {
+                      const idx = sec.cells.findIndex((x) => x.id === c.id);
+                      return (
+                        <div key={c.id} className={`space-y-2 rounded-lg border p-3 ${c.incluir ? "border-brand-300 bg-brand-50/40" : "border-slate-200"}`}>
+                          <textarea
+                            className="input"
+                            rows={2}
+                            placeholder="Texto sobre la foto"
+                            value={c.descripcion}
+                            onChange={(e) => patchCell(tipo, sec.id, c.id, { descripcion: e.target.value })}
+                          />
+                          <div className="flex flex-wrap items-center gap-2">
+                            <ImageUpload
+                              compact
+                              cliente={s.cliente}
+                              initialUrl={c.imageUrl}
+                              onUploaded={(p, u) => patchCell(tipo, sec.id, c.id, { imagePath: p, imageUrl: u, originalPath: "", originalUrl: "", incluir: p ? true : c.incluir })}
+                            />
+                            {c.imagePath && (
+                              <button className="btn-secondary text-xs" onClick={() => setEditing({ id: c.id, sid: sec.id, imageUrl: c.imageUrl })}>
+                                Editar foto
+                              </button>
+                            )}
+                          </div>
+                          <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                            <label className="flex items-center gap-1.5 text-slate-600">
+                              <input type="checkbox" checked={c.incluir} onChange={(e) => patchCell(tipo, sec.id, c.id, { incluir: e.target.checked })} />
+                              Va en el PDF
+                            </label>
+                            <span className="flex items-center gap-1">
+                              <button className="rounded px-1.5 py-0.5 text-slate-500 hover:bg-slate-100 disabled:opacity-30" disabled={idx === 0} onClick={() => moveCell(tipo, sec.id, c.id, -1)} aria-label="Subir celda">↑</button>
+                              <button className="rounded px-1.5 py-0.5 text-slate-500 hover:bg-slate-100 disabled:opacity-30" disabled={idx === sec.cells.length - 1} onClick={() => moveCell(tipo, sec.id, c.id, 1)} aria-label="Bajar celda">↓</button>
+                              <button className="rounded px-1.5 py-0.5 text-red-600 hover:bg-red-50" onClick={() => removeCell(tipo, sec.id, c.id)}>Quitar celda</button>
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <button className="btn-secondary text-xs" onClick={() => addCell(tipo, sec.id, "", bl)}>+ Agregar celda</button>
+                </div>
+              );
+            })}
 
+            {sec.cells.length === 0 && <p className="text-xs text-slate-400">Esta sección está vacía: agrega un bloque y sus celdas.</p>}
             <div className="flex flex-wrap items-center gap-2">
-              <button className="btn-secondary text-xs" onClick={() => addCell(tipo, sec.id)}>+ Agregar celda</button>
-              {catalogLeft.length > 0 && (
-                <select
-                  className="input w-auto text-xs"
-                  aria-label="Agregar celda desde las descripciones"
-                  value=""
-                  onChange={(e) => { if (e.target.value) addCell(tipo, sec.id, e.target.value); }}
-                >
-                  <option value="">+ Desde descripciones…</option>
-                  {catalogLeft.map((it) => <option key={it.id} value={it.nombre}>{it.nombre}</option>)}
-                </select>
-              )}
+              <button
+                className="btn-secondary text-xs"
+                onClick={() => { const n = prompt("Nombre del bloque nuevo (por ejemplo: ETIQUETADO):"); if (n && n.trim()) addCell(tipo, sec.id, "", n.trim()); }}
+              >+ Agregar bloque</button>
+              <select
+                className="input w-auto text-xs"
+                aria-label="Agregar bloque de las descripciones de siempre"
+                value=""
+                onChange={(e) => {
+                  const cat = e.target.value;
+                  if (!cat) return;
+                  ordered.filter((it) => it.categoria === cat).forEach((it) => addCell(tipo, sec.id, it.nombre, cat));
+                }}
+              >
+                <option value="">+ Bloque con descripciones…</option>
+                {groups.map((g) => <option key={g.categoria} value={g.categoria}>{g.categoria}</option>)}
+              </select>
             </div>
           </div>
         );
@@ -590,7 +640,7 @@ function RunTab({
             {freeOpciones.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
             <option value="__new__">Otro título nuevo…</option>
           </select>
-          <span className="text-xs text-slate-500">Se crea con las descripciones actuales; puedes quitar o agregar celdas.</span>
+          <span className="text-xs text-slate-500">Queda vacía: agrégale bloques (con las descripciones de siempre o nuevos) y celdas.</span>
         </div>
       )}
 
