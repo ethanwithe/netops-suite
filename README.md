@@ -169,8 +169,8 @@ subir archivo: **pegar con Ctrl+V** (útil si copiaste una captura de pantalla) 
 
 ### Reporte Fotográfico estilo Poder Judicial (secciones y celdas)
 
-- Cada opción (GPON con ONT, GPON con módulo, Fibra convencional) se arma por **secciones con título** (SITE, CLIENTE…)
-  y dentro de cada una **celdas** (texto + foto), igual que Poder Judicial. Al abrir se crean con las descripciones de
+- Cada opción (GPON con ONT, GPON con módulo, Fibra convencional) se arma por **secciones con título** (desplegable y editable),
+  dentro de cada una **bloques** con los nombres de siempre (EQUIPOS INSTALADOS ACCESO, ETIQUETADO…) y en cada bloque **celdas** (texto + foto). Al abrir se crean con las descripciones de
   siempre; GPON trae solo CLIENTE y SITE se agrega con "Agregar sección". Se pueden agregar/quitar/reordenar
   secciones y celdas, y crear títulos nuevos. El PDF mantiene el mismo formato.
 - Nombre del archivo: `ISD-RECORRIDO-<SOT>-<CID>-<versión>.pdf` (versión editable, por defecto `01`).

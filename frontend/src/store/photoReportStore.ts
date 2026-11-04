@@ -118,6 +118,8 @@ export interface Cell {
   originalUrl?: string;
   /** Va en el PDF (se marca sola al poner una foto). */
   incluir: boolean;
+  /** Bloque dentro de la sección («EQUIPOS INSTALADOS ACCESO», «ETIQUETADO»…). Solo organiza la pantalla. */
+  bloque?: string;
 }
 
 /** Sección = un título del reporte («INSTALACION EN SITE», «INSTALACION EN CLIENTE»…) con sus celdas. */
@@ -313,6 +315,7 @@ function loadSections(v: unknown): Section[] | null {
           originalPath: str(c.originalPath, ""),
           originalUrl: str(c.originalUrl, ""),
           incluir: c.incluir === true,
+          bloque: typeof c.bloque === "string" ? c.bloque : undefined,   // sin bloque = reporte del formato anterior (se actualiza solo)
         });
       }
     }
@@ -582,7 +585,7 @@ export function importReport(tipo: FotoTipo, saved: unknown): void {
 // SECCIONES Y CELDAS (estilo Poder Judicial)
 // ============================================================
 
-export const newCell = (descripcion = ""): Cell => ({ id: uid(), descripcion, imagePath: "", imageUrl: "", incluir: false });
+export const newCell = (descripcion = "", bloque = ""): Cell => ({ id: uid(), descripcion, imagePath: "", imageUrl: "", incluir: false, bloque });
 
 export function setSections(tipo: FotoTipo, sections: Section[] | null): void {
   setState(tipo, { sections });
@@ -602,8 +605,41 @@ export function patchCell(tipo: FotoTipo, sid: string, cid: string, patch: Parti
   mapSections(tipo, (l) => l.map((x) => (x.id === sid ? { ...x, cells: x.cells.map((c) => (c.id === cid ? { ...c, ...patch } : c)) } : x)));
 }
 
-export function addCell(tipo: FotoTipo, sid: string, descripcion = ""): void {
-  mapSections(tipo, (l) => l.map((x) => (x.id === sid ? { ...x, cells: [...x.cells, newCell(descripcion)] } : x)));
+/** Agrega una celda al final del bloque indicado (o de la sección, si no hay bloque). */
+export function addCell(tipo: FotoTipo, sid: string, descripcion = "", bloque = ""): void {
+  mapSections(tipo, (l) => l.map((x) => {
+    if (x.id !== sid) return x;
+    const cells = [...x.cells];
+    let at = cells.length;
+    for (let i = cells.length - 1; i >= 0; i--) if ((cells[i].bloque ?? "") === bloque) { at = i + 1; break; }
+    cells.splice(at, 0, newCell(descripcion, bloque));
+    return { ...x, cells };
+  }));
+}
+
+export function renameBlock(tipo: FotoTipo, sid: string, from: string, to: string): void {
+  mapSections(tipo, (l) => l.map((x) => (x.id === sid ? { ...x, cells: x.cells.map((c) => ((c.bloque ?? "") === from ? { ...c, bloque: to } : c)) } : x)));
+}
+
+export function removeBlock(tipo: FotoTipo, sid: string, bloque: string): void {
+  mapSections(tipo, (l) => l.map((x) => (x.id === sid ? { ...x, cells: x.cells.filter((c) => (c.bloque ?? "") !== bloque) } : x)));
+}
+
+/** Mueve un bloque entero (con sus celdas) una posición arriba o abajo dentro de la sección. */
+export function moveBlock(tipo: FotoTipo, sid: string, bloque: string, dir: -1 | 1): void {
+  mapSections(tipo, (l) => l.map((x) => {
+    if (x.id !== sid) return x;
+    const names = blockNames(x.cells);
+    const i = names.indexOf(bloque), j = i + dir;
+    if (i < 0 || j < 0 || j >= names.length) return x;
+    [names[i], names[j]] = [names[j], names[i]];
+    return { ...x, cells: names.flatMap((n) => x.cells.filter((c) => (c.bloque ?? "") === n)) };
+  }));
+}
+
+/** Nombres de bloque en el orden en que aparecen. */
+export function blockNames(cells: Cell[]): string[] {
+  return Array.from(new Set(cells.map((c) => c.bloque ?? "")));
 }
 
 export function removeCell(tipo: FotoTipo, sid: string, cid: string): void {
@@ -621,8 +657,9 @@ export function moveCell(tipo: FotoTipo, sid: string, cid: string, dir: -1 | 1):
   }));
 }
 
-export function addSection(tipo: FotoTipo, lado: Lado, descripciones: string[]): void {
-  mapSections(tipo, (l) => [...l, { id: uid(), lado, cells: descripciones.map((d) => newCell(d)) }]);
+/** Sección nueva. Con `items` trae esas descripciones agrupadas en sus bloques; sin ellas queda vacía para armarla a mano. */
+export function addSection(tipo: FotoTipo, lado: Lado, items: { nombre: string; categoria: string }[] = []): void {
+  mapSections(tipo, (l) => [...l, { id: uid(), lado, cells: items.map((it) => newCell(it.nombre, it.categoria)) }]);
 }
 
 export function removeSection(tipo: FotoTipo, sid: string): void {
@@ -639,28 +676,74 @@ export function moveSection(tipo: FotoTipo, sid: string, dir: -1 | 1): void {
   });
 }
 
+/** Bloques que van en SITE (acceso) en Fibra convencional; el resto va en CLIENTE. */
+const BLOQUES_SITE = new Set([
+  "EQUIPOS INSTALADOS ACCESO",
+  "ETIQUETADO",
+  "RECORRIDO EN ACCESO",
+  "VISTA GENERAL UBICACION DE EQUIPOS",
+]);
+
+type CatalogItem = { id: string; nombre: string; categoria: string };
+
 /**
- * Arma las secciones la primera vez (o al pasar de un reporte guardado en el formato anterior).
- * Reporte nuevo: GPON → CLIENTE; fibra y ventanas propias → SITE y CLIENTE, cada una con las
- * descripciones actuales. Reporte anterior: se conserva lo que ya tenía marcado o con foto.
+ * Reporte nuevo: GPON → una sección CLIENTE con todos sus bloques; Fibra (y ventanas propias) → SITE arriba
+ * (bloques de acceso) y CLIENTE abajo (el resto). Cada celda lleva la descripción de siempre y su bloque de siempre.
  */
-export function buildSections(tipo: FotoTipo, ordered: { id: string; nombre: string }[], rows: Record<string, RowState>, opciones: Opcion[]): Section[] {
+export function buildSections(tipo: FotoTipo, ordered: CatalogItem[], rows: Record<string, RowState>, opciones: Opcion[]): Section[] {
+  const has = (id: string) => opciones.some((o) => o.id === id);
+  const cliente = has("cliente") ? "cliente" : opciones[0].id;
+  const site = has("site") ? "site" : cliente;
+  const cell = (it: CatalogItem): Cell => newCell(it.nombre, it.categoria);
+
+  // Reporte anterior (formato por filas): se conserva lo que ya tenía foto o estaba marcado, en su lado.
   const used = ordered.filter((it) => { const r = rows[it.id]; return r && (r.incluir || r.imagePath); });
   if (used.length) {
     const out: Section[] = [];
     for (const op of opciones) {
       const cells = used.filter((it) => resolveOpcion(rows[it.id].lado, opciones).id === op.id).map((it): Cell => {
         const r = rows[it.id];
-        return { id: uid(), descripcion: r.descripcion ?? it.nombre, imagePath: r.imagePath, imageUrl: r.imageUrl, originalPath: r.originalPath, originalUrl: r.originalUrl, incluir: r.incluir };
+        return { id: uid(), descripcion: r.descripcion ?? it.nombre, imagePath: r.imagePath, imageUrl: r.imageUrl, originalPath: r.originalPath, originalUrl: r.originalUrl, incluir: r.incluir, bloque: it.categoria };
       });
       if (cells.length) out.push({ id: uid(), lado: op.id, cells });
     }
     if (out.length) return out;
   }
-  const want = isGpon(tipo) ? ["cliente"] : ["site", "cliente"];
-  const lados = want.filter((id) => opciones.some((o) => o.id === id));
-  if (!lados.length) lados.push(opciones[0].id);
-  return lados.map((lado) => ({ id: uid(), lado, cells: ordered.map((it) => newCell(it.nombre)) }));
+
+  if (isGpon(tipo)) return [{ id: uid(), lado: cliente, cells: ordered.map(cell) }];
+  const top = ordered.filter((it) => BLOQUES_SITE.has(it.categoria));
+  const rest = ordered.filter((it) => !BLOQUES_SITE.has(it.categoria));
+  const out: Section[] = [];
+  if (top.length) out.push({ id: uid(), lado: site, cells: top.map(cell) });
+  out.push({ id: uid(), lado: cliente, cells: rest.map(cell) });
+  return out;
+}
+
+/**
+ * Pasa un reporte guardado con el primer formato de secciones (sin bloques) al de bloques:
+ * se arma la estructura de siempre y se vuelve a poner cada foto y texto en su celda.
+ */
+export function upgradeSections(tipo: FotoTipo, old: Section[], ordered: CatalogItem[], opciones: Opcion[]): Section[] {
+  const fresh = buildSections(tipo, ordered, {}, opciones);
+  const keep = (c: Cell) => c.incluir || !!c.imagePath;
+  const taken = new Set<string>();
+  const out = fresh.map((sec) => {
+    const src = old.find((o) => resolveOpcion(o.lado, opciones).id === resolveOpcion(sec.lado, opciones).id);
+    const cells = sec.cells.map((c) => {
+      const m = src?.cells.find((o) => !taken.has(o.id) && o.descripcion === c.descripcion && keep(o));
+      if (!m) return c;
+      taken.add(m.id);
+      return { ...m, bloque: c.bloque };
+    });
+    return { ...sec, cells };
+  });
+  // Lo que tenía foto pero no coincide con ninguna descripción (o su lado no existe) no se pierde.
+  for (const o of old) {
+    const target = out.find((x) => resolveOpcion(x.lado, opciones).id === resolveOpcion(o.lado, opciones).id)
+      ?? (out.push({ id: uid(), lado: o.lado, cells: [] }), out[out.length - 1]);
+    for (const c of o.cells) if (!taken.has(c.id) && keep(c)) target.cells.push({ ...c, bloque: c.bloque ?? "OTROS" });
+  }
+  return out;
 }
 
 // ============================================================
