@@ -17,7 +17,7 @@ import { Avatar } from "../pages/ProfilePage";
 import { getActingClient, setActingClient } from "../api/client";
 
 const NAV = [
-  { to: "/pruebas", label: "Pruebas", desc: "SSH / Serial + PDF", feature: "pruebas" },
+  { to: "/grafica", label: "Gráfica", desc: "Próximamente", feature: "grafica" },
   { to: "/plantillas", label: "Plantillas", desc: "Crear y aplicar", feature: "plantillas" },
 ];
 
@@ -34,7 +34,7 @@ const TITLES: Record<string, string> = {
   "/admin/usuarios": "Usuarios",
   "/admin/clientes": "Clientes de todos",
   "/admin/actividad": "Actividad",
-  "/pruebas": "Pruebas",
+  "/grafica": "Gráfica",
   "/plantillas": "Plantillas",
   "/checklist": "CheckList",
   ...Object.fromEntries(FOTO_SUB.map((o) => [o.to, o.label])),
@@ -111,7 +111,8 @@ export default function Layout() {
 
   const tabGroups: TabGroup[] = [
     { id: "pn", label: "Panel", prefixes: ["/panel", "/perfil"], items: [{ to: "/panel", label: "Panel" }, { to: "/perfil", label: "Mi perfil" }] },
-    ...(can(me, "pruebas") || can(me, "plantillas") ? [{ id: "tl", label: "Pruebas", prefixes: ["/pruebas", "/plantillas"], items: NAV.filter((n) => can(me, n.feature)).map((n) => ({ to: n.to, label: n.label })) }] : []),
+    ...(can(me, "grafica") ? [{ id: "gr", label: "Gráfica", prefixes: ["/grafica"], items: [{ to: "/grafica", label: "Gráfica" }] }] : []),
+    ...(can(me, "plantillas") ? [{ id: "tl", label: "Plantillas", prefixes: ["/plantillas"], items: [{ to: "/plantillas", label: "Plantillas" }] }] : []),
     ...(can(me, "checklist") ? [{ id: "ck", label: "CheckList", prefixes: ["/checklist"], items: ckSub }] : []),
     ...(okFoto || can(me, "poder_judicial") ? [{ id: "ft", label: "Fotos", prefixes: ["/fotografico"], items: fotoSub }] : []),
     { id: "cl", label: "Clientes", prefixes: ["/clientes"], items: [{ to: "/clientes", label: "Mis clientes" }, ...years.map((y) => ({ to: `/clientes/${y.year}`, label: `Clientes ${y.year}` }))] },

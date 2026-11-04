@@ -60,7 +60,7 @@ export function trackRoute(pathname: string) {
 }
 export function countChat() { save({ ...mem, chats: mem.chats + 1 }); }
 
-const SECTION: Record<string, string> = { "/checklist": "CheckList", "/fotografico": "Reporte fotográfico", "/clientes": "Datos de cliente", "/pruebas": "Pruebas", "/plantillas": "Plantillas" };
+const SECTION: Record<string, string> = { "/checklist": "CheckList", "/fotografico": "Reporte fotográfico", "/clientes": "Datos de cliente", "/grafica": "Gráfica", "/plantillas": "Plantillas" };
 
 /** Resumen de hábitos para que la IA los tenga en cuenta. */
 export function habitsSummary(): string {

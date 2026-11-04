@@ -69,7 +69,7 @@ export function routeComment(pathname: string): { text: string; mood: Mood } | n
   if (p.startsWith("/clientes")) return R("Datos de cliente: todo ordenadito por año y mes. Me emociono.", "happy");
   if (p.startsWith("/fotografico")) return R("Reporte fotográfico: sonrían… bueno, sonríe el equipo.", "wink");
   if (p.startsWith("/plantillas")) return R("Plantillas: escribe una vez, aplica cien. Eficiencia pura.", "happy");
-  if (p.startsWith("/pruebas")) return R("Pruebas: si algo falla, la culpa es del cable. Siempre.", "smug");
+  if (p.startsWith("/grafica")) return R("La ventana gráfica todavía está en construcción. Pronto.", "smug");
   return null;
 }
 
@@ -230,7 +230,7 @@ const INTENTS: Intent[] = [
   { keys: ["pdf", "genera pdf", "informe"], reply: () => ({ text: "El PDF del CheckList sale con estilo Claro y se llama «checklist_sot_<sot>-<cliente>.pdf». Lo generas al final con «Generar PDF».", mood: "neutral" }) },
   { keys: ["reporte fotografico", "fotografico", "fotos", "foto", "camara", "sello", "evidencia", "zip", "carpeta"], reply: () => ({ text: "Reporte fotográfico: «Tomar foto» muestra el sello en vivo (elige esquina), «Editar» dibuja líneas, flechas, texto y recorta. Al final «Descargar carpeta de evidencia» crea un ZIP con fotos editadas y originales, separadas por lado. Te llevo.", mood: "wink", action: { kind: "go", to: "/fotografico/gpon-ont" } }) },
   { keys: ["plantilla", "plantillas", "aplicar al equipo"], reply: () => ({ text: "Plantillas: crea el comando una vez y aplícalo a los equipos. Te llevo.", mood: "happy", action: { kind: "go", to: "/plantillas" } }) },
-  { keys: ["pruebas", "ssh"], reply: () => ({ text: "Pruebas: SSH/Serial con resultado en PDF. Te llevo.", mood: "neutral", action: { kind: "go", to: "/pruebas" } }) },
+  { keys: ["grafica", "gráfica", "grafico"], reply: () => ({ text: "La ventana Gráfica está en construcción. Te llevo a verla.", mood: "neutral", action: { kind: "go", to: "/grafica" } }) },
   { keys: ["logo", "logotipo"], reply: () => ({ text: "Los logos se eligen o suben dentro de cada ventana. El del CheckList es independiente del reporte fotográfico.", mood: "neutral" }) },
   // Burlas
   { keys: ["tonto", "bobo", "inutil", "estupido", "feo", "malo", "lento"], reply: () => ({ text: pick(["Tú lo dices, pero yo tengo uptime del 99.99 %. ¿Y tú?", "Auch. Mi ego tiene un firewall, pero igual cuenta.", "Qué cruel. Eso lo anoto en el log como «error de usuario»."]), mood: "angry" }) },

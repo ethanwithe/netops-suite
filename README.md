@@ -156,7 +156,7 @@ subir archivo: **pegar con Ctrl+V** (útil si copiaste una captura de pantalla) 
   y **se obliga a cambiar la contraseña al entrar**. Cámbiala de inmediato.
 - **Roles**: `superadmin` (todo, crea administradores), `admin` (ve todo, gestiona usuarios) y `user` (solo sus clientes).
 - **Por usuario el admin define**: activo/desactivado, vigencia (fechas desde/hasta), horario diario (HH:MM, hora de Lima),
-  qué funciones puede usar (Pruebas, Plantillas, CheckList, Fotos, Poder Judicial, Bit/IA, Exportar, Editar catálogos),
+  qué funciones puede usar (Gráfica, Plantillas, CheckList, Fotos, Poder Judicial, Bit/IA, Exportar, Editar catálogos),
   restablecer contraseña y cerrar sus sesiones.
 - **Perfil**: cada usuario edita sus datos, foto y contraseña. **Mis clientes**: los suyos (y los compartidos).
 - **Clientes de todos** (admin): ver/editar cualquiera, filtrar por usuario o mes, **asociar varios usuarios** a una SOT

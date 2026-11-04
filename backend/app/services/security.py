@@ -22,7 +22,7 @@ ROLES = ("superadmin", "admin", "user")
 
 # Funciones que el administrador puede dar o quitar a cada usuario.
 FEATURES: dict[str, str] = {
-    "pruebas": "Pruebas",
+    "grafica": "Ventana gráfica",
     "plantillas": "Plantillas",
     "checklist": "CheckList",
     "fotografico": "Fotos (reporte fotográfico)",

@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import Layout from "./components/Layout";
 import Spinner from "./components/Spinner";
-import PruebasPage from "./pages/PruebasPage";
+import GraficaPage from "./pages/GraficaPage";
 import PlantillasPage from "./pages/PlantillasPage";
 import ChecklistTypePage from "./pages/ChecklistTypePage";
 import ChecklistHome from "./pages/ChecklistHome";
@@ -43,7 +43,8 @@ export default function App() {
         <Route index element={<Navigate to="/panel" replace />} />
         <Route path="/panel" element={<DashboardPage />} />
         <Route path="/perfil" element={<ProfilePage />} />
-        <Route path="/pruebas" element={<Need feature="pruebas"><PruebasPage /></Need>} />
+        <Route path="/grafica" element={<Need feature="grafica"><GraficaPage /></Need>} />
+        <Route path="/pruebas" element={<Navigate to="/grafica" replace />} />
         <Route path="/plantillas" element={<Need feature="plantillas"><PlantillasPage /></Need>} />
         <Route path="/clientes" element={<ClientsPage />} />
         <Route path="/clientes/:year" element={<ClientsPage />} />

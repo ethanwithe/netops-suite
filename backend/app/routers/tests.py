@@ -18,7 +18,7 @@ router = APIRouter(prefix="/api/tests", tags=["tests"])
 
 
 @router.websocket("/run")
-async def run_tests_ws(websocket: WebSocket, _u: str = Depends(ws_user("pruebas"))):
+async def run_tests_ws(websocket: WebSocket, _u: str = Depends(ws_user("plantillas"))):
     await websocket.accept()
     params = await websocket.receive_json()
     payload = schemas.RunTestsRequest(**params)

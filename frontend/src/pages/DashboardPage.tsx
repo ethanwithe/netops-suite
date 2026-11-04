@@ -57,9 +57,9 @@ export default function DashboardPage() {
           <p className="text-sm text-slate-500">Hola {displayName(me)}. Cada cliente vale 1 punto; si lo hicieron varios, se reparte en partes iguales.</p>
         </div>
         {me.is_admin && (
-          <div className="flex gap-1">
-            <button className={`${scope === "me" ? "btn-primary" : "btn-secondary"} text-xs`} onClick={() => setScope("me")}>Lo mío</button>
-            <button className={`${scope === "all" ? "btn-primary" : "btn-secondary"} text-xs`} onClick={() => setScope("all")}>De todos</button>
+          <div className="seg" role="tablist" aria-label="Alcance">
+            <button role="tab" aria-selected={scope === "me"} className={scope === "me" ? "on" : ""} onClick={() => setScope("me")}>Lo mío</button>
+            <button role="tab" aria-selected={scope === "all"} className={scope === "all" ? "on" : ""} onClick={() => setScope("all")}>De todos</button>
           </div>
         )}
         <select className="input w-auto" value={year} onChange={(e) => setYear(Number(e.target.value))} aria-label="Año">

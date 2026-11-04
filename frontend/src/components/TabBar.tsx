@@ -4,6 +4,9 @@ import { useOverlayOpen } from "./useOverlayOpen";
 export interface TabGroup { id: string; label: string; prefixes: string[]; items: { to: string; label: string }[] }
 
 const ICON: Record<string, string> = {
+  pn: "M4 13h4v7H4zM10 4h4v16h-4zM16 9h4v11h-4z",
+  gr: "M4 19V5M4 19h16M8 15l3-4 3 2 5-7",
+  ad: "M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6l7-3zM9 12l2 2 4-4",
   tl: "M4 5h16v10H4zM8 19h8M12 15v4",
   ck: "M9 6h11M9 12h11M9 18h11M4 6l1 1 2-2M4 12l1 1 2-2M4 18l1 1 2-2",
   ft: "M4 8h3l2-3h6l2 3h3v11H4zM12 17a3.5 3.5 0 100-7 3.5 3.5 0 000 7z",
