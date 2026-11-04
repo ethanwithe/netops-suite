@@ -150,6 +150,15 @@ misma base de datos si el backend corre en un servidor común.
 Todos los campos de imagen (logos, capturas del checklist, fotos del reporte) ahora aceptan, además del botón de
 subir archivo: **pegar con Ctrl+V** (útil si copiaste una captura de pantalla) y **arrastrar y soltar**.
 
+### Reporte Fotográfico estilo Poder Judicial (secciones y celdas)
+
+- Cada opción (GPON con ONT, GPON con módulo, Fibra convencional) se arma por **secciones con título** (SITE, CLIENTE…)
+  y dentro de cada una **celdas** (texto + foto), igual que Poder Judicial. Al abrir se crean con las descripciones de
+  siempre; GPON trae solo CLIENTE y SITE se agrega con "Agregar sección". Se pueden agregar/quitar/reordenar
+  secciones y celdas, y crear títulos nuevos. El PDF mantiene el mismo formato.
+- Nombre del archivo: `ISD-RECORRIDO-<SOT>-<CID>-<versión>.pdf` (versión editable, por defecto `01`).
+- Los reportes guardados en el formato anterior se convierten solos.
+
 ### Reporte Fotográfico: selección en bloque, reordenar y editar
 - Checkbox **"Seleccionar todo"** y **"Seleccionar sección"** por categoría, para no tener que marcar ítem por
   ítem.

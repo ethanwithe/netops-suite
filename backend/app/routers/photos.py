@@ -14,7 +14,7 @@ from app import models, schemas
 from app.seed_data import CATEGORIAS, TIPO_CATEGORIAS
 from app.services import cache
 from app.services.logo_store import resolve_logo
-from app.services.naming import build_report_filename
+from app.services.naming import build_report_filename, build_recorrido_filename
 from app.services.pdf_photo_report import build_photo_report_pdf
 from app.services.pdf_poder_judicial import build_pj_report_pdf
 from app.services.report_project import embed_project, load_project
@@ -301,7 +301,7 @@ def generate_photo_report_pdf(
     }
 
     # Nombre según los datos: RF_SOT-<sot>_<cliente>.pdf
-    out_name = build_report_filename(payload.sot, payload.cliente)
+    out_name = build_recorrido_filename(payload.sot, payload.cid, payload.version)
     out_path = OUTPUTS_DIR / out_name
 
     # Se genera en un temporal y se renombra al final: nunca se sirve un

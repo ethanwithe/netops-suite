@@ -61,16 +61,20 @@ export function useOpciones() {
   const [raw, setRaw] = usePersistentState<Opcion[]>("netops.fotografico.opciones", DEFAULT_OPCIONES);
   const opciones = useMemo(() => cleanOpciones(raw), [raw]);
   const add = useCallback(
-    (label: string) => {
+    (label: string): string => {
       const text = label.trim();
-      if (!text) return;
+      if (!text) return "";
+      const found = cleanOpciones(raw).find((o) => o.label.toLowerCase() === text.toLowerCase());
+      if (found) return found.id;
+      const id = `o${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
       setRaw((prev) => {
         const list = cleanOpciones(prev);
         if (list.some((o) => o.label.toLowerCase() === text.toLowerCase())) return list;
-        return [...list, { id: `o${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`, label: text }];
+        return [...list, { id, label: text }];
       });
+      return id;
     },
-    [setRaw]
+    [raw, setRaw]
   );
   const remove = useCallback(
     (id: string) => setRaw((prev) => {
@@ -104,6 +108,26 @@ export interface RowState {
   originalUrl?: string;
 }
 
+/** Celda de una sección: descripción + foto (como en Poder Judicial). */
+export interface Cell {
+  id: string;
+  descripcion: string;
+  imagePath: string;
+  imageUrl: string;
+  originalPath?: string;
+  originalUrl?: string;
+  /** Va en el PDF (se marca sola al poner una foto). */
+  incluir: boolean;
+}
+
+/** Sección = un título del reporte («INSTALACION EN SITE», «INSTALACION EN CLIENTE»…) con sus celdas. */
+export interface Section {
+  id: string;
+  /** Id de la opción cuyo texto es el título. */
+  lado: Lado;
+  cells: Cell[];
+}
+
 /** Foto extra para la carpeta de evidencia (no va en el PDF). */
 export interface ExtraPhoto {
   id: string;
@@ -132,8 +156,12 @@ export interface ReportFields {
   contrata: string;
   logoIzq: LogoSel;
   logoDer: LogoSel;
-  /** Estado por ítem, indexado por el id del ítem. */
+  /** Estado por ítem, indexado por el id del ítem (formato anterior; se convierte a `sections`). */
   rows: Record<string, RowState>;
+  /** Secciones con sus celdas. null = todavía no se armó (se arma con las descripciones al abrir). */
+  sections: Section[] | null;
+  /** Número de versión que lleva el nombre del archivo (ISD-RECORRIDO-<SOT>-<CID>-<versión>). */
+  version: string;
   extras: ExtraPhoto[];
 }
 
@@ -226,6 +254,8 @@ function freshFields(tipo?: FotoTipo): ReportFields {
     logoIzq: logo(d.logoIzq),
     logoDer: logo(d.logoDer),
     rows: {},
+    sections: null,
+    version: "01",
     extras: [],
   };
 }
@@ -263,6 +293,35 @@ function loadRows(v: unknown): Record<string, RowState> {
   }
   return out;
 }
+
+function loadSections(v: unknown): Section[] | null {
+  if (!Array.isArray(v)) return null;
+  const out: Section[] = [];
+  for (const raw of v) {
+    if (!raw || typeof raw !== "object") continue;
+    const x = raw as Record<string, unknown>;
+    const cells: Cell[] = [];
+    if (Array.isArray(x.cells)) {
+      for (const cr of x.cells) {
+        if (!cr || typeof cr !== "object") continue;
+        const c = cr as Record<string, unknown>;
+        cells.push({
+          id: str(c.id, uid()),
+          descripcion: str(c.descripcion, ""),
+          imagePath: str(c.imagePath, ""),
+          imageUrl: str(c.imageUrl, ""),
+          originalPath: str(c.originalPath, ""),
+          originalUrl: str(c.originalUrl, ""),
+          incluir: c.incluir === true,
+        });
+      }
+    }
+    out.push({ id: str(x.id, uid()), lado: str(x.lado, "cliente") || "cliente", cells });
+  }
+  return out;
+}
+
+const uid = () => `c${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
 
 function loadExtras(v: unknown): ExtraPhoto[] {
   if (!Array.isArray(v)) return [];
@@ -327,6 +386,8 @@ function loadFields(tipo: FotoTipo): ReportFields {
       logoIzq: loadLogo(x.logoIzq),
       logoDer: loadLogo(x.logoDer),
       rows: loadRows(x.rows),
+      sections: loadSections(x.sections),
+      version: str(x.version, "01") || "01",
       extras: loadExtras(x.extras),
       ...(isCustom(tipo) ? {} : sharedLogos()),
     };
@@ -373,6 +434,8 @@ function persist(tipo: FotoTipo): void {
       logoIzq: state.logoIzq,
       logoDer: state.logoDer,
       rows: state.rows,
+      sections: state.sections,
+      version: state.version,
       extras: state.extras,
     };
     localStorage.setItem(keyOf(tipo), JSON.stringify({ ...fields, savedOn: todayPE() }));
@@ -485,11 +548,11 @@ export function resetReport(tipo: FotoTipo): void {
 /** Estado que se guarda dentro del PDF para poder reabrirlo. */
 function projectOf(tipo: FotoTipo) {
   const { state } = storeOf(tipo);
-  const { titulo, proy, cliente, sot, fecha, cid, contrata, logoIzq, logoDer, rows, extras } = state;
+  const { titulo, proy, cliente, sot, fecha, cid, contrata, logoIzq, logoDer, rows, sections, version, extras } = state;
   return {
     kind: "photo",
     tipo,
-    state: { titulo, proy, cliente, sot, fecha, cid, contrata, logoIzq, logoDer, rows, extras },
+    state: { titulo, proy, cliente, sot, fecha, cid, contrata, logoIzq, logoDer, rows, sections, version, extras },
   };
 }
 
@@ -507,10 +570,97 @@ export function importReport(tipo: FotoTipo, saved: unknown): void {
     logoIzq: loadLogo(x.logoIzq),
     logoDer: loadLogo(x.logoDer),
     rows: loadRows(x.rows),
+    sections: loadSections(x.sections),
+    version: str(x.version, "01") || "01",
     extras: loadExtras(x.extras),
     result: null,
     error: null,
   });
+}
+
+// ============================================================
+// SECCIONES Y CELDAS (estilo Poder Judicial)
+// ============================================================
+
+export const newCell = (descripcion = ""): Cell => ({ id: uid(), descripcion, imagePath: "", imageUrl: "", incluir: false });
+
+export function setSections(tipo: FotoTipo, sections: Section[] | null): void {
+  setState(tipo, { sections });
+}
+
+function mapSections(tipo: FotoTipo, fn: (list: Section[]) => Section[]): void {
+  const cur = storeOf(tipo).state.sections;
+  if (!cur) return;
+  setState(tipo, { sections: fn(cur) });
+}
+
+export function patchSection(tipo: FotoTipo, sid: string, patch: Partial<Section>): void {
+  mapSections(tipo, (l) => l.map((x) => (x.id === sid ? { ...x, ...patch } : x)));
+}
+
+export function patchCell(tipo: FotoTipo, sid: string, cid: string, patch: Partial<Cell>): void {
+  mapSections(tipo, (l) => l.map((x) => (x.id === sid ? { ...x, cells: x.cells.map((c) => (c.id === cid ? { ...c, ...patch } : c)) } : x)));
+}
+
+export function addCell(tipo: FotoTipo, sid: string, descripcion = ""): void {
+  mapSections(tipo, (l) => l.map((x) => (x.id === sid ? { ...x, cells: [...x.cells, newCell(descripcion)] } : x)));
+}
+
+export function removeCell(tipo: FotoTipo, sid: string, cid: string): void {
+  mapSections(tipo, (l) => l.map((x) => (x.id === sid ? { ...x, cells: x.cells.filter((c) => c.id !== cid) } : x)));
+}
+
+export function moveCell(tipo: FotoTipo, sid: string, cid: string, dir: -1 | 1): void {
+  mapSections(tipo, (l) => l.map((x) => {
+    if (x.id !== sid) return x;
+    const i = x.cells.findIndex((c) => c.id === cid), j = i + dir;
+    if (i < 0 || j < 0 || j >= x.cells.length) return x;
+    const cells = [...x.cells];
+    [cells[i], cells[j]] = [cells[j], cells[i]];
+    return { ...x, cells };
+  }));
+}
+
+export function addSection(tipo: FotoTipo, lado: Lado, descripciones: string[]): void {
+  mapSections(tipo, (l) => [...l, { id: uid(), lado, cells: descripciones.map((d) => newCell(d)) }]);
+}
+
+export function removeSection(tipo: FotoTipo, sid: string): void {
+  mapSections(tipo, (l) => l.filter((x) => x.id !== sid));
+}
+
+export function moveSection(tipo: FotoTipo, sid: string, dir: -1 | 1): void {
+  mapSections(tipo, (l) => {
+    const i = l.findIndex((x) => x.id === sid), j = i + dir;
+    if (i < 0 || j < 0 || j >= l.length) return l;
+    const out = [...l];
+    [out[i], out[j]] = [out[j], out[i]];
+    return out;
+  });
+}
+
+/**
+ * Arma las secciones la primera vez (o al pasar de un reporte guardado en el formato anterior).
+ * Reporte nuevo: GPON → CLIENTE; fibra y ventanas propias → SITE y CLIENTE, cada una con las
+ * descripciones actuales. Reporte anterior: se conserva lo que ya tenía marcado o con foto.
+ */
+export function buildSections(tipo: FotoTipo, ordered: { id: string; nombre: string }[], rows: Record<string, RowState>, opciones: Opcion[]): Section[] {
+  const used = ordered.filter((it) => { const r = rows[it.id]; return r && (r.incluir || r.imagePath); });
+  if (used.length) {
+    const out: Section[] = [];
+    for (const op of opciones) {
+      const cells = used.filter((it) => resolveOpcion(rows[it.id].lado, opciones).id === op.id).map((it): Cell => {
+        const r = rows[it.id];
+        return { id: uid(), descripcion: r.descripcion ?? it.nombre, imagePath: r.imagePath, imageUrl: r.imageUrl, originalPath: r.originalPath, originalUrl: r.originalUrl, incluir: r.incluir };
+      });
+      if (cells.length) out.push({ id: uid(), lado: op.id, cells });
+    }
+    if (out.length) return out;
+  }
+  const want = isGpon(tipo) ? ["cliente"] : ["site", "cliente"];
+  const lados = want.filter((id) => opciones.some((o) => o.id === id));
+  if (!lados.length) lados.push(opciones[0].id);
+  return lados.map((lado) => ({ id: uid(), lado, cells: ordered.map((it) => newCell(it.nombre)) }));
 }
 
 // ============================================================
@@ -531,17 +681,18 @@ function cleanPart(text: string): string {
     .replace(/[ .]+$/, "");
 }
 
-/** RF_SOT-<sot>_<cliente>.pdf */
-export function previewFilename(sot: string, cliente: string): string {
-  const parts = ["RF"];
-
+/** ISD-RECORRIDO-<SOT>-<CID>-<versión>.pdf (misma regla que backend/app/services/naming.py). */
+export function previewFilename(sot: string, cid: string, version = "01"): string {
   const sotClean = cleanPart(sot.replace(SOT_PREFIX, ""));
-  if (sotClean) parts.push(`SOT-${sotClean}`);
-
-  const clienteClean = cleanPart(cliente);
-  if (clienteClean) parts.push(clienteClean);
-
-  return parts.length === 1 ? "RF_<fecha y hora>.pdf" : `${parts.join("_")}.pdf`;
+  const cidClean = cleanPart(cid);
+  let v = cleanPart(version) || "01";
+  if (/^\d+$/.test(v)) v = v.padStart(2, "0");
+  const parts = ["ISD", "RECORRIDO"];
+  if (sotClean) parts.push(sotClean);
+  if (cidClean) parts.push(cidClean);
+  if (!sotClean && !cidClean) parts.push("<fecha y hora>");
+  parts.push(v);
+  return `${parts.join("-")}.pdf`;
 }
 
 // ============================================================
@@ -549,36 +700,30 @@ export function previewFilename(sot: string, cliente: string): string {
 // ============================================================
 
 /**
- * Genera el PDF con los ítems marcados, en el mismo orden en que se ven en
- * pantalla (`orderedItems`). La petición vive aquí (no en el componente),
+ * Genera el PDF con las celdas marcadas de cada sección, en el orden en que se ven en pantalla. La petición vive aquí (no en el componente),
  * así que seguir navegando mientras se genera no la cancela.
  */
 export async function generatePdf(
-  orderedItems: PhotoItem[],
-  tipo: FotoTipo = "fibra",
-  opciones: Opcion[] = DEFAULT_OPCIONES,
+  tipo: FotoTipo,
+  opciones: Opcion[],
   tipoNombre: string = ""
 ): Promise<void> {
   const s = storeOf(tipo).state;
   if (s.generating) return;
-  const selected = orderedItems.filter((it) => getRow(s.rows, it.id).incluir);
-
-  if (selected.length === 0) {
-    setState(tipo, { error: "Marca al menos un ítem." });
-    return;
+  const sections = s.sections ?? [];
+  const items: { numero: number; descripcion: string; image_path: string | null; lado: string; lado_label: string }[] = [];
+  for (const sec of sections) {
+    const op = resolveOpcion(sec.lado, opciones);
+    for (const c of sec.cells) {
+      if (!c.incluir) continue;
+      items.push({ numero: items.length + 1, descripcion: c.descripcion, image_path: c.imagePath || null, lado: op.id, lado_label: op.label });
+    }
   }
 
-  const items = selected.map((it, i) => {
-    const r = getRow(s.rows, it.id);
-    const op = resolveOpcion(r.lado, opciones);
-    return {
-      numero: i + 1,
-      descripcion: r.descripcion ?? it.nombre,
-      image_path: r.imagePath || null,
-      lado: op.id,
-      lado_label: op.label,
-    };
-  });
+  if (items.length === 0) {
+    setState(tipo, { error: "Marca al menos una celda (se marca sola al poner una foto)." });
+    return;
+  }
 
   setState(tipo, { generating: true, error: null, result: null });
 
@@ -593,9 +738,10 @@ export async function generatePdf(
       fecha: s.fecha,
       cid: s.cid,
       contrata: s.contrata,
+      version: s.version,
       ...logoPayload(s.logoIzq, "logo_izq"),
       ...logoPayload(s.logoDer, "logo_der"),
-      lados: opciones.map((o) => o.id),
+      lados: [...new Set(sections.map((x) => resolveOpcion(x.lado, opciones).id))],
       items,
     });
 

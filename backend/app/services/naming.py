@@ -2,8 +2,8 @@
 naming.py
 Nombres de archivo para los PDF generados (sin dependencias externas).
 
-Reporte fotográfico:  RF_SOT-<sot>_<cliente>.pdf
-Ejemplo:              RF_SOT-9878773_NOMBRE DE LA EMPRESA.pdf
+Reporte fotográfico:  ISD-RECORRIDO-<sot>-<cid>-<versión>.pdf
+Ejemplo:              ISD-RECORRIDO-9878773-1234567-01.pdf
 """
 
 import re
@@ -71,3 +71,25 @@ def build_checklist_filename(sot, cliente, now=None):
     if cliente_clean:
         name += ("-" if sot_clean else "_") + cliente_clean
     return name + ".pdf"
+
+
+def build_recorrido_filename(sot, cid, version="01", now=None):
+    """ISD-RECORRIDO-<SOT>-<CID>-<versión>.pdf  (ej. ISD-RECORRIDO-9878773-1234567-01.pdf).
+
+    Si falta la SOT o el CID, esa parte se omite. La versión se rellena a 2 dígitos (1 -> 01).
+    """
+    sot_clean = clean_part(_SOT_PREFIX.sub("", str(sot or "")))
+    cid_clean = clean_part(cid)
+    v = clean_part(version) or "01"
+    if v.isdigit():
+        v = v.zfill(2)
+    parts = ["ISD", "RECORRIDO"]
+    if sot_clean:
+        parts.append(sot_clean)
+    if cid_clean:
+        parts.append(cid_clean)
+    if not sot_clean and not cid_clean:
+        now = now or dt.datetime.now()
+        parts.append(now.strftime("%Y%m%d_%H%M%S"))
+    parts.append(v)
+    return "-".join(parts) + ".pdf"
