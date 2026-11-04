@@ -1,6 +1,25 @@
 import axios from "axios";
 
-export const api = axios.create({ baseURL: "/api" });
+export const api = axios.create({ baseURL: "/api", withCredentials: true });
+
+/** Cuando un administrador abre el cliente de otro usuario, sus peticiones de ventana lo indican. */
+export function setActingClient(c: { id: string; sot: string } | null): void {
+  try {
+    if (c) sessionStorage.setItem("netops.actClient", JSON.stringify(c));
+    else sessionStorage.removeItem("netops.actClient");
+  } catch { /* sin almacenamiento */ }
+}
+export function getActingClient(): { id: string; sot: string } | null {
+  try { return JSON.parse(sessionStorage.getItem("netops.actClient") || "null"); } catch { return null; }
+}
+api.interceptors.request.use((cfg) => {
+  const act = getActingClient();
+  if (act && (cfg.url || "").startsWith("/clients")) {
+    cfg.headers.set("X-Act-Client", act.id);
+  }
+  return cfg;
+});
+
 
 export function wsUrl(path: string): string {
   const proto = window.location.protocol === "https:" ? "wss" : "ws";

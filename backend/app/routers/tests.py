@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.config import OUTPUTS_DIR
 from app.services import filestore
+from app.auth import ws_user
 from app.database import get_db
 from app import schemas
 from app.services.logo_store import resolve_logo
@@ -17,7 +18,7 @@ router = APIRouter(prefix="/api/tests", tags=["tests"])
 
 
 @router.websocket("/run")
-async def run_tests_ws(websocket: WebSocket):
+async def run_tests_ws(websocket: WebSocket, _u: str = Depends(ws_user("pruebas"))):
     await websocket.accept()
     params = await websocket.receive_json()
     payload = schemas.RunTestsRequest(**params)

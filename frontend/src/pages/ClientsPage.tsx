@@ -1,17 +1,21 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { apiErrorMessage } from "../api/client";
+import { apiErrorMessage, setActingClient } from "../api/client";
 import Spinner from "../components/Spinner";
 import { usePersistentState } from "../store/persistentState";
-import { createClient, deleteClient, listClients, updateClient } from "../store/clients";
+import { createClient, deleteClient, listClients, listTrash, restoreClient, updateClient } from "../store/clients";
+import { adminPurge, adminRestore, exportClientUrl, exportClientsUrl, FORMATS, listAllClients, listUsers, setParticipants } from "../store/admin";
+import type { AdminUser } from "../store/admin";
+import { can, useAuth } from "../store/auth";
 import type { ClientInput, ClientRecord } from "../store/clients";
 import { deleteWorkspace, listWorkspaces, requestOpen } from "../store/workspaces";
 import type { WorkspaceInfo } from "../store/workspaces";
 
 const MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
 
-/** /clientes (todos, con buscador) y /clientes/:year (por meses). */
-export default function ClientsPage() {
+/** /clientes (mis clientes), /clientes/:year (por meses) y, para administradores, /admin/clientes (clientes de todos). */
+export default function ClientsPage({ all = false }: { all?: boolean }) {
+  const { me } = useAuth();
   const { year } = useParams();
   const y = year ? Number(year) : undefined;
   const [rows, setRows] = useState<ClientRecord[]>([]);
@@ -20,14 +24,22 @@ export default function ClientsPage() {
   const [q, setQ] = useState("");
   const [month, setMonth] = usePersistentState(`clients.month.${y ?? "all"}`, new Date().getMonth() + 1);
   const [editing, setEditing] = useState<ClientRecord | "new" | null>(null);
+  const [trash, setTrash] = useState(false);
+  const [userId, setUserId] = useState("");
+  const [monthFilter, setMonthFilter] = useState("");
+  const [users, setUsers] = useState<AdminUser[]>([]);
+  useEffect(() => { if (all) listUsers().then(setUsers).catch(() => undefined); }, [all]);
 
   const reload = useCallback(() => {
     setLoading(true);
-    return listClients({ year: y, q })
+    const req = all
+      ? listAllClients({ user_id: userId || undefined, month: monthFilter || undefined, year: y, q, deleted: trash })
+      : trash ? listTrash() : listClients({ year: y, q });
+    return req
       .then((r) => { setRows(r); setError(null); })
       .catch((e) => setError(apiErrorMessage(e, "No se pudieron cargar los clientes.")))
       .finally(() => setLoading(false));
-  }, [y, q]);
+  }, [y, q, all, trash, userId, monthFilter]);
 
   useEffect(() => {
     const t = window.setTimeout(() => void reload(), q ? 250 : 0);
@@ -43,25 +55,40 @@ export default function ClientsPage() {
     return c;
   }, [rows]);
 
-  const shown = y ? rows.filter((r) => Number((r.fecha || "").slice(5, 7)) === month) : rows;
+  const shown = y && !all && !trash ? rows.filter((r) => Number((r.fecha || "").slice(5, 7)) === month) : rows;
   const defaultDate = y ? `${y}-${String(month).padStart(2, "0")}-${String(Math.min(new Date().getDate(), 28)).padStart(2, "0")}` : new Date().toISOString().slice(0, 10);
 
   return (
     <div className="space-y-5">
       <div>
-        <h2 className="page-title">{y ? `Clientes ${y}` : "Datos de clientes"}</h2>
-        <p className="text-sm text-slate-500">
+        <h2 className="page-title">{all ? "Clientes de todos" : trash ? "Papelera" : y ? `Clientes ${y}` : "Mis clientes"}</h2>
+        {all && <p className="text-sm text-slate-500">Todos los clientes de todos los usuarios. Aquí puedes verlos, editarlos, asociarlos a varios usuarios (el punto se reparte) y descargarlos.</p>}
+        {trash && <p className="text-sm text-slate-500">Lo que se borró queda aquí y se puede recuperar.</p>}
+        {!all && !trash && <p className="text-sm text-slate-500">
           Cada cliente se guarda por <b>SOT</b>, nombre y fecha, y queda en el año y el mes de la <b>fecha de sus datos</b> (no la de creación).
           Lo que se agregue de esa SOT en cualquier ventana (IPs, CID, reportes generados…) se suma aquí solo.
-        </p>
+        </p>}
       </div>
 
       <div className="card flex flex-wrap items-center gap-2">
         <input className="input min-w-[200px] flex-1" placeholder="Buscar por SOT, nombre, CID o proyecto..." value={q} onChange={(e) => setQ(e.target.value)} />
-        <button className="btn-primary text-sm" onClick={() => setEditing("new")}>Agregar cliente</button>
+        {all && (
+          <>
+            <select className="input w-auto" value={userId} onChange={(e) => setUserId(e.target.value)} aria-label="Usuario">
+              <option value="">Todos los usuarios</option>
+              {users.map((u) => <option key={u.id} value={u.id}>{u.full_name || u.username}</option>)}
+            </select>
+            <input type="month" className="input w-auto" value={monthFilter} onChange={(e) => setMonthFilter(e.target.value)} aria-label="Mes" />
+          </>
+        )}
+        {!trash && <button className="btn-primary text-sm" onClick={() => setEditing("new")}>Agregar cliente</button>}
+        <button className={`${trash ? "btn-primary" : "btn-secondary"} text-sm`} onClick={() => setTrash(!trash)}>{trash ? "Salir de la papelera" : "Papelera"}</button>
+        {can(me, "exportar") && !trash && (
+          <ExportMenu label="Descargar lista" urlFor={(f) => exportClientsUrl({ format: f, scope: all ? "all" : "mine", user_id: userId, month: monthFilter || (y && !all ? `${y}-${String(month).padStart(2, "0")}` : ""), year: monthFilter ? undefined : y, q })} />
+        )}
       </div>
 
-      {y && (
+      {y && !all && !trash && (
         <div className="flex flex-wrap gap-2">
           {MESES.map((m, i) => (
             <button key={m} className={`${month === i + 1 ? "btn-primary" : "btn-secondary"} text-xs`} onClick={() => setMonth(i + 1)}>
@@ -79,7 +106,7 @@ export default function ClientsPage() {
       ) : (
         <div className="space-y-2">
           {shown.map((c) => (
-            <ClientCard key={c.id} c={c} onEdit={() => setEditing(c)} showMonth={!y} />
+            <ClientCard key={c.id} c={c} onEdit={() => setEditing(c)} showMonth={!y} all={all} trash={trash} users={users} onChanged={() => void reload()} />
           ))}
         </div>
       )}
@@ -96,7 +123,9 @@ export default function ClientsPage() {
   );
 }
 
-function ClientCard({ c, onEdit, showMonth }: { c: ClientRecord; onEdit: () => void; showMonth: boolean }) {
+function ClientCard({ c, onEdit, showMonth, all, trash, users, onChanged }: { c: ClientRecord; onEdit: () => void; showMonth: boolean; all: boolean; trash: boolean; users: AdminUser[]; onChanged: () => void }) {
+  const { me } = useAuth();
+  const [assoc, setAssoc] = useState(false);
   const [open, setOpen] = useState(false);
   const m = Number(c.fecha.slice(5, 7));
   const datos = Object.entries(c.datos || {});
@@ -115,6 +144,9 @@ function ClientCard({ c, onEdit, showMonth }: { c: ClientRecord; onEdit: () => v
         <span className="font-semibold text-slate-800">SOT {c.sot}</span>
         <span className="flex-1 min-w-[160px] text-slate-700">{c.nombre || <i className="text-slate-400">(sin nombre)</i>}</span>
         <span className="text-xs text-slate-500">{c.fecha}{showMonth && m ? ` · ${MESES[m - 1]}` : ""}</span>
+        {(c.participants?.length ?? 0) > 0 && (all || c.shared) && (
+          <span className="text-xs text-slate-500">{c.participants!.map((p) => p.name).join(" + ")}{c.shared ? ` · ${c.point} c/u` : ""}</span>
+        )}
         <span className="text-xs">{open ? "Ocultar" : "Ver"}</span>
       </button>
       {open && (
@@ -140,7 +172,7 @@ function ClientCard({ c, onEdit, showMonth }: { c: ClientRecord; onEdit: () => v
               <ul className="mt-1 space-y-1">
                 {wins.map((w) => (
                   <li key={w.key} className="flex flex-wrap items-center gap-2 text-xs">
-                    <button className="btn-secondary px-2.5 py-1 text-xs" disabled={!w.route} onClick={() => { requestOpen(c.sot, w.key); navigate(w.route); }}>
+                    <button className="btn-secondary px-2.5 py-1 text-xs" disabled={!w.route} onClick={() => { setActingClient(c.mine ? null : { id: c.id, sot: c.sot }); requestOpen(c.sot, w.key); navigate(w.route); }}>
                       Abrir · {w.label || w.key}
                     </button>
                     <span className="text-slate-400">{when(w.updated_at)}</span>
@@ -163,9 +195,24 @@ function ClientCard({ c, onEdit, showMonth }: { c: ClientRecord; onEdit: () => v
               </ul>
             </div>
           )}
-          <button className="btn-secondary text-xs" onClick={onEdit}>Editar</button>
+          {c.shared && !all && <p className="text-xs text-emerald-600">Hecho junto con: {c.participants!.filter((p) => p.id !== me?.id).map((p) => p.name).join(", ")} (1 punto repartido: {c.point} cada uno)</p>}
+          <div className="flex flex-wrap items-center gap-2">
+            {trash ? (
+              <>
+                <button className="btn-primary text-xs" onClick={() => void (all ? adminRestore(c.id) : restoreClient(c.id)).then(onChanged).catch((e) => alert(apiErrorMessage(e, "No se pudo recuperar.")))}>Recuperar</button>
+                {all && <button className="text-xs text-red-500 hover:underline" onClick={() => { if (confirm(`¿Eliminar DEFINITIVAMENTE la SOT ${c.sot} con todo su trabajo guardado?`)) void adminPurge(c.id).then(onChanged); }}>Eliminar definitivamente</button>}
+              </>
+            ) : (
+              <>
+                <button className="btn-secondary text-xs" onClick={onEdit}>Editar</button>
+                {all && <button className="btn-secondary text-xs" onClick={() => setAssoc(true)}>Asociar usuarios</button>}
+                {can(me, "exportar") && <ExportMenu label="Descargar" urlFor={(f) => exportClientUrl(c.id, f)} />}
+              </>
+            )}
+          </div>
         </div>
       )}
+      {assoc && <AssocEditor c={c} users={users} onClose={() => setAssoc(false)} onSaved={() => { setAssoc(false); onChanged(); }} />}
     </div>
   );
 }
@@ -198,7 +245,7 @@ function ClientEditor({ initial, defaultDate, onClose, onSaved }: {
   }
 
   async function remove() {
-    if (!initial || !confirm(`¿Borrar el cliente SOT ${initial.sot}? No se puede deshacer.`)) return;
+    if (!initial || !confirm(`¿Enviar el cliente SOT ${initial.sot} a la papelera? Podrás recuperarlo.`)) return;
     setBusy(true);
     try { await deleteClient(initial.id); onSaved(); navigate(0); } catch (e) { setError(apiErrorMessage(e, "No se pudo borrar.")); setBusy(false); }
   }
@@ -242,6 +289,49 @@ function ClientEditor({ initial, defaultDate, onClose, onSaved }: {
             <button className="btn-secondary" onClick={onClose} disabled={busy}>Cancelar</button>
             <button className="btn-primary" onClick={save} disabled={busy}>{busy ? "Guardando..." : "Guardar"}</button>
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ExportMenu({ label, urlFor }: { label: string; urlFor: (format: string) => string }) {
+  return (
+    <details className="relative">
+      <summary className="btn-secondary cursor-pointer list-none text-xs">{label} ▾</summary>
+      <div className="card absolute right-0 z-30 mt-1 flex min-w-[150px] flex-col gap-1 p-2">
+        {FORMATS.map(([f, name]) => (
+          <a key={f} className="rounded px-2 py-1 text-xs text-slate-700 hover:bg-slate-100" href={urlFor(f)} download>{name} (.{f})</a>
+        ))}
+      </div>
+    </details>
+  );
+}
+
+function AssocEditor({ c, users, onClose, onSaved }: { c: ClientRecord; users: AdminUser[]; onClose: () => void; onSaved: () => void }) {
+  const [sel, setSel] = useState<string[]>((c.participants ?? []).map((p) => p.id));
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const toggle = (id: string) => setSel((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
+  async function save() {
+    if (sel.length === 0) { setError("Elige al menos un usuario."); return; }
+    setBusy(true);
+    try { await setParticipants(c.id, sel); onSaved(); } catch (e) { setError(apiErrorMessage(e, "No se pudo guardar.")); setBusy(false); }
+  }
+  return (
+    <div className="sheet-wrap fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-3 sm:p-8">
+      <div className="card sheet w-full max-w-md space-y-3">
+        <h3 className="text-lg font-semibold text-slate-800">Quién hizo la SOT {c.sot}</h3>
+        <p className="text-xs text-slate-500">Cada cliente vale 1 punto. Con {sel.length || 1} participante(s) cada uno recibe {+(1 / Math.max(1, sel.length)).toFixed(3)}. Todos los elegidos verán y podrán editar este cliente.</p>
+        <ul className="max-h-72 space-y-1 overflow-y-auto">
+          {users.filter((u) => u.active || sel.includes(u.id)).map((u) => (
+            <li key={u.id}><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={sel.includes(u.id)} onChange={() => toggle(u.id)} /> {u.full_name || u.username} <span className="text-xs text-slate-400">@{u.username}</span></label></li>
+          ))}
+        </ul>
+        {error && <p className="text-sm text-red-600">{error}</p>}
+        <div className="flex justify-end gap-2">
+          <button className="btn-secondary" onClick={onClose} disabled={busy}>Cancelar</button>
+          <button className="btn-primary" onClick={save} disabled={busy}>{busy ? "Guardando…" : "Guardar"}</button>
         </div>
       </div>
     </div>
