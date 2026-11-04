@@ -173,6 +173,8 @@ class PhotoReportRequest(BaseModel):
     fecha: str = ""
     cid: str = ""
     contrata: str = ""
+    # Versión que lleva el nombre del archivo: ISD-RECORRIDO-<SOT>-<CID>-<versión>.pdf
+    version: str = "01"
     # Logo ya guardado en la base de datos (tiene prioridad sobre *_path)
     logo_izq_id: Optional[str] = None
     logo_der_id: Optional[str] = None

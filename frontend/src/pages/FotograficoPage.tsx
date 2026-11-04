@@ -12,13 +12,20 @@ import {
   importReport,
   isCustom,
   isGpon,
-  getRow,
+  buildSections,
+  patchCell,
+  patchSection,
+  addCell,
+  addSection,
+  moveCell,
+  moveSection,
+  removeCell,
+  removeSection,
+  setSections,
   previewFilename,
   pruneRows,
   resetReport,
   setField,
-  setIncluir,
-  updateRow,
   usePhotoReport,
 } from "../store/photoReportStore";
 import ImportPdfButton from "../components/ImportPdfButton";
@@ -285,7 +292,7 @@ function RunTab({
   const s = usePhotoReport(tipo);
 
   const manager = useOpciones();
-  const [editing, setEditing] = useState<{ id: string; imageUrl: string; extra?: boolean } | null>(null);
+  const [editing, setEditing] = useState<{ id: string; imageUrl: string; extra?: boolean; sid?: string } | null>(null);
   const [zip, setZip] = useState<{ busy: boolean; url?: string; filename?: string; total?: number; missing?: number; error?: string }>({ busy: false });
 
   // Los datos de la SOT se guardan solos en "Datos de cliente" (año y mes según la fecha).
@@ -294,8 +301,8 @@ function RunTab({
   // Todo lo de esta ventana (fotos, textos, opciones) se guarda solo por SOT y se puede traer de vuelta.
   const wsState = useMemo(() => ({
     titulo: s.titulo, proy: s.proy, cliente: s.cliente, sot: s.sot, fecha: s.fecha, cid: s.cid, contrata: s.contrata,
-    logoIzq: s.logoIzq, logoDer: s.logoDer, rows: s.rows, extras: s.extras,
-  }), [s.titulo, s.proy, s.cliente, s.sot, s.fecha, s.cid, s.contrata, s.logoIzq, s.logoDer, s.rows, s.extras]);
+    logoIzq: s.logoIzq, logoDer: s.logoDer, rows: s.rows, extras: s.extras, sections: s.sections, version: s.version,
+  }), [s.titulo, s.proy, s.cliente, s.sot, s.fecha, s.cid, s.contrata, s.logoIzq, s.logoDer, s.rows, s.extras, s.sections, s.version]);
   const ws = useWorkspace({
     key: `foto:${tipo}`, label: `Fotos · ${nombre}`, sot: s.sot, nombre: s.cliente, fecha: toISODate(s.fecha),
     state: wsState,
@@ -319,11 +326,11 @@ function RunTab({
 
   /** Carpeta de evidencia: fotos finales + originales sin editar, con subcarpeta por opción si hay varias. */
   async function makeZip() {
-    const rowsIn = ordered.flatMap((it) => {
-      const r = getRow(s.rows, it.id);
-      if (!r.incluir || !r.imagePath) return [];
-      const op = resolveOpcion(r.lado, manager.opciones);
-      return [{ nombre: r.descripcion ?? it.nombre, path: r.imagePath, original_path: r.originalPath || "", lado_label: op.label }];
+    const rowsIn = (s.sections ?? []).flatMap((sec) => {
+      const op = resolveOpcion(sec.lado, manager.opciones);
+      return sec.cells.flatMap((c) => (c.incluir && c.imagePath
+        ? [{ nombre: c.descripcion || "foto", path: c.imagePath, original_path: c.originalPath || "", lado_label: op.label }]
+        : []));
     });
     const extrasIn = s.extras.map((e) => ({
       nombre: e.nombre || "foto extra", path: e.path, original_path: e.originalPath || "",
@@ -342,40 +349,29 @@ function RunTab({
       setZip({ busy: false, error: apiErrorMessage(e, "No se pudo crear la carpeta.") });
     }
   }
-  const [dragId, setDragId] = useState<string | null>(null);
-  const [overId, setOverId] = useState<string | null>(null);
-
   const groups = useMemo(() => groupByCategory(items), [items]);
   const ordered = useMemo(() => groups.flatMap((g) => g.items), [groups]);
+  const [onlyUsed, setOnlyUsed] = useState(false);
 
-  function allChecked(list: PhotoItem[]) {
-    return (
-      list.length > 0 && list.every((it) => getRow(s.rows, it.id).incluir)
-    );
-  }
+  // Primera vez (o reporte guardado en el formato anterior): se arman las secciones con las descripciones actuales.
+  useEffect(() => {
+    if (s.sections === null) setSections(tipo, buildSections(tipo, ordered, s.rows, manager.opciones));
+  }, [s.sections, tipo, ordered, s.rows, manager.opciones]);
 
-  function toggle(list: PhotoItem[], value: boolean) {
-    setIncluir(
-      tipo,
-      list.map((it) => it.id),
-      value
-    );
-  }
+  const sections = s.sections ?? [];
+  const usedLados = new Set(sections.map((x) => resolveOpcion(x.lado, manager.opciones).id));
+  const freeOpciones = manager.opciones.filter((o) => !usedLados.has(o.id));
 
-  function handleDrop(list: PhotoItem[], categoria: string, targetId: string) {
-    const from = dragId;
-    setDragId(null);
-    setOverId(null);
-
-    if (!from || from === targetId) return;
-
-    const ids = list.map((it) => it.id);
-    const fromIdx = ids.indexOf(from);
-    const toIdx = ids.indexOf(targetId);
-    if (fromIdx === -1 || toIdx === -1) return;
-
-    ids.splice(toIdx, 0, ids.splice(fromIdx, 1)[0]);
-    onReorder(categoria, ids);
+  function onAddSection(value: string) {
+    if (!value) return;
+    let id = value;
+    if (value === "__new__") {
+      const t = prompt("Título de la nueva sección (por ejemplo: INSTALACION EN POP):");
+      if (!t || !t.trim()) return;
+      id = manager.add(t);
+      if (!id) return;
+    }
+    addSection(tipo, id, ordered.map((it) => it.nombre));
   }
 
   const navigate = useNavigate();
@@ -397,25 +393,14 @@ function RunTab({
   }
 
   function generate() {
-    const selected = ordered.filter((it) => getRow(s.rows, it.id).incluir);
-
-    if (selected.length === 0) {
-      alert("Marca al menos un ítem.");
+    const marked = sections.flatMap((x) => x.cells.filter((c) => c.incluir));
+    if (marked.length === 0) {
+      alert("Marca al menos una celda (se marca sola al poner una foto).");
       return;
     }
-
-    const sinImagen = selected.filter((it) => !getRow(s.rows, it.id).imagePath);
-
-    if (
-      sinImagen.length > 0 &&
-      !confirm(
-        `${sinImagen.length} ítem(s) sin foto todavía. ¿Generar de todas formas?`
-      )
-    ) {
-      return;
-    }
-
-    void generatePdf(ordered, tipo, manager.opciones, nombre);
+    const sinImagen = marked.filter((c) => !c.imagePath);
+    if (sinImagen.length > 0 && !confirm(`${sinImagen.length} celda(s) sin foto todavía. ¿Generar de todas formas?`)) return;
+    void generatePdf(tipo, manager.opciones, nombre);
   }
 
   function newReport() {
@@ -467,10 +452,12 @@ function RunTab({
           onChange={(v) => setField(tipo, "contrata", v)}
         />
 
+        <TextField label="VERSIÓN (para el nombre del archivo)" value={s.version} onChange={(v) => setField(tipo, "version", v)} />
+
         <p className="sm:col-span-2 text-xs text-slate-500">
           El PDF se guardará como:{" "}
           <span className="break-all font-mono text-slate-700">
-            {previewFilename(s.sot, s.cliente)}
+            {previewFilename(s.sot, s.cid, s.version)}
           </span>
         </p>
 
@@ -495,139 +482,117 @@ function RunTab({
 
       <OpcionesManager manager={manager} />
 
-      <div className="flex items-center gap-2">
-        <label className="flex items-center gap-2 text-sm font-medium">
-          <input
-            type="checkbox"
-            checked={allChecked(ordered)}
-            onChange={(e) => toggle(ordered, e.target.checked)}
-          />
-          Seleccionar todo
+      <div className="flex flex-wrap items-center gap-3">
+        <label className="flex items-center gap-2 text-sm text-slate-600">
+          <input type="checkbox" checked={onlyUsed} onChange={(e) => setOnlyUsed(e.target.checked)} />
+          Ver solo celdas con foto o marcadas
         </label>
       </div>
 
-      <div className="space-y-4">
-        {groups.map(({ categoria, items: list }) => (
-          <div key={categoria} className="card">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-bold text-brand-700 uppercase">
-                {categoria}
-              </h3>
+      {s.sections === null && <p className="flex items-center gap-2 text-sm text-slate-500"><Spinner /> Preparando secciones…</p>}
 
+      {sections.map((sec, si) => {
+        const op = resolveOpcion(sec.lado, manager.opciones);
+        const shown = sec.cells.filter((c) => !onlyUsed || c.incluir || c.imagePath);
+        const allOn = sec.cells.length > 0 && sec.cells.every((c) => c.incluir);
+        const catalogLeft = ordered.filter((it) => !sec.cells.some((c) => c.descripcion === it.nombre));
+        return (
+          <div key={sec.id} className="card space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                className="input min-w-[220px] flex-1 font-semibold"
+                aria-label="Título de la sección"
+                value={op.id}
+                onChange={(e) => patchSection(tipo, sec.id, { lado: e.target.value })}
+              >
+                {manager.opciones.map((o) => (
+                  <option key={o.id} value={o.id} disabled={o.id !== op.id && usedLados.has(o.id)}>{o.label}</option>
+                ))}
+              </select>
               <label className="flex items-center gap-2 text-xs text-slate-500">
-                <input
-                  type="checkbox"
-                  checked={allChecked(list)}
-                  onChange={(e) => toggle(list, e.target.checked)}
-                />
-                Seleccionar sección
+                <input type="checkbox" checked={allOn} onChange={(e) => sec.cells.forEach((c) => patchCell(tipo, sec.id, c.id, { incluir: e.target.checked }))} />
+                Marcar todas
               </label>
+              <button className="btn-secondary text-xs" disabled={si === 0} onClick={() => moveSection(tipo, sec.id, -1)} aria-label="Subir sección">↑</button>
+              <button className="btn-secondary text-xs" disabled={si === sections.length - 1} onClick={() => moveSection(tipo, sec.id, 1)} aria-label="Bajar sección">↓</button>
+              <button
+                className="btn-secondary text-xs"
+                onClick={() => { if (confirm(`¿Quitar la sección «${op.label}» con sus ${sec.cells.length} celdas?`)) removeSection(tipo, sec.id); }}
+              >Quitar sección</button>
             </div>
 
-            <div className="space-y-2">
-              {list.map((it) => {
-                const r = getRow(s.rows, it.id);
-                const isOver = overId === it.id && dragId !== null && dragId !== it.id;
-
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 2xl:grid-cols-3">
+              {shown.map((c) => {
+                const idx = sec.cells.findIndex((x) => x.id === c.id);
                 return (
-                  <div
-                    key={it.id}
-                    onDragOver={(e) => {
-                      if (dragId) {
-                        e.preventDefault();
-                        setOverId(it.id);
-                      }
-                    }}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      handleDrop(list, categoria, it.id);
-                    }}
-                    className={`border rounded-lg p-3 flex items-center gap-3 flex-wrap transition-colors ${
-                      dragId === it.id ? "opacity-50" : ""
-                    } ${isOver ? "border-brand-400 bg-brand-50" : "border-slate-100"}`}
-                  >
-                    {/* Solo el asa es arrastrable: así se puede seleccionar el
-                        texto de los campos con el mouse sin mover la fila. */}
-                    <span
-                      draggable
-                      onDragStart={(e) => {
-                        setDragId(it.id);
-                        e.dataTransfer.effectAllowed = "move";
-                        e.dataTransfer.setData("text/plain", it.id);
-                        const row = e.currentTarget.parentElement;
-                        if (row) e.dataTransfer.setDragImage(row, 16, 16);
-                      }}
-                      onDragEnd={() => {
-                        setDragId(null);
-                        setOverId(null);
-                      }}
-                      className="cursor-grab select-none text-slate-300 hover:text-slate-500 active:cursor-grabbing"
-                      title="Arrastra para reordenar"
-                    >
-                      Mover
-                    </span>
-
-                    <input
-                      type="checkbox"
-                      checked={r.incluir}
-                      onChange={(e) =>
-                        updateRow(tipo, it.id, { incluir: e.target.checked })
-                      }
+                  <div key={c.id} className={`space-y-2 rounded-lg border p-3 ${c.incluir ? "border-brand-300 bg-brand-50/40" : "border-slate-200"}`}>
+                    <textarea
+                      className="input"
+                      rows={2}
+                      placeholder="Texto sobre la foto"
+                      value={c.descripcion}
+                      onChange={(e) => patchCell(tipo, sec.id, c.id, { descripcion: e.target.value })}
                     />
-
-                    <input
-                      className="input flex-1 min-w-[160px]"
-                      value={r.descripcion ?? it.nombre}
-                      onChange={(e) =>
-                        updateRow(tipo, it.id, { descripcion: e.target.value })
-                      }
-                    />
-
-                    <select
-                      className="input w-full sm:w-56"
-                      value={resolveOpcion(r.lado, manager.opciones).id}
-                      onChange={(e) => updateRow(tipo, it.id, { lado: e.target.value })}
-                    >
-                      {manager.opciones.map((o) => (
-                        <option key={o.id} value={o.id}>
-                          {o.label}
-                        </option>
-                      ))}
-                    </select>
-
-                    <ImageUpload
-                      compact
-                      cliente={s.cliente}
-                      initialUrl={r.imageUrl}
-                      onUploaded={(p, u) =>
-                        updateRow(tipo, it.id, { imagePath: p, imageUrl: u, originalPath: "", originalUrl: "" })
-                      }
-                    />
-
-                    {r.imagePath && (
-                      <button
-                        className="btn-secondary text-xs"
-                        onClick={() =>
-                          setEditing({ id: it.id, imageUrl: r.imageUrl })
-                        }
-                      >
-                        Editar (líneas punteadas)
-                      </button>
-                    )}
+                    <div className="flex flex-wrap items-center gap-2">
+                      <ImageUpload
+                        compact
+                        cliente={s.cliente}
+                        initialUrl={c.imageUrl}
+                        onUploaded={(p, u) => patchCell(tipo, sec.id, c.id, { imagePath: p, imageUrl: u, originalPath: "", originalUrl: "", incluir: p ? true : c.incluir })}
+                      />
+                      {c.imagePath && (
+                        <button className="btn-secondary text-xs" onClick={() => setEditing({ id: c.id, sid: sec.id, imageUrl: c.imageUrl })}>
+                          Editar foto
+                        </button>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                      <label className="flex items-center gap-1.5 text-slate-600">
+                        <input type="checkbox" checked={c.incluir} onChange={(e) => patchCell(tipo, sec.id, c.id, { incluir: e.target.checked })} />
+                        Va en el PDF
+                      </label>
+                      <span className="flex items-center gap-1">
+                        <button className="rounded px-1.5 py-0.5 text-slate-500 hover:bg-slate-100 disabled:opacity-30" disabled={idx === 0} onClick={() => moveCell(tipo, sec.id, c.id, -1)} aria-label="Subir celda">↑</button>
+                        <button className="rounded px-1.5 py-0.5 text-slate-500 hover:bg-slate-100 disabled:opacity-30" disabled={idx === sec.cells.length - 1} onClick={() => moveCell(tipo, sec.id, c.id, 1)} aria-label="Bajar celda">↓</button>
+                        <button className="rounded px-1.5 py-0.5 text-red-600 hover:bg-red-50" onClick={() => removeCell(tipo, sec.id, c.id)}>Quitar celda</button>
+                      </span>
+                    </div>
                   </div>
                 );
               })}
             </div>
-          </div>
-        ))}
 
-        {groups.length === 0 && (
-          <div className="card text-sm text-slate-500">
-            No hay descripciones todavía. Créalas en la pestaña «Descripciones
-            (editar)».
+            {shown.length === 0 && <p className="text-xs text-slate-400">{sec.cells.length ? "Ninguna celda tiene foto todavía (quita el filtro de arriba para verlas)." : "Esta sección no tiene celdas todavía."}</p>}
+
+            <div className="flex flex-wrap items-center gap-2">
+              <button className="btn-secondary text-xs" onClick={() => addCell(tipo, sec.id)}>+ Agregar celda</button>
+              {catalogLeft.length > 0 && (
+                <select
+                  className="input w-auto text-xs"
+                  aria-label="Agregar celda desde las descripciones"
+                  value=""
+                  onChange={(e) => { if (e.target.value) addCell(tipo, sec.id, e.target.value); }}
+                >
+                  <option value="">+ Desde descripciones…</option>
+                  {catalogLeft.map((it) => <option key={it.id} value={it.nombre}>{it.nombre}</option>)}
+                </select>
+              )}
+            </div>
           </div>
-        )}
-      </div>
+        );
+      })}
+
+      {s.sections !== null && (
+        <div className="card flex flex-wrap items-center gap-2">
+          <span className="text-sm font-medium text-slate-700">Agregar sección (título):</span>
+          <select className="input w-auto" aria-label="Agregar sección" value="" onChange={(e) => onAddSection(e.target.value)}>
+            <option value="">Elegir…</option>
+            {freeOpciones.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+            <option value="__new__">Otro título nuevo…</option>
+          </select>
+          <span className="text-xs text-slate-500">Se crea con las descripciones actuales; puedes quitar o agregar celdas.</span>
+        </div>
+      )}
 
       <div className="flex items-center gap-3">
         <button
@@ -757,8 +722,8 @@ function RunTab({
               const e = s.extras.find((x) => x.id === editing.id);
               updateExtra(tipo, editing.id, { path: p, url: u, originalPath: e?.originalPath || e?.path, originalUrl: e?.originalUrl || e?.url });
             } else {
-              const r = getRow(s.rows, editing.id);
-              updateRow(tipo, editing.id, { imagePath: p, imageUrl: u, originalPath: r.originalPath || r.imagePath, originalUrl: r.originalUrl || r.imageUrl });
+              const cell = sections.find((x) => x.id === editing.sid)?.cells.find((x) => x.id === editing.id);
+              if (editing.sid) patchCell(tipo, editing.sid, editing.id, { imagePath: p, imageUrl: u, originalPath: cell?.originalPath || cell?.imagePath, originalUrl: cell?.originalUrl || cell?.imageUrl });
             }
           }}
         />
