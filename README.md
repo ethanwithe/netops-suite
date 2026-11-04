@@ -150,6 +150,23 @@ misma base de datos si el backend corre en un servidor común.
 Todos los campos de imagen (logos, capturas del checklist, fotos del reporte) ahora aceptan, además del botón de
 subir archivo: **pegar con Ctrl+V** (útil si copiaste una captura de pantalla) y **arrastrar y soltar**.
 
+### Usuarios, login y administración
+
+- **Login obligatorio** (usuario y contraseña, sin registro). Al primer arranque se crea `superadmin` / `superadmin123`
+  y **se obliga a cambiar la contraseña al entrar**. Cámbiala de inmediato.
+- **Roles**: `superadmin` (todo, crea administradores), `admin` (ve todo, gestiona usuarios) y `user` (solo sus clientes).
+- **Por usuario el admin define**: activo/desactivado, vigencia (fechas desde/hasta), horario diario (HH:MM, hora de Lima),
+  qué funciones puede usar (Pruebas, Plantillas, CheckList, Fotos, Poder Judicial, Bit/IA, Exportar, Editar catálogos),
+  restablecer contraseña y cerrar sus sesiones.
+- **Perfil**: cada usuario edita sus datos, foto y contraseña. **Mis clientes**: los suyos (y los compartidos).
+- **Clientes de todos** (admin): ver/editar cualquiera, filtrar por usuario o mes, **asociar varios usuarios** a una SOT
+  (cada cliente vale 1 punto, repartido en partes iguales) y descargar en Excel, Word, PowerPoint, PDF o TXT.
+- **Papelera y copias**: borrar un cliente lo envía a la papelera (recuperable); cada ventana guarda copias anteriores
+  («Recuperar copias anteriores») para deshacer errores. Todo se guarda solo, por cliente.
+- **Actividad** (admin): inicios de sesión, clientes, reportes, exportaciones y cambios por usuario.
+- Variables opcionales: `AUTH_SECRET` (firma de sesiones; si falta se deriva de la base de datos) y `APP_TZ` (por defecto `America/Lima`).
+- Nuevas dependencias: `openpyxl`, `python-docx`, `python-pptx` (exportes).
+
 ### Reporte Fotográfico estilo Poder Judicial (secciones y celdas)
 
 - Cada opción (GPON con ONT, GPON con módulo, Fibra convencional) se arma por **secciones con título** (SITE, CLIENTE…)

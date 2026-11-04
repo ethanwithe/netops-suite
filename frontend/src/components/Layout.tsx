@@ -12,10 +12,13 @@ import { Drop } from "./WaterDrops";
 import Backdrop from "./Backdrop";
 import TabBar, { TabGroup } from "./TabBar";
 import { initLiquid } from "../liquid";
+import { can, displayName, logout, useAuth } from "../store/auth";
+import { Avatar } from "../pages/ProfilePage";
+import { getActingClient, setActingClient } from "../api/client";
 
 const NAV = [
-  { to: "/pruebas", label: "Pruebas", desc: "SSH / Serial + PDF" },
-  { to: "/plantillas", label: "Plantillas", desc: "Crear y aplicar" },
+  { to: "/pruebas", label: "Pruebas", desc: "SSH / Serial + PDF", feature: "pruebas" },
+  { to: "/plantillas", label: "Plantillas", desc: "Crear y aplicar", feature: "plantillas" },
 ];
 
 const FOTO_SUB = [
@@ -26,6 +29,11 @@ const FOTO_SUB = [
 ];
 
 const TITLES: Record<string, string> = {
+  "/panel": "Panel",
+  "/perfil": "Mi perfil",
+  "/admin/usuarios": "Usuarios",
+  "/admin/clientes": "Clientes de todos",
+  "/admin/actividad": "Actividad",
   "/pruebas": "Pruebas",
   "/plantillas": "Plantillas",
   "/checklist": "CheckList",
@@ -33,7 +41,12 @@ const TITLES: Record<string, string> = {
 };
 
 export default function Layout() {
+  const { me } = useAuth();
   const { pathname } = useLocation();
+  const [acting, setActing] = useState(getActingClient());
+  useEffect(() => setActing(getActingClient()), [pathname]);
+  const [userMenu, setUserMenu] = useState(false);
+  const okFoto = can(me, "fotografico");
   const navigate = useNavigate();
   const { list: custom } = usePhotoWindows();
   const [creating, setCreating] = useState(false);
@@ -65,10 +78,10 @@ export default function Layout() {
     { to: "/checklist/saturador", label: "Saturador" },
   ];
   const fotoSub = [
-    ...FOTO_SUB,
-    ...custom.map((w) => ({ to: windowRoute(w.id), label: w.nombre })),
+    ...FOTO_SUB.filter((o) => (o.to.endsWith("poder-judicial") ? can(me, "poder_judicial") : okFoto)),
+    ...(okFoto ? custom.map((w) => ({ to: windowRoute(w.id), label: w.nombre })) : []),
   ];
-  const titles: Record<string, string> = { ...TITLES, "/clientes": "Datos de clientes", ...Object.fromEntries(years.map((y) => [`/clientes/${y.year}`, `Clientes ${y.year}`])), ...Object.fromEntries(ckSub.map((o) => [o.to, o.label])), "/checklist": "CheckList", ...Object.fromEntries(custom.map((w) => [windowRoute(w.id), w.nombre])) };
+  const titles: Record<string, string> = { ...TITLES, "/clientes": "Mis clientes", ...Object.fromEntries(years.map((y) => [`/clientes/${y.year}`, `Clientes ${y.year}`])), ...Object.fromEntries(ckSub.map((o) => [o.to, o.label])), "/checklist": "CheckList", ...Object.fromEntries(custom.map((w) => [windowRoute(w.id), w.nombre])) };
   const inFoto = pathname.startsWith("/fotografico");
   const [fotoOpen, setFotoOpen] = useState(inFoto);
   const fotoShown = fotoOpen || inFoto;
@@ -97,10 +110,12 @@ export default function Layout() {
   };
 
   const tabGroups: TabGroup[] = [
-    { id: "tl", label: "Pruebas", prefixes: ["/pruebas", "/plantillas"], items: [{ to: "/pruebas", label: "Pruebas" }, { to: "/plantillas", label: "Plantillas" }] },
-    { id: "ck", label: "CheckList", prefixes: ["/checklist"], items: ckSub },
-    { id: "ft", label: "Fotos", prefixes: ["/fotografico"], items: fotoSub },
-    { id: "cl", label: "Clientes", prefixes: ["/clientes"], items: [{ to: "/clientes", label: "Todos los clientes" }, ...years.map((y) => ({ to: `/clientes/${y.year}`, label: `Clientes ${y.year}` }))] },
+    { id: "pn", label: "Panel", prefixes: ["/panel", "/perfil"], items: [{ to: "/panel", label: "Panel" }, { to: "/perfil", label: "Mi perfil" }] },
+    ...(can(me, "pruebas") || can(me, "plantillas") ? [{ id: "tl", label: "Pruebas", prefixes: ["/pruebas", "/plantillas"], items: NAV.filter((n) => can(me, n.feature)).map((n) => ({ to: n.to, label: n.label })) }] : []),
+    ...(can(me, "checklist") ? [{ id: "ck", label: "CheckList", prefixes: ["/checklist"], items: ckSub }] : []),
+    ...(okFoto || can(me, "poder_judicial") ? [{ id: "ft", label: "Fotos", prefixes: ["/fotografico"], items: fotoSub }] : []),
+    { id: "cl", label: "Clientes", prefixes: ["/clientes"], items: [{ to: "/clientes", label: "Mis clientes" }, ...years.map((y) => ({ to: `/clientes/${y.year}`, label: `Clientes ${y.year}` }))] },
+    ...(me?.is_admin ? [{ id: "ad", label: "Admin", prefixes: ["/admin"], items: [{ to: "/admin/usuarios", label: "Usuarios" }, { to: "/admin/clientes", label: "Clientes de todos" }, { to: "/admin/actividad", label: "Actividad" }] }] : []),
   ];
   const link = (isActive: boolean) => `side-item ${isActive ? "active" : ""}`;
   const sub = (isActive: boolean) => `side-item ${isActive ? "active" : ""}`;
@@ -149,8 +164,23 @@ export default function Layout() {
         </div>
 
         <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 pb-28 lg:pb-3">
+          <div className="side-group">Mi cuenta</div>
+          <NavLink to="/panel" className={({ isActive }) => link(isActive)}>
+            <span><span className="block">Panel</span><span className="block text-[11px] font-normal opacity-60">Mis puntos y clientes</span></span>
+          </NavLink>
+          <NavLink to="/perfil" className={({ isActive }) => link(isActive)}>
+            <span><span className="block">Mi perfil</span><span className="block text-[11px] font-normal opacity-60">Datos, foto y contraseña</span></span>
+          </NavLink>
+          {me?.is_admin && (
+            <>
+              <div className="side-group">Administración</div>
+              <NavLink to="/admin/usuarios" className={({ isActive }) => link(isActive)}><span className="block">Usuarios</span></NavLink>
+              <NavLink to="/admin/clientes" className={({ isActive }) => link(isActive)}><span className="block">Clientes de todos</span></NavLink>
+              <NavLink to="/admin/actividad" className={({ isActive }) => link(isActive)}><span className="block">Actividad</span></NavLink>
+            </>
+          )}
           <div className="side-group">Operación</div>
-          {NAV.map((item) => (
+          {NAV.filter((n) => can(me, n.feature)).map((item) => (
             <NavLink key={item.to} to={item.to} className={({ isActive }) => link(isActive)}>
               <span>
                 <span className="block">{item.label}</span>
@@ -158,18 +188,18 @@ export default function Layout() {
               </span>
             </NavLink>
           ))}
-          <Group inside={inCk} shown={ckShown} onToggle={() => setCkOpen(!ckShown)} title="CheckList" desc={`${ckTypes.length} tipos · estilo Claro`}>
+          {can(me, "checklist") && <Group inside={inCk} shown={ckShown} onToggle={() => setCkOpen(!ckShown)} title="CheckList" desc={`${ckTypes.length} tipos · estilo Claro`}>
             {ckSub.map((o) => subLink(o))}
-            {addBtn("+ Nueva opción", () => setCreatingCk(true))}
-          </Group>
+            {can(me, "editar_catalogos") && addBtn("+ Nueva opción", () => setCreatingCk(true))}
+          </Group>}
 
           <div className="side-group">Documentación</div>
-          <Group inside={inFoto} shown={fotoShown} onToggle={() => setFotoOpen(!fotoShown)} title="Reporte fotográfico" desc={`${fotoSub.length} formatos`}>
+          {fotoSub.length > 0 && <Group inside={inFoto} shown={fotoShown} onToggle={() => setFotoOpen(!fotoShown)} title="Reporte fotográfico" desc={`${fotoSub.length} formatos`}>
             {fotoSub.map((o) => subLink(o))}
-            {addBtn("+ Nueva ventana", () => setCreating(true))}
-          </Group>
-          <Group inside={inCl} shown={clShown} onToggle={() => setClOpen(!clShown)} title="Datos de cliente" desc="Por SOT · año y mes">
-            {subLink({ to: "/clientes", label: "Todos los clientes" }, true)}
+            {can(me, "editar_catalogos") && okFoto && addBtn("+ Nueva ventana", () => setCreating(true))}
+          </Group>}
+          <Group inside={inCl} shown={clShown} onToggle={() => setClOpen(!clShown)} title="Mis clientes" desc="Por SOT · año y mes">
+            {subLink({ to: "/clientes", label: "Todos mis clientes" }, true)}
             {years.map((y) => subLink({ to: `/clientes/${y.year}`, label: `${y.year}  (${y.total})` }, true))}
             {addBtn("+ Nuevo año", newYear)}
           </Group>
@@ -190,8 +220,32 @@ export default function Layout() {
           <span className="truncate font-display text-sm font-semibold text-slate-800">{titles[pathname] ?? "NetOps Suite"}</span>
           <div className="flex-1" />
           <ThemeSwitcher />
+          {me && (
+            <div className="relative">
+              <button type="button" className="flex items-center gap-2 rounded-full p-0.5 pr-2 hover:bg-slate-100/60" onClick={() => setUserMenu(!userMenu)} aria-expanded={userMenu} aria-label="Mi cuenta">
+                <Avatar me={me} size={30} />
+                <span className="hidden max-w-[10rem] truncate text-xs font-semibold text-slate-700 sm:block">{displayName(me)}</span>
+              </button>
+              {userMenu && (
+                <>
+                  <div className="fixed inset-0 z-30" onClick={() => setUserMenu(false)} aria-hidden="true" />
+                  <div className="card absolute right-0 z-40 mt-1 w-56 space-y-1 p-2">
+                    <p className="truncate px-2 py-1 text-xs text-slate-500">@{me.username}</p>
+                    <button className="block w-full rounded px-2 py-1.5 text-left text-sm hover:bg-slate-100" onClick={() => { setUserMenu(false); navigate("/perfil"); }}>Mi perfil</button>
+                    <button className="block w-full rounded px-2 py-1.5 text-left text-sm text-red-600 hover:bg-red-50" onClick={() => void logout()}>Cerrar sesión</button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
         </header>
 
+        {acting && (
+          <div className="flex flex-wrap items-center gap-2 bg-amber-100 px-3 py-1.5 text-xs text-amber-900" role="status">
+            Estás editando la SOT {acting.sot} de otro usuario.
+            <button className="font-semibold underline" onClick={() => { setActingClient(null); setActing(null); }}>Salir de este modo</button>
+          </div>
+        )}
         <main ref={mainRef} className="flex-1 overflow-y-auto overflow-x-hidden">
           <div key={pathname} className="view-enter page-pad w-full max-lg:pb-28">
             <Outlet />
@@ -199,7 +253,7 @@ export default function Layout() {
         </main>
       </div>
       <TabBar groups={tabGroups} menuOpen={open} onMenu={() => setOpen((o) => !o)} />
-      <Mascot />
+      {can(me, "asistente") && <Mascot />}
       {creatingCk && (
         <NewChecklistModal
           onCancel={() => setCreatingCk(false)}

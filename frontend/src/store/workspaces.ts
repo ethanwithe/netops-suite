@@ -41,6 +41,8 @@ export interface WsOptions {
   enabled?: boolean;
 }
 
+export interface VersionInfo { id: string; saved_at: string; saved_by: string; label: string }
+
 export interface WsApi {
   /** Hay datos guardados distintos a los de pantalla: se espera tu decisión antes de guardar. */
   conflict: Saved | null;
@@ -48,6 +50,9 @@ export interface WsApi {
   keepMine: () => void;
   status: { kind: "saving" | "saved" | "error"; at: string } | null;
   hasSot: boolean;
+  /** Copias anteriores de esta ventana (para recuperar lo que se borró o se pisó por error). */
+  versions: () => Promise<VersionInfo[]>;
+  recover: (id: string) => Promise<void>;
 }
 
 export function useWorkspace(o: WsOptions): WsApi {
@@ -122,5 +127,13 @@ export function useWorkspace(o: WsOptions): WsApi {
     keepMine: () => { setConflict(null); setMode("free"); },
     status,
     hasSot: !!sot,
+    versions: () => api.get<VersionInfo[]>("/clients/workspace-versions", { params: { sot, key: ref.current.key } }).then((r) => r.data),
+    recover: async (id: string) => {
+      const { data } = await api.post<Saved>(`/clients/workspace-versions/${id}/restore`);
+      ref.current.apply(data.state);
+      last.current = JSON.stringify(data.state ?? {});
+      setConflict(null);
+      setMode("free");
+    },
   };
 }

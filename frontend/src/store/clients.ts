@@ -11,7 +11,15 @@ export interface ClientRecord {
   proy: string;
   contrata: string;
   datos: Record<string, string>;
-  reportes: { tipo?: string; nombre?: string; filename?: string; url?: string; generado?: string }[];
+  reportes: { tipo?: string; nombre?: string; filename?: string; url?: string; generado?: string; por?: string }[];
+  owner_id?: string;
+  owner_name?: string;
+  participants?: { id: string; username: string; name: string }[];
+  point?: number;
+  shared?: boolean;
+  mine?: boolean;
+  deleted_at?: string;
+  updated_at?: string;
 }
 
 export interface ClientInput {
@@ -31,6 +39,8 @@ export const listClients = (params: { year?: number; q?: string }) =>
 export const createClient = (c: ClientInput) => api.post<ClientRecord>("/clients", c).then((r) => r.data);
 export const updateClient = (id: string, c: ClientInput) => api.put<ClientRecord>(`/clients/${id}`, c).then((r) => r.data);
 export const deleteClient = (id: string) => api.delete(`/clients/${id}`);
+export const listTrash = () => api.get<ClientRecord[]>("/clients/trash").then((r) => r.data);
+export const restoreClient = (id: string) => api.put(`/clients/${id}/restore`);
 
 export interface SyncInput extends ClientInput {
   reporte?: { tipo?: string; nombre?: string; filename?: string; url?: string };

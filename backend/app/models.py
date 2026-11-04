@@ -7,7 +7,7 @@ templates_store.py / checklist_store.py / photo_items_store.py (JSON).
 import uuid
 import datetime as dt
 
-from sqlalchemy import Column, String, Integer, Text, DateTime, JSON, LargeBinary
+from sqlalchemy import Column, String, Integer, Text, DateTime, JSON, LargeBinary, Boolean, ForeignKey, Index
 from sqlalchemy.dialects.postgresql import ARRAY
 
 from app.database import Base
@@ -120,6 +120,10 @@ class Client(Base):
     reportes = Column(JSON, nullable=False, default=list)
     created_at = Column(DateTime, default=dt.datetime.utcnow)
     updated_at = Column(DateTime, default=dt.datetime.utcnow)
+    # Quién lo creó (los participantes están en ClientShare) y papelera (borrado recuperable).
+    owner_id = Column(String, nullable=True, index=True)
+    deleted_at = Column(DateTime, nullable=True)
+    deleted_by = Column(String, nullable=True)
 
 
 class ClientYear(Base):
@@ -183,3 +187,79 @@ class ClientWorkspace(Base):
     route = Column(String, nullable=False, default="")
     state = Column(JSON, nullable=False, default=dict)
     updated_at = Column(DateTime, default=dt.datetime.utcnow)
+
+
+class User(Base):
+    """Cuenta de acceso. No hay registro público: solo el administrador las crea."""
+    __tablename__ = "users"
+
+    id = Column(String, primary_key=True, default=gen_uuid)
+    username = Column(String, unique=True, nullable=False, index=True)   # siempre en minúsculas
+    password_hash = Column(String, nullable=False)
+    role = Column(String, nullable=False, default="user")                # superadmin | admin | user
+    full_name = Column(String, nullable=False, default="")               # nombre completo (para asociar SOT)
+    email = Column(String, nullable=False, default="")
+    phone = Column(String, nullable=False, default="")
+    cargo = Column(String, nullable=False, default="")
+    avatar = Column(LargeBinary, nullable=True)
+    avatar_type = Column(String, nullable=False, default="")
+    active = Column(Boolean, nullable=False, default=True)
+    # Vigencia: fechas (yyyy-mm-dd) y horario diario (HH:MM); vacío = sin límite.
+    valid_from = Column(String, nullable=False, default="")
+    valid_until = Column(String, nullable=False, default="")
+    daily_start = Column(String, nullable=False, default="")
+    daily_end = Column(String, nullable=False, default="")
+    permissions = Column(JSON, nullable=False, default=dict)             # {funcion: bool}
+    must_change_password = Column(Boolean, nullable=False, default=False)
+    token_version = Column(Integer, nullable=False, default=0)           # subirlo cierra todas sus sesiones
+    notes = Column(Text, nullable=False, default="")
+    created_at = Column(DateTime, default=dt.datetime.utcnow)
+    last_login = Column(DateTime, nullable=True)
+
+
+class ClientShare(Base):
+    """Participantes de un cliente. Cada cliente vale 1 punto, repartido entre los participantes."""
+    __tablename__ = "client_shares"
+
+    client_id = Column(String, ForeignKey("clients.id", ondelete="CASCADE"), primary_key=True)
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True, index=True)
+    added_at = Column(DateTime, default=dt.datetime.utcnow)
+
+
+class UserWorkspace(Base):
+    """Ventana guardada de un cliente (la ven y editan todos sus participantes)."""
+    __tablename__ = "user_workspaces"
+
+    client_id = Column(String, ForeignKey("clients.id", ondelete="CASCADE"), primary_key=True)
+    key = Column(String, primary_key=True)
+    label = Column(String, nullable=False, default="")
+    route = Column(String, nullable=False, default="")
+    state = Column(JSON, nullable=False, default=dict)
+    updated_at = Column(DateTime, default=dt.datetime.utcnow)
+    updated_by = Column(String, nullable=True)
+
+
+class WorkspaceVersion(Base):
+    """Copias anteriores de una ventana, para recuperar lo que se borró o se pisó por error."""
+    __tablename__ = "workspace_versions"
+
+    id = Column(String, primary_key=True, default=gen_uuid)
+    client_id = Column(String, nullable=False, index=True)
+    key = Column(String, nullable=False)
+    label = Column(String, nullable=False, default="")
+    state = Column(JSON, nullable=False, default=dict)
+    saved_at = Column(DateTime, default=dt.datetime.utcnow, index=True)
+    saved_by = Column(String, nullable=True)
+
+
+class ActivityLog(Base):
+    """Qué hace cada usuario (inicios de sesión, clientes, PDF...), solo lo ve el administrador."""
+    __tablename__ = "activity_log"
+
+    id = Column(String, primary_key=True, default=gen_uuid)
+    user_id = Column(String, nullable=True, index=True)
+    username = Column(String, nullable=False, default="")
+    action = Column(String, nullable=False, index=True)
+    detail = Column(Text, nullable=False, default="")
+    client_id = Column(String, nullable=True)
+    at = Column(DateTime, default=dt.datetime.utcnow, index=True)

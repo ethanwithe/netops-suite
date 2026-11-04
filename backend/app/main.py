@@ -1,7 +1,8 @@
 import os
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -12,6 +13,9 @@ from sqlalchemy import inspect, text
 from app.database import Base, engine, SessionLocal
 from app import db_seed
 from app.routers import services, vendors, templates, checklist, photos, tests, files, serial_ports, tools, logos, clients, mascot, imageai
+from app.routers import auth as auth_router, admin as admin_router, exports as exports_router
+from app import auth as authlib, models
+from app.services import security
 
 app = FastAPI(title="NetOps Suite API", version="1.0.0")
 
@@ -23,6 +27,21 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.middleware("http")
+async def require_login(request: Request, call_next):
+    """Todo /api exige sesión válida (usuario activo, dentro de su vigencia y horario, con permiso)."""
+    path = request.url.path
+    if path.startswith("/api") and request.method != "OPTIONS" and path not in authlib.PUBLIC_PATHS:
+        user, err = authlib.check_request(path, request.method, authlib.token_from(request))
+        if err:
+            status, code, msg = err
+            return JSONResponse({"detail": msg, "code": code}, status_code=status)
+    return await call_next(request)
+
+
+app.include_router(auth_router.router)
+app.include_router(admin_router.router)
+app.include_router(exports_router.router)
 app.include_router(services.router)
 app.include_router(vendors.router)
 app.include_router(templates.router)
@@ -51,6 +70,46 @@ def _ensure_columns() -> None:
                 # los ítems que ya existían son de "Fibra convencional"
                 conn.execute(text("ALTER TABLE photo_items ADD COLUMN tipo VARCHAR NOT NULL DEFAULT 'fibra'"))
                 conn.execute(text("CREATE INDEX IF NOT EXISTS ix_photo_items_tipo ON photo_items (tipo)"))
+    if "clients" in insp.get_table_names():
+        cols = {c["name"] for c in insp.get_columns("clients")}
+        with engine.begin() as conn:
+            if "owner_id" not in cols:
+                conn.execute(text("ALTER TABLE clients ADD COLUMN owner_id VARCHAR"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_clients_owner_id ON clients (owner_id)"))
+            if "deleted_at" not in cols:
+                conn.execute(text("ALTER TABLE clients ADD COLUMN deleted_at TIMESTAMP"))
+            if "deleted_by" not in cols:
+                conn.execute(text("ALTER TABLE clients ADD COLUMN deleted_by VARCHAR"))
+
+
+def _ensure_users_and_migrate(db) -> None:
+    """Primer arranque con usuarios: crea el superadmin inicial y asigna a él lo que ya existía."""
+    root = db.query(models.User).filter(models.User.role == "superadmin").order_by(models.User.created_at).first()
+    if not root:
+        root = models.User(
+            username="superadmin", password_hash=security.hash_password("superadmin123"),
+            role="superadmin", full_name="Super administrador", must_change_password=True,
+        )
+        db.add(root)
+        db.commit()
+    # Clientes anteriores a los usuarios -> son del superadmin
+    for c in db.query(models.Client).filter(models.Client.owner_id.is_(None)).all():
+        c.owner_id = root.id
+    db.commit()
+    shared = {r.client_id for r in db.query(models.ClientShare).all()}
+    for c in db.query(models.Client).all():
+        if c.id not in shared:
+            db.add(models.ClientShare(client_id=c.id, user_id=c.owner_id or root.id))
+    db.commit()
+    # Ventanas guardadas del esquema anterior (por SOT) -> por cliente
+    by_sot = {c.sot: c.id for c in db.query(models.Client).all()}
+    if db.query(models.UserWorkspace).count() == 0:
+        for w in db.query(models.ClientWorkspace).all():
+            cid = by_sot.get(w.sot)
+            if cid:
+                db.add(models.UserWorkspace(client_id=cid, key=w.key, label=w.label, route=w.route,
+                                            state=w.state or {}, updated_at=w.updated_at))
+        db.commit()
 
 
 @app.on_event("startup")
@@ -59,6 +118,7 @@ def on_startup():
     _ensure_columns()
     db = SessionLocal()
     try:
+        _ensure_users_and_migrate(db)
         db_seed.seed_if_empty(db)
         db_seed.seed_photo_tipos(db)
         db_seed.seed_checklist_templates(db)

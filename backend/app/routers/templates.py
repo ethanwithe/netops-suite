@@ -3,6 +3,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, WebSocket
 from sqlalchemy.orm import Session
 
+from app.auth import ws_user
 from app.database import get_db
 from app import models, schemas
 from app.services import cache
@@ -93,7 +94,7 @@ def build_template(payload: schemas.BuildTemplateRequest, db: Session = Depends(
 
 
 @router.websocket("/apply")
-async def apply_template_ws(websocket: WebSocket, db: Session = Depends(get_db)):
+async def apply_template_ws(websocket: WebSocket, db: Session = Depends(get_db), _u: str = Depends(ws_user("plantillas"))):
     await websocket.accept()
     params = await websocket.receive_json()
 
