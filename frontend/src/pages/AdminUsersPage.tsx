@@ -112,7 +112,7 @@ function UserEditor({ initial, features, isSuper, self, onClose, onSaved }: {
   }
   async function doReset() {
     if (!initial) return;
-    if (newPw.length < 6) { setError("La contraseña nueva debe tener al menos 6 caracteres."); return; }
+    if (newPw.length < 8) { setError("La contraseña nueva debe tener al menos 8 caracteres."); return; }
     try { await resetPassword(initial.id, newPw, mustChange); setNewPw(""); setError(null); alert("Contraseña actualizada. Sus sesiones abiertas se cerraron."); }
     catch (e) { setError(apiErrorMessage(e, "No se pudo cambiar la contraseña.")); }
   }

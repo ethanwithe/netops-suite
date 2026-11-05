@@ -372,6 +372,8 @@ async def import_report_pdf(file: UploadFile = File(...)):
     raw = await file.read()
     if not raw:
         raise HTTPException(400, "El archivo está vacío.")
+    if len(raw) > 60_000_000:
+        raise HTTPException(413, "El PDF pesa demasiado.")
     try:
         project = load_project(raw, UPLOADS_DIR)
     except ValueError as exc:

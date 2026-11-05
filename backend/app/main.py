@@ -17,7 +17,7 @@ from app.routers import auth as auth_router, admin as admin_router, exports as e
 from app import auth as authlib, models
 from app.services import security
 
-app = FastAPI(title="NetOps Suite API", version="1.0.0")
+app = FastAPI(title="NetOps Suite API", version="1.0.0", docs_url=None, redoc_url=None, openapi_url=None)
 
 app.add_middleware(
     CORSMiddleware,
@@ -26,6 +26,32 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
+
+
+@app.middleware("http")
+async def security_layer(request: Request, call_next):
+    """Anti-CSRF (peticiones que modifican datos solo desde este mismo sitio) y cabeceras de seguridad."""
+    if request.url.path.startswith("/api") and request.method not in SAFE_METHODS:
+        origin = request.headers.get("origin", "")
+        if origin:
+            host = request.headers.get("x-forwarded-host") or request.headers.get("host", "")
+            same = origin.split("://", 1)[-1].rstrip("/") == host
+            if not same and origin.rstrip("/") not in [o.strip().rstrip("/") for o in CORS_ORIGINS]:
+                return JSONResponse({"detail": "Origen no permitido."}, status_code=403)
+    resp = await call_next(request)
+    h = resp.headers
+    h.setdefault("X-Content-Type-Options", "nosniff")
+    h.setdefault("X-Frame-Options", "SAMEORIGIN")
+    h.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    h.setdefault("Permissions-Policy", "camera=(self), microphone=(self), geolocation=(self)")
+    if request.headers.get("x-forwarded-proto") == "https" or request.url.scheme == "https":
+        h.setdefault("Strict-Transport-Security", "max-age=15552000")
+    if request.url.path.startswith("/api"):
+        h.setdefault("Cache-Control", "no-store") if "Cache-Control" not in h else None
+    return resp
+
 
 @app.middleware("http")
 async def require_login(request: Request, call_next):

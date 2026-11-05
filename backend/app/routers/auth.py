@@ -105,7 +105,7 @@ def update_me(payload: ProfileIn, user: models.User = Depends(current_user), db:
 
 class PasswordIn(BaseModel):
     current: str
-    new: str = Field(min_length=6, max_length=100)
+    new: str = Field(min_length=8, max_length=100)
 
 
 @router.post("/password")
