@@ -12,12 +12,12 @@ import { Drop } from "./WaterDrops";
 import Backdrop from "./Backdrop";
 import TabBar, { TabGroup } from "./TabBar";
 import { initLiquid } from "../liquid";
+import { TEMPLATES } from "../diagram/templates";
 import { can, displayName, logout, useAuth } from "../store/auth";
 import { Avatar } from "../pages/ProfilePage";
 import { getActingClient, setActingClient } from "../api/client";
 
 const NAV = [
-  { to: "/grafica", label: "Gráfica", desc: "Próximamente", feature: "grafica" },
   { to: "/plantillas", label: "Plantillas", desc: "Crear y aplicar", feature: "plantillas" },
 ];
 
@@ -34,7 +34,8 @@ const TITLES: Record<string, string> = {
   "/admin/usuarios": "Usuarios",
   "/admin/clientes": "Clientes de todos",
   "/admin/actividad": "Actividad",
-  "/grafica": "Gráfica",
+  "/grafica/iconos": "Iconos",
+  ...Object.fromEntries(TEMPLATES.map((t) => [`/grafica/${t.id}`, t.label])),
   "/plantillas": "Plantillas",
   "/checklist": "CheckList",
   ...Object.fromEntries(FOTO_SUB.map((o) => [o.to, o.label])),
@@ -82,6 +83,10 @@ export default function Layout() {
     ...(okFoto ? custom.map((w) => ({ to: windowRoute(w.id), label: w.nombre })) : []),
   ];
   const titles: Record<string, string> = { ...TITLES, "/clientes": "Mis clientes", ...Object.fromEntries(years.map((y) => [`/clientes/${y.year}`, `Clientes ${y.year}`])), ...Object.fromEntries(ckSub.map((o) => [o.to, o.label])), "/checklist": "CheckList", ...Object.fromEntries(custom.map((w) => [windowRoute(w.id), w.nombre])) };
+  const inGr = pathname.startsWith("/grafica");
+  const [grOpen, setGrOpen] = useState(inGr);
+  const grShown = grOpen || inGr;
+  const grSub = [...TEMPLATES.map((t) => ({ to: `/grafica/${t.id}`, label: t.label })), { to: "/grafica/iconos", label: "Iconos" }];
   const inFoto = pathname.startsWith("/fotografico");
   const [fotoOpen, setFotoOpen] = useState(inFoto);
   const fotoShown = fotoOpen || inFoto;
@@ -111,7 +116,7 @@ export default function Layout() {
 
   const tabGroups: TabGroup[] = [
     { id: "pn", label: "Panel", prefixes: ["/panel", "/perfil"], items: [{ to: "/panel", label: "Panel" }, { to: "/perfil", label: "Mi perfil" }] },
-    ...(can(me, "grafica") ? [{ id: "gr", label: "Gráfica", prefixes: ["/grafica"], items: [{ to: "/grafica", label: "Gráfica" }] }] : []),
+    ...(can(me, "grafica") ? [{ id: "gr", label: "Gráfica", prefixes: ["/grafica"], items: grSub }] : []),
     ...(can(me, "plantillas") ? [{ id: "tl", label: "Plantillas", prefixes: ["/plantillas"], items: [{ to: "/plantillas", label: "Plantillas" }] }] : []),
     ...(can(me, "checklist") ? [{ id: "ck", label: "CheckList", prefixes: ["/checklist"], items: ckSub }] : []),
     ...(okFoto || can(me, "poder_judicial") ? [{ id: "ft", label: "Fotos", prefixes: ["/fotografico"], items: fotoSub }] : []),
@@ -181,6 +186,11 @@ export default function Layout() {
             </>
           )}
           <div className="side-group">Operación</div>
+          {can(me, "grafica") && (
+            <Group inside={inGr} shown={grShown} onToggle={() => setGrOpen(!grShown)} title="Gráfica" desc={`${TEMPLATES.length} diagrama(s) · iconos`}>
+              {grSub.map((o) => subLink(o))}
+            </Group>
+          )}
           {NAV.filter((n) => can(me, n.feature)).map((item) => (
             <NavLink key={item.to} to={item.to} className={({ isActive }) => link(isActive)}>
               <span>

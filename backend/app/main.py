@@ -13,7 +13,7 @@ from sqlalchemy import inspect, text
 from app.database import Base, engine, SessionLocal
 from app import db_seed
 from app.routers import services, vendors, templates, checklist, photos, tests, files, serial_ports, tools, logos, clients, mascot, imageai
-from app.routers import auth as auth_router, admin as admin_router, exports as exports_router
+from app.routers import auth as auth_router, admin as admin_router, exports as exports_router, diagrams as diagrams_router
 from app import auth as authlib, models
 from app.services import security
 
@@ -42,6 +42,7 @@ async def require_login(request: Request, call_next):
 app.include_router(auth_router.router)
 app.include_router(admin_router.router)
 app.include_router(exports_router.router)
+app.include_router(diagrams_router.router)
 app.include_router(services.router)
 app.include_router(vendors.router)
 app.include_router(templates.router)
@@ -119,6 +120,8 @@ def on_startup():
     db = SessionLocal()
     try:
         _ensure_users_and_migrate(db)
+        from app.services.diagram_seed import seed_diagram_icons
+        seed_diagram_icons(db)
         db_seed.seed_if_empty(db)
         db_seed.seed_photo_tipos(db)
         db_seed.seed_checklist_templates(db)

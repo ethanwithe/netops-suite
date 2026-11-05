@@ -167,6 +167,13 @@ subir archivo: **pegar con Ctrl+V** (útil si copiaste una captura de pantalla) 
 - Variables opcionales: `AUTH_SECRET` (firma de sesiones; si falta se deriva de la base de datos) y `APP_TZ` (por defecto `America/Lima`).
 - Nuevas dependencias: `openpyxl`, `python-docx`, `python-pptx` (exportes).
 
+### Gráfica: editor de diagramas (como PowerPoint/Canva)
+- Ventana **Gráfica** con un desplegable de diagramas; por ahora **«Internet con ONT y Router Cisco»** (réplica del PPTX de ejemplo: mismos iconos, textos, flechas y cuadro Claro).
+- Los datos se piden al inicio y se llenan solos desde el cliente guardado (SOT, CID, proyecto, empresa, dirección…); **«Realizado por»** sale del nombre del perfil de la cuenta.
+- Todo es editable: mover, cambiar tamaño, girar, textos (también dentro de la tabla), colores, flechas, cambiar de icono, agregar texto/formas/líneas, duplicar, capas, deshacer/rehacer.
+- Pestaña **Iconos**: biblioteca compartida (los del ejemplo vienen cargados; cada usuario sube los suyos, PNG/JPG/WEBP/GIF hasta 4 MB).
+- Exporta a **PPTX** (formas, textos y tabla editables en PowerPoint) y **PDF**.
+
 ### Reporte Fotográfico estilo Poder Judicial (secciones y celdas)
 
 - Cada opción (GPON con ONT, GPON con módulo, Fibra convencional) se arma por **secciones con título** (desplegable y editable),

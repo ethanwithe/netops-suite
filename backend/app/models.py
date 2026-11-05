@@ -263,3 +263,18 @@ class ActivityLog(Base):
     detail = Column(Text, nullable=False, default="")
     client_id = Column(String, nullable=True)
     at = Column(DateTime, default=dt.datetime.utcnow, index=True)
+
+
+class DiagramIcon(Base):
+    """Icono de la biblioteca de diagramas (equipos, nubes, logos...). Es compartida entre usuarios;
+    los que vienen con el sistema (builtin) no se pueden borrar."""
+    __tablename__ = "diagram_icons"
+
+    id = Column(String, primary_key=True)             # 'olt', 'router-cisco-c1121x' o un uuid
+    name = Column(String, nullable=False, default="")
+    categoria = Column(String, nullable=False, default="Equipos")
+    content_type = Column(String, nullable=False, default="image/png")
+    data = Column(LargeBinary, nullable=False)
+    builtin = Column(Boolean, nullable=False, default=False)
+    owner_id = Column(String, nullable=True)
+    created_at = Column(DateTime, default=dt.datetime.utcnow)
