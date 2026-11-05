@@ -14,62 +14,25 @@ const PROMPT = /(?:^|\n)[^\n]{0,80}[>\]#$]\s?$/;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-export class SerialSession {
-  private port: any = null;
-  private reader: any = null;
-  private writer: any = null;
-  private buf = "";
-  private reading = false;
-  private closed = false;
+/** Lógica común: envía comandos, espera el prompt y salta los «---- More ----». */
+export abstract class ConsoleSession {
+  protected buf = "";
+  protected closed = false;
   stopRequested = false;
   /** Todo lo que llega de la consola, en vivo (para mostrar la CLI del router). */
   onData: ((chunk: string) => void) | null = null;
+  /** Se llama cuando la conexión se corta sola (cable desconectado, SSH cerrado…). */
+  onClose: ((reason: string) => void) | null = null;
 
-  async connect(baudRate: number): Promise<void> {
-    const serial = (navigator as any).serial;
-    this.port = await serial.requestPort();
-    await this.port.open({ baudRate, dataBits: 8, stopBits: 1, parity: "none", flowControl: "none" });
-    this.writer = this.port.writable.getWriter();
-    this.closed = false;
-    void this.readLoop();
-    // Despierta el prompt
-    await this.write("\r");
-    await sleep(400);
+  abstract get connected(): boolean;
+  protected abstract write(text: string): Promise<void>;
+  abstract close(): Promise<void>;
+
+  protected feed(txt: string) {
+    this.buf += txt;
+    this.onData?.(txt);
   }
 
-  get connected() {
-    return !!this.port && !this.closed;
-  }
-
-  private async readLoop() {
-    this.reading = true;
-    const dec = new TextDecoder();
-    try {
-      this.reader = this.port.readable.getReader();
-      for (;;) {
-        const { value, done } = await this.reader.read();
-        if (done) break;
-        if (value) {
-          const txt = dec.decode(value, { stream: true });
-          this.buf += txt;
-          this.onData?.(txt);
-        }
-      }
-    } catch {
-      /* puerto cerrado o desconectado */
-    } finally {
-      this.reading = false;
-    }
-  }
-
-  private async write(text: string) {
-    await this.writer.write(new TextEncoder().encode(text));
-  }
-
-  /**
-   * Envía un comando y devuelve todo lo que mostró la consola (con el comando y el prompt),
-   * saltando automáticamente las pausas "---- More ----".
-   */
   async run(cmd: string, opts: { maxMs?: number } = {}): Promise<string> {
     if (!this.connected) throw new Error("La consola no está conectada.");
     const maxMs = opts.maxMs ?? 90000;
@@ -81,7 +44,7 @@ export class SerialSession {
     let lastChange = Date.now();
     let moreSeen = 0;
     while (Date.now() - t0 < maxMs) {
-      if (this.stopRequested) break;
+      if (this.stopRequested || !this.connected) break;
       await sleep(150);
       if (this.buf.length !== lastLen) {
         lastLen = this.buf.length;
@@ -105,6 +68,48 @@ export class SerialSession {
   async typed(text: string) {
     if (!this.connected) throw new Error("La consola no está conectada.");
     await this.write(text + "\r");
+  }
+}
+
+/** Consola por el puerto de esta computadora, directo desde el navegador (Web Serial). */
+export class SerialSession extends ConsoleSession {
+  private port: any = null;
+  private reader: any = null;
+  private writer: any = null;
+
+  async connect(baudRate: number): Promise<void> {
+    const serial = (navigator as any).serial;
+    this.port = await serial.requestPort();
+    await this.port.open({ baudRate, dataBits: 8, stopBits: 1, parity: "none", flowControl: "none" });
+    this.writer = this.port.writable.getWriter();
+    this.closed = false;
+    void this.readLoop();
+    await this.write("\r");
+    await sleep(400);
+  }
+
+  get connected() {
+    return !!this.port && !this.closed;
+  }
+
+  private async readLoop() {
+    const dec = new TextDecoder();
+    try {
+      this.reader = this.port.readable.getReader();
+      for (;;) {
+        const { value, done } = await this.reader.read();
+        if (done) break;
+        if (value) this.feed(dec.decode(value, { stream: true }));
+      }
+    } catch {
+      /* puerto cerrado o desconectado */
+    } finally {
+      if (!this.closed) { this.closed = true; this.onClose?.("Se perdió la conexión con el puerto (¿se desconectó el cable?)."); }
+    }
+  }
+
+  protected async write(text: string) {
+    await this.writer.write(new TextEncoder().encode(text));
   }
 
   async close() {

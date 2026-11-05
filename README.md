@@ -174,6 +174,13 @@ subir archivo: **pegar con Ctrl+V** (útil si copiaste una captura de pantalla) 
 - Pestaña **Iconos**: biblioteca compartida (los del ejemplo vienen cargados; cada usuario sube los suyos, PNG/JPG/WEBP/GIF hasta 4 MB).
 - Exporta a **PPTX** (formas, textos y tabla editables en PowerPoint) y **PDF**.
 
+### CheckList: consola y SSH desde tu laptop (puente local)
+La app corre en Railway, así que no ve tu cable de consola ni los equipos de tu red. Para eso está **`puente.py`** (se descarga desde la tarjeta de conexión del CheckList):
+- Se abre en tu laptop (`python puente.py` / `py puente.py`); la primera vez instala solo `pyserial` y `paramiko`. Muestra un código que se pega una vez en la página.
+- **Consola:** detecta solo los puertos COM/USB y los lista; el SSH **sale desde tu laptop**, por eso llega a equipos de tu red local, VPN o cable.
+- La página solo habla con `127.0.0.1:8766` y con ese código; la contraseña del equipo no pasa por Railway ni se guarda.
+- Sigue existiendo la consola directa del navegador (Web Serial, Chrome/Edge) como alternativa sin el puente.
+
 ### Reporte Fotográfico estilo Poder Judicial (secciones y celdas)
 
 - Cada opción (GPON con ONT, GPON con módulo, Fibra convencional) se arma por **secciones con título** (desplegable y editable),
