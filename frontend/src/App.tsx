@@ -17,6 +17,7 @@ import LoginPage, { ForcePassword } from "./pages/LoginPage";
 import DashboardPage from "./pages/DashboardPage";
 import ProfilePage from "./pages/ProfilePage";
 import AgendaPage from "./pages/AgendaPage";
+import BitReportsPage from "./pages/BitReportsPage";
 import AdminUsersPage from "./pages/AdminUsersPage";
 import ActivityPage from "./pages/ActivityPage";
 import { can, loadMe, useAuth } from "./store/auth";
@@ -66,6 +67,7 @@ export default function App() {
         <Route path="/admin/usuarios" element={<Need admin><AdminUsersPage /></Need>} />
         <Route path="/admin/clientes" element={<Need admin><ClientsPage all /></Need>} />
         <Route path="/admin/actividad" element={<Need admin><ActivityPage /></Need>} />
+        <Route path="/admin/reportes" element={<Need admin><BitReportsPage /></Need>} />
         <Route path="*" element={<Navigate to="/panel" replace />} />
       </Route>
     </Routes>

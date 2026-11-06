@@ -293,3 +293,28 @@ class AgendaItem(Base):
     done = Column(Boolean, nullable=False, default=False)
     notified = Column(Boolean, nullable=False, default=False)
     created_at = Column(DateTime, default=dt.datetime.utcnow)
+
+
+class BitProfile(Base):
+    """Lo que Bit sabe de cada usuario (nombre, gustos, hábitos). Vive en el servidor, no en el navegador."""
+    __tablename__ = "bit_profiles"
+
+    user_id = Column(String, primary_key=True)
+    name = Column(String, nullable=False, default="")
+    facts = Column(JSON, nullable=False, default=list)
+    routes = Column(JSON, nullable=False, default=dict)
+    hours = Column(JSON, nullable=False, default=list)
+    asked = Column(Boolean, nullable=False, default=False)
+    chats = Column(Integer, nullable=False, default=0)
+    updated_at = Column(DateTime, default=dt.datetime.utcnow)
+
+
+class BitReport(Base):
+    """Reporte fijado por un administrador desde el chat con Bit (se vuelve a calcular al abrirlo)."""
+    __tablename__ = "bit_reports"
+
+    id = Column(String, primary_key=True, default=gen_uuid)
+    user_id = Column(String, nullable=False, index=True)
+    title = Column(String, nullable=False, default="")
+    spec = Column(JSON, nullable=False, default=dict)    # {"report": "...", "params": {...}}
+    created_at = Column(DateTime, default=dt.datetime.utcnow)

@@ -2,14 +2,17 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import MascotFace from "./MascotFace";
 import { Action, GREET, IDLE_LINES, Mood, QUICK, Reply, answer, norm, routeComment, parseReminder } from "./brain";
+import BitDash from "./BitDash";
+import type { Dash } from "./BitDash";
+import { useAuth } from "../store/auth";
 import { addAgenda, fetchDue, fmtWhen, getAgenda, reloadAgenda } from "../store/agenda";
 import { Listener, STYLES, VoiceOpt, listVoices, listenContinuous, onVoicesReady, speakText, stopSpeaking, sttSupported } from "./voice";
 import { setMascot, useMascotSettings } from "./settings";
-import { countChat, forget, forgetAll, habitsSummary, learnFrom, markAsked, remember, setName, topSection, trackRoute, useMemory } from "./memory";
+import { syncMemory, countChat, forget, forgetAll, habitsSummary, learnFrom, markAsked, remember, setName, topSection, trackRoute, useMemory } from "./memory";
 import { THEME_OPTIONS, setTheme, useTheme } from "../store/theme";
 import { useOverlayOpen } from "../components/useOverlayOpen";
 
-interface Msg { who: "bot" | "me" | "note"; text: string }
+interface Msg { who: "bot" | "me" | "note"; text: string; dash?: Dash[] }
 interface Bubble { text: string; heard?: string }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -21,6 +24,9 @@ export default function Mascot() {
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const theme = useTheme();
+  const { me } = useAuth();
+  // La memoria de Bit se baja del servidor al entrar (por usuario)
+  useEffect(() => { void syncMemory(); }, [me?.id]);
   const overlay = useOverlayOpen();
   // En pantallas pequeñas la barra de pestañas inferior ocupa el borde: Bit se sube sobre ella.
   const [lift, setLift] = useState(() => (window.innerWidth < 1024 ? 78 : 0));
@@ -326,7 +332,7 @@ export default function Mascot() {
     return null;
   }
 
-  async function askAI(text: string): Promise<(Reply & { remember?: string[]; agenda?: { op: string; title: string }[] }) | null> {
+  async function askAI(text: string): Promise<(Reply & { remember?: string[]; agenda?: { op: string; title: string }[]; did?: { op: string; title: string }[]; dash?: Dash[] }) | null> {
     if (!aiRef.current) return null;
     try {
       const history = msgsRef.current.filter((m) => m.who !== "note").slice(-12).map((m) => ({ role: m.who === "me" ? "user" : "assistant", content: m.text }));
@@ -359,7 +365,7 @@ export default function Mascot() {
     if (!openRef.current) setBubble({ heard: text, text: "Pensando…" });
     if (cfgRef.current.learn) countChat();
 
-    let r: (Reply & { remember?: string[]; agenda?: { op: string; title: string }[] }) | null = null;
+    let r: (Reply & { remember?: string[]; agenda?: { op: string; title: string }[]; did?: { op: string; title: string }[]; dash?: Dash[] }) | null = null;
     const notes: string[] = [];
     // ¿acaba de preguntarte el nombre?
     if (pendingName.current && text.split(/\s+/).length <= 5 && !text.includes("?")) {
@@ -371,6 +377,7 @@ export default function Mascot() {
     if (!r) {
       r = await askAI(text);
       if (r?.remember?.length && cfgRef.current.learn) r.remember.forEach((f) => { if (remember(f)) notes.push(f); });
+      if (r?.did?.length) notes.push(...r.did.map((a) => (a.op === "client" ? `Cliente guardado: ${a.title}` : `Dato guardado: ${a.title}`)));
       if (r?.agenda?.length) {
         void reloadAgenda().catch(() => {});
         if ("Notification" in window && Notification.permission === "default") void Notification.requestPermission();
@@ -385,7 +392,7 @@ export default function Mascot() {
       r = answer(text, { pathname: pathRef.current, hour: new Date().getHours(), themeLabel: themeRef.current.pref, name: m.name, facts: m.facts, aiOn: aiRef.current });
     }
     setTyping(false);
-    setMsgs((m) => [...m.slice(-59), { who: "bot", text: r!.text }, ...(notes.length ? [{ who: "note" as const, text: `Bit anotó: ${notes.join("; ")}` }] : [])]);
+    setMsgs((m) => [...m.slice(-59), { who: "bot", text: r!.text, dash: (r as { dash?: Dash[] }).dash }, ...(notes.length ? [{ who: "note" as const, text: `Bit anotó: ${notes.join("; ")}` }] : [])]);
     express(r.mood, Math.min(10000, 2500 + r.text.length * 45));
     runAction(r.action);
     if (!openRef.current) {
@@ -502,8 +509,9 @@ export default function Mascot() {
             {msgs.map((m, i) => m.who === "note" ? (
               <div key={i} className="text-center text-[10.5px] italic text-slate-500">{m.text}</div>
             ) : (
-              <div key={i} className={`flex ${m.who === "me" ? "justify-end" : "justify-start"}`}>
+              <div key={i} className={`flex flex-col ${m.who === "me" ? "items-end" : "items-start"}`}>
                 <div className={`max-w-[85%] whitespace-pre-wrap rounded-2xl px-3 py-2 text-[13px] leading-snug ${m.who === "me" ? "rounded-br-sm bg-brand-600 text-white" : "rounded-bl-sm bg-slate-100 text-slate-800"}`}>{m.text}</div>
+                {m.dash?.map((d, k) => <div key={k} className="mt-1.5 w-full max-w-full"><BitDash d={d} onPin /></div>)}
               </div>
             ))}
             {typing && <div className="text-xs text-slate-500">Bit está pensando…</div>}
@@ -511,7 +519,7 @@ export default function Mascot() {
           </div>
 
           <div className="flex flex-wrap gap-1.5 px-3 pb-2">
-            {QUICK.map((q) => (
+            {[...QUICK, ...(me?.is_admin ? [{ label: "Resumen del equipo", ask: "Hazme un resumen del equipo con un dashboard" }, { label: "Actividad", ask: "Muéstrame la actividad de cada usuario este mes" }] : [])].map((q) => (
               <button key={q.label} type="button" onClick={() => void ask(q.ask)} className="rounded-full border border-slate-200 px-2.5 py-1 text-[11px] font-medium text-slate-600 transition-colors hover:border-cyan2-500 hover:text-brand-700">{q.label}</button>
             ))}
           </div>
@@ -549,6 +557,7 @@ export default function Mascot() {
               <div className="rounded-lg border border-slate-200 p-2">
                 <div className="mb-1 flex items-center justify-between"><b className="text-slate-700">Lo que sé de ti</b>
                   <button type="button" className="text-red-600 hover:underline" onClick={() => { if (confirm("¿Borrar todo lo que Bit recuerda de ti?")) forgetAll(); }}>Olvidar todo</button></div>
+                <p className="mb-1 text-[10.5px] leading-snug text-slate-500">Esto se guarda en tu cuenta. Tu administrador puede ver un resumen de tu actividad y de lo que Bit aprende de ti, para apoyar al equipo.</p>
                 <label className="mb-1 flex items-center gap-2"><span className="w-14 text-slate-500">Nombre</span>
                   <input className="input py-1 text-[11px]" value={mem.name} placeholder="Aún no lo sé" onChange={(e) => setName(e.target.value)} /></label>
                 {mem.facts.length ? (

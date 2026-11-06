@@ -35,7 +35,7 @@ const KEEP = ["netops.look", "netops.theme", "netops.mascot", "netops.cam", "net
 function wipeLocalWork(): void {
   try {
     for (const k of Object.keys(localStorage)) {
-      if (k.startsWith("netops.") && !KEEP.some((p) => k.startsWith(p))) localStorage.removeItem(k);
+      if (k === "netops.mascot.memory" || (k.startsWith("netops.") && !KEEP.some((p) => k.startsWith(p)))) localStorage.removeItem(k);
     }
   } catch { /* ignore */ }
 }

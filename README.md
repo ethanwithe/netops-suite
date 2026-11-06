@@ -187,6 +187,12 @@ La app corre en Railway, así que no ve tu cable de consola ni los equipos de tu
 - Cuando llega la hora, Bit avisa en voz alta y con una burbuja, y con notificación del navegador si diste permiso (la página debe estar abierta; revisa cada 30 s y al volver a la pestaña).
 - Cada usuario ve solo su agenda. Tabla nueva `agenda_items` (se crea sola al desplegar).
 
+### Bit como amigo: memoria por usuario, clientes y reportes para el administrador
+- **Memoria en el servidor** (tabla `bit_profiles`): Bit recuerda nombre, gustos, hábitos y lo que le cuentas, en cualquier dispositivo y sin mezclarse con otra persona que use el mismo navegador. Bit también ve tu actividad reciente (clientes, puntos, qué haces más) para tratarte como alguien que te conoce. En su panel se avisa que el administrador puede ver un resumen.
+- **Agregar clientes por conversación:** «agrega el cliente SOT 91683098, Maxi Mobility, CID 27348260…» y «guarda la IP WAN 10.31.208.25 del SOT…» (requiere la IA de Bit configurada).
+- **Para administradores:** Bit conoce una tabla de todos los usuarios (último ingreso, clientes, puntos del mes, acciones de 7 días, gustos aprendidos). Se le pregunta «¿cómo va Juan?», «¿quién ha trabajado más este mes?» y arma **dashboards en el chat** (barras, líneas, tablas y ficha de usuario). Con **Fijar** quedan en *Admin → Reportes de Bit*, que se recalculan al abrir.
+- Tablas nuevas: `bit_profiles`, `bit_reports` (se crean solas).
+
 ### Reporte Fotográfico estilo Poder Judicial (secciones y celdas)
 
 - Cada opción (GPON con ONT, GPON con módulo, Fibra convencional) se arma por **secciones con título** (desplegable y editable),

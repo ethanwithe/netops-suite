@@ -35,6 +35,7 @@ const TITLES: Record<string, string> = {
   "/admin/usuarios": "Usuarios",
   "/admin/clientes": "Clientes de todos",
   "/admin/actividad": "Actividad",
+  "/admin/reportes": "Reportes de Bit",
   "/grafica/iconos": "Iconos",
   ...Object.fromEntries(TEMPLATES.map((t) => [`/grafica/${t.id}`, t.label])),
   "/plantillas": "Plantillas",
@@ -122,7 +123,7 @@ export default function Layout() {
     ...(can(me, "checklist") ? [{ id: "ck", label: "CheckList", prefixes: ["/checklist"], items: ckSub }] : []),
     ...(okFoto || can(me, "poder_judicial") ? [{ id: "ft", label: "Fotos", prefixes: ["/fotografico"], items: fotoSub }] : []),
     { id: "cl", label: "Clientes", prefixes: ["/clientes"], items: [{ to: "/clientes", label: "Mis clientes" }, ...years.map((y) => ({ to: `/clientes/${y.year}`, label: `Clientes ${y.year}` }))] },
-    ...(me?.is_admin ? [{ id: "ad", label: "Admin", prefixes: ["/admin"], items: [{ to: "/admin/usuarios", label: "Usuarios" }, { to: "/admin/clientes", label: "Clientes de todos" }, { to: "/admin/actividad", label: "Actividad" }] }] : []),
+    ...(me?.is_admin ? [{ id: "ad", label: "Admin", prefixes: ["/admin"], items: [{ to: "/admin/usuarios", label: "Usuarios" }, { to: "/admin/clientes", label: "Clientes de todos" }, { to: "/admin/actividad", label: "Actividad" }, { to: "/admin/reportes", label: "Reportes de Bit" }] }] : []),
   ];
   const link = (isActive: boolean) => `side-item ${isActive ? "active" : ""}`;
   const sub = (isActive: boolean) => `side-item ${isActive ? "active" : ""}`;
@@ -187,6 +188,7 @@ export default function Layout() {
               <NavLink to="/admin/usuarios" className={({ isActive }) => link(isActive)}><span className="block">Usuarios</span></NavLink>
               <NavLink to="/admin/clientes" className={({ isActive }) => link(isActive)}><span className="block">Clientes de todos</span></NavLink>
               <NavLink to="/admin/actividad" className={({ isActive }) => link(isActive)}><span className="block">Actividad</span></NavLink>
+              <NavLink to="/admin/reportes" className={({ isActive }) => link(isActive)}><span className="block">Reportes de Bit</span></NavLink>
             </>
           )}
           <div className="side-group">Operación</div>

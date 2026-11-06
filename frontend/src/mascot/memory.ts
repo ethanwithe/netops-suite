@@ -1,5 +1,6 @@
 // Memoria de Bit: aprende quién eres, tus gustos y tus hábitos (se guarda solo en este navegador).
 import { useSyncExternalStore } from "react";
+import { api } from "../api/client";
 
 export interface Memory {
   name: string;
@@ -21,10 +22,31 @@ function load(): Memory {
   return { ...EMPTY, hours: Array(24).fill(0) };
 }
 let mem = load();
+let synced = false;          // solo se sube al servidor cuando ya se bajó lo de esta persona
+let pushT: number | undefined;
 function save(m: Memory) {
   mem = m;
   try { localStorage.setItem(KEY, JSON.stringify(m)); } catch { /* ignorar */ }
   listeners.forEach((l) => l());
+  if (synced) {
+    window.clearTimeout(pushT);
+    pushT = window.setTimeout(() => { void api.put("/mascot/memory", mem).catch(() => {}); }, 2500);
+  }
+}
+/** La memoria de Bit vive en el servidor (por usuario): sigue contigo en cualquier dispositivo y no se mezcla con otra persona. */
+export async function syncMemory(): Promise<void> {
+  synced = false;
+  try {
+    const { data } = await api.get<{ exists: boolean } & Partial<Memory>>("/mascot/memory");
+    if (data.exists) {
+      mem = { ...EMPTY, ...data, hours: (data.hours?.length ? data.hours : Array(24).fill(0)) as number[] } as Memory;
+      try { localStorage.setItem(KEY, JSON.stringify(mem)); } catch { /* ignorar */ }
+      listeners.forEach((l) => l());
+    } else if (mem.facts.length || mem.name || mem.chats) {
+      await api.put("/mascot/memory", mem);   // primera vez: se sube lo que ya había aprendido en este navegador
+    }
+    synced = true;
+  } catch { /* sin conexión: se usa lo local */ }
 }
 export const getMemory = () => mem;
 export function useMemory() {
