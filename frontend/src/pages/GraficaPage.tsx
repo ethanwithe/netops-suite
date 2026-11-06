@@ -84,7 +84,15 @@ export default function GraficaPage({ tplId }: { tplId: string }) {
       const a = document.createElement("a");
       a.href = url; a.download = `${baseName}.${kind}`; document.body.appendChild(a); a.click(); a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 5000);
-    } catch (e) { setError(apiErrorMessage(e, `No se pudo generar el ${kind.toUpperCase()}.`)); }
+    } catch (e) {
+      // con responseType "blob" el mensaje del servidor llega dentro de un Blob: se lee para mostrarlo
+      let err: unknown = e;
+      const blob = (e as { response?: { data?: unknown } })?.response?.data;
+      if (blob instanceof Blob) {
+        try { err = { response: { data: JSON.parse(await blob.text()) } }; } catch { /* se usa el mensaje genérico */ }
+      }
+      setError(apiErrorMessage(err, `No se pudo generar el ${kind.toUpperCase()}.`));
+    }
     setBusy("");
   }
 
