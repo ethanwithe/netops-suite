@@ -567,3 +567,17 @@ input[type="checkbox"].ios:disabled { opacity: .45; cursor: not-allowed; }
 
 /* Listas agrupadas (filas separadas por línea fina) */
 .grouped > * + * { border-top: .5px solid rgb(var(--edge) / .45); }
+
+/* ============ Ajustes finos (revisión visual) ============ */
+.tabbar { width: min(36rem, calc(100vw - 1.5rem)); }
+.tab { min-width: 0; font-size: 10px; padding: 7px 0 6px; }
+.tab > * { max-width: 100%; }
+.tab { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.tab-count { display: none; }
+@media (max-width: 480px) { .tab { font-size: 9.5px; } }
+
+.page-title { font-size: clamp(1.6rem, 1.3rem + 1vw, 2.1rem); line-height: 1.12; margin-bottom: .35rem; }
+.page-title + p { margin-top: .25rem; margin-bottom: 1rem; line-height: 1.5; max-width: 62rem; }
+
+/* las gotas del menú lateral quedan al pie, sin tapar los textos */
+.side-drop { z-index: 0; opacity: .55; }

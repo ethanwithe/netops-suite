@@ -215,8 +215,8 @@ export default function Layout() {
             {addBtn("+ Nuevo año", newYear)}
           </Group>
         </nav>
-        <div className="side-drop" style={{ right: -14, bottom: 34, ["--dur" as any]: "11s" }}><Drop size={74} kind="bead" /></div>
-        <div className="side-drop" style={{ left: 18, bottom: 54, ["--dur" as any]: "9s", ["--delay" as any]: "-3s" }}><Drop size={30} kind="tear" /></div>
+        <div className="side-drop" style={{ right: -22, bottom: -14, ["--dur" as any]: "11s" }}><Drop size={74} kind="bead" /></div>
+        <div className="side-drop" style={{ left: 14, bottom: 6, ["--dur" as any]: "9s", ["--delay" as any]: "-3s" }}><Drop size={30} kind="tear" /></div>
         <div className="relative flex items-center justify-between border-t border-white/10 px-5 py-3 text-[11px] text-slate-400">
           <span>NetOps Suite v1.0</span>
           <span className="h-1.5 w-1.5 rounded-full bg-cyan2-400 shadow-[0_0_8px_#38d0f7]" />

@@ -9,7 +9,7 @@ export const TEMPLATES: Template[] = [
     desc: "Red proveedor Claro (OLT, splitter, FAT) → roseta → ONT → router Cisco → switch del cliente.",
     doc: ontCisco as unknown as Doc,
     groups: [
-      { title: "Cliente", fields: [
+      { title: "Datos del cliente", fields: [
         { key: "cliente", label: "Cliente", hint: "MAXI MOBILITY PERU S.A.C." },
         { key: "sede", label: "Sede", hint: "MIRAFLORES" },
         { key: "direccion", label: "Dirección", hint: "JOSÉ DEL LLANO ZAPATA 191, MIRAFLORES 15073 LIMA", multiline: true },

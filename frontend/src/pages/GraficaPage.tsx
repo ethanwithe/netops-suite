@@ -110,8 +110,8 @@ export default function GraficaPage({ tplId }: { tplId: string }) {
         {open && (
           <div className="space-y-4">
             {tpl.groups.map((g) => (
-              <div key={g.title}>
-                <p className="mb-1.5 text-xs font-semibold text-slate-500">{g.title}</p>
+              <div key={g.title} className="border-t border-slate-200 pt-3 first:border-0 first:pt-0">
+                <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-brand-600">{g.title}</p>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   {g.fields.map((f) => (
                     <label key={f.key} className="block">
