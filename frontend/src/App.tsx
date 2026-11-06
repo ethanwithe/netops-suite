@@ -16,6 +16,7 @@ import PoderJudicialPage from "./pages/PoderJudicialPage";
 import LoginPage, { ForcePassword } from "./pages/LoginPage";
 import DashboardPage from "./pages/DashboardPage";
 import ProfilePage from "./pages/ProfilePage";
+import AgendaPage from "./pages/AgendaPage";
 import AdminUsersPage from "./pages/AdminUsersPage";
 import ActivityPage from "./pages/ActivityPage";
 import { can, loadMe, useAuth } from "./store/auth";
@@ -45,6 +46,7 @@ export default function App() {
         <Route index element={<Navigate to="/panel" replace />} />
         <Route path="/panel" element={<DashboardPage />} />
         <Route path="/perfil" element={<ProfilePage />} />
+        <Route path="/agenda" element={<AgendaPage />} />
         <Route path="/grafica" element={<Navigate to={`/grafica/${TEMPLATES[0].id}`} replace />} />
         <Route path="/grafica/iconos" element={<Need feature="grafica"><DiagramIconsPage /></Need>} />
         {TEMPLATES.map((t) => <Route key={t.id} path={`/grafica/${t.id}`} element={<Need feature="grafica"><GraficaPage key={t.id} tplId={t.id} /></Need>} />)}

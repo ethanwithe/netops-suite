@@ -181,6 +181,12 @@ La app corre en Railway, así que no ve tu cable de consola ni los equipos de tu
 - La página solo habla con `127.0.0.1:8766` y con ese código; la contraseña del equipo no pasa por Railway ni se guarda.
 - Sigue existiendo la consola directa del navegador (Web Serial, Chrome/Edge) como alternativa sin el puente.
 
+### Agenda y Bit: recordatorios, tareas y eventos
+- Pantalla **Agenda** (Mi cuenta): recordatorios, tareas y eventos propios, con hora editable y vencidos en rojo.
+- **Bit** los maneja hablando o escribiendo: «recuérdame mañana a las 9 llamar al cliente», «tarea: subir fotos del SOT», «¿qué tengo pendiente?», «marca como hecho…». Con IA entiende lenguaje libre; sin IA entiende frases sencillas («en 20 minutos», «mañana a las 9», «el lunes a las 8:30»).
+- Cuando llega la hora, Bit avisa en voz alta y con una burbuja, y con notificación del navegador si diste permiso (la página debe estar abierta; revisa cada 30 s y al volver a la pestaña).
+- Cada usuario ve solo su agenda. Tabla nueva `agenda_items` (se crea sola al desplegar).
+
 ### Reporte Fotográfico estilo Poder Judicial (secciones y celdas)
 
 - Cada opción (GPON con ONT, GPON con módulo, Fibra convencional) se arma por **secciones con título** (desplegable y editable),

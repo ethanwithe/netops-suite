@@ -26,6 +26,7 @@ FEATURE_BY_PREFIX = [
     ("/api/imageai", "asistente"),
     ("/api/export", "exportar"),
     ("/api/diagrams", "grafica"),
+    ("/api/agenda", "asistente"),
 ]
 
 # Rutas que modifican catálogos (no son "usar" la función): piden editar_catalogos.

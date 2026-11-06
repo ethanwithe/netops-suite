@@ -31,6 +31,7 @@ const FOTO_SUB = [
 const TITLES: Record<string, string> = {
   "/panel": "Panel",
   "/perfil": "Mi perfil",
+  "/agenda": "Agenda",
   "/admin/usuarios": "Usuarios",
   "/admin/clientes": "Clientes de todos",
   "/admin/actividad": "Actividad",
@@ -115,7 +116,7 @@ export default function Layout() {
   };
 
   const tabGroups: TabGroup[] = [
-    { id: "pn", label: "Panel", prefixes: ["/panel", "/perfil"], items: [{ to: "/panel", label: "Panel" }, { to: "/perfil", label: "Mi perfil" }] },
+    { id: "pn", label: "Panel", prefixes: ["/panel", "/perfil", "/agenda"], items: [{ to: "/panel", label: "Panel" }, { to: "/agenda", label: "Agenda" }, { to: "/perfil", label: "Mi perfil" }] },
     ...(can(me, "grafica") ? [{ id: "gr", label: "Gráfica", prefixes: ["/grafica"], items: grSub }] : []),
     ...(can(me, "plantillas") ? [{ id: "tl", label: "Plantillas", prefixes: ["/plantillas"], items: [{ to: "/plantillas", label: "Plantillas" }] }] : []),
     ...(can(me, "checklist") ? [{ id: "ck", label: "CheckList", prefixes: ["/checklist"], items: ckSub }] : []),
@@ -173,6 +174,9 @@ export default function Layout() {
           <div className="side-group">Mi cuenta</div>
           <NavLink to="/panel" className={({ isActive }) => link(isActive)}>
             <span><span className="block">Panel</span><span className="block text-[11px] font-normal opacity-60">Mis puntos y clientes</span></span>
+          </NavLink>
+          <NavLink to="/agenda" className={({ isActive }) => link(isActive)}>
+            <span><span className="block">Agenda</span><span className="block text-[11px] font-normal opacity-60">Recordatorios y tareas</span></span>
           </NavLink>
           <NavLink to="/perfil" className={({ isActive }) => link(isActive)}>
             <span><span className="block">Mi perfil</span><span className="block text-[11px] font-normal opacity-60">Datos, foto y contraseña</span></span>

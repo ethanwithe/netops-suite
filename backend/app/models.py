@@ -278,3 +278,18 @@ class DiagramIcon(Base):
     builtin = Column(Boolean, nullable=False, default=False)
     owner_id = Column(String, nullable=True)
     created_at = Column(DateTime, default=dt.datetime.utcnow)
+
+
+class AgendaItem(Base):
+    """Recordatorio, tarea o evento de la agenda personal (lo crea el usuario o su asistente Bit)."""
+    __tablename__ = "agenda_items"
+
+    id = Column(String, primary_key=True, default=gen_uuid)
+    user_id = Column(String, nullable=False, index=True)
+    kind = Column(String, nullable=False, default="recordatorio")   # recordatorio | tarea | evento
+    title = Column(String, nullable=False)
+    notes = Column(Text, nullable=False, default="")
+    due_at = Column(DateTime, nullable=True, index=True)             # UTC
+    done = Column(Boolean, nullable=False, default=False)
+    notified = Column(Boolean, nullable=False, default=False)
+    created_at = Column(DateTime, default=dt.datetime.utcnow)

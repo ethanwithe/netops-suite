@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import MascotFace from "./MascotFace";
-import { Action, GREET, IDLE_LINES, Mood, QUICK, Reply, answer, norm, routeComment } from "./brain";
+import { Action, GREET, IDLE_LINES, Mood, QUICK, Reply, answer, norm, routeComment, parseReminder } from "./brain";
+import { addAgenda, fetchDue, fmtWhen, getAgenda, reloadAgenda } from "../store/agenda";
 import { Listener, STYLES, VoiceOpt, listVoices, listenContinuous, onVoicesReady, speakText, stopSpeaking, sttSupported } from "./voice";
 import { setMascot, useMascotSettings } from "./settings";
 import { countChat, forget, forgetAll, habitsSummary, learnFrom, markAsked, remember, setName, topSection, trackRoute, useMemory } from "./memory";
@@ -268,6 +269,31 @@ export default function Mascot() {
     return () => window.removeEventListener("keydown", k);
   }, [open]);
 
+  // Avisos de la agenda: cada 30 s (y al volver a la pestaña) se revisa si algo ya venció
+  useEffect(() => {
+    const alertDue = (title: string, kind: string) => {
+      const text = kind === "tarea" ? `Ojo, la tarea venció: ${title}.` : kind === "evento" ? `Es hora de tu evento: ${title}.` : `Recordatorio: ${title}.`;
+      express("wow", 8000);
+      setBubble({ text });
+      window.clearTimeout(bubbleT.current);
+      bubbleT.current = window.setTimeout(() => setBubble(null), 14000);
+      void speak(text, true);
+      try { if ("Notification" in window && Notification.permission === "granted") new Notification("NetOps · Agenda", { body: title }); } catch { /* sin permiso */ }
+    };
+    const check = async () => {
+      try {
+        const due = await fetchDue();
+        due.forEach((i) => alertDue(i.title, i.kind));
+        if (due.length) void reloadAgenda().catch(() => {});
+      } catch { /* sin conexión: se reintenta */ }
+    };
+    void check();
+    const iv = window.setInterval(() => void check(), 30000);
+    const vis = () => { if (document.visibilityState === "visible") void check(); };
+    document.addEventListener("visibilitychange", vis);
+    return () => { window.clearInterval(iv); document.removeEventListener("visibilitychange", vis); };
+  }, [express, speak]);
+
   function runAction(a?: Action | null) {
     if (!a) return;
     if (a.kind === "go") navigate(a.to);
@@ -279,7 +305,28 @@ export default function Mascot() {
     else if (a.kind === "hide") setTimeout(() => { setOpen(false); setMascot({ hidden: true }); }, 900);
   }
 
-  async function askAI(text: string): Promise<(Reply & { remember?: string[] }) | null> {
+  /** Recordatorios, tareas y consulta de la agenda sin necesidad de IA. */
+  async function localAgenda(text: string): Promise<Reply | null> {
+    const t = norm(text);
+    if (/\b(que tengo|que hay|mis|mi) (pendientes?|agenda|tareas|recordatorios)\b|\bque (me )?falta\b/.test(t)) {
+      await reloadAgenda().catch(() => {});
+      const pend = getAgenda().filter((i) => !i.done).slice(0, 6);
+      if (!pend.length) return { text: "No tienes nada pendiente. Qué envidia.", mood: "happy" };
+      return { text: `Tienes ${pend.length} pendiente${pend.length > 1 ? "s" : ""}: ` + pend.map((i) => `${i.title}${i.due_at ? ", " + fmtWhen(i.due_at) : ""}`).join("; ") + ".", mood: "think" };
+    }
+    const p = parseReminder(text);
+    if (p) {
+      try {
+        await addAgenda({ kind: p.kind, title: p.title, due_at: p.due ? p.due.toISOString() : null });
+        if ("Notification" in window && Notification.permission === "default") void Notification.requestPermission();
+        return { text: p.due ? `Listo, te aviso: ${p.title}, ${fmtWhen(p.due.toISOString())}.` : `Anotado en tus tareas: ${p.title}.`, mood: "happy" };
+      } catch { return { text: "No pude guardarlo en la agenda, inténtalo otra vez.", mood: "sad" }; }
+    }
+    if (/\b(recuerdame|recordarme|avisame|agendame)\b/.test(t)) return { text: "Claro, ¿para cuándo? Dime por ejemplo «mañana a las 9» o «en 20 minutos».", mood: "think" };
+    return null;
+  }
+
+  async function askAI(text: string): Promise<(Reply & { remember?: string[]; agenda?: { op: string; title: string }[] }) | null> {
     if (!aiRef.current) return null;
     try {
       const history = msgsRef.current.filter((m) => m.who !== "note").slice(-12).map((m) => ({ role: m.who === "me" ? "user" : "assistant", content: m.text }));
@@ -291,7 +338,8 @@ export default function Mascot() {
           messages: [...history, { role: "user", content: text }],
           pathname: pathRef.current, theme: themeRef.current.resolved,
           memory: m.facts, name: m.name || undefined, habits: habitsSummary() || undefined,
-          now: new Date().toLocaleString("es-PE", { dateStyle: "full", timeStyle: "short" }),
+          now: new Date().toLocaleString("es-PE", { dateStyle: "full", timeStyle: "short" }) + ` (${new Date().toISOString().slice(0, 10)} ${String(new Date().getHours()).padStart(2, "0")}:${String(new Date().getMinutes()).padStart(2, "0")})`,
+          tz: new Date().getTimezoneOffset(),
         }),
       });
       if (!r.ok) return null;
@@ -311,7 +359,7 @@ export default function Mascot() {
     if (!openRef.current) setBubble({ heard: text, text: "Pensando…" });
     if (cfgRef.current.learn) countChat();
 
-    let r: (Reply & { remember?: string[] }) | null = null;
+    let r: (Reply & { remember?: string[]; agenda?: { op: string; title: string }[] }) | null = null;
     const notes: string[] = [];
     // ¿acaba de preguntarte el nombre?
     if (pendingName.current && text.split(/\s+/).length <= 5 && !text.includes("?")) {
@@ -323,7 +371,14 @@ export default function Mascot() {
     if (!r) {
       r = await askAI(text);
       if (r?.remember?.length && cfgRef.current.learn) r.remember.forEach((f) => { if (remember(f)) notes.push(f); });
+      if (r?.agenda?.length) {
+        void reloadAgenda().catch(() => {});
+        if ("Notification" in window && Notification.permission === "default") void Notification.requestPermission();
+        notes.push(...r.agenda.map((a) => (a.op === "add" ? `Agenda: ${a.title}` : a.op === "done" ? `Hecho: ${a.title}` : `Borrado: ${a.title}`)));
+      }
     }
+    // Modo básico (sin IA): entiende recordatorios y tareas sencillas y consulta la agenda
+    if (!r) r = await localAgenda(text);
     if (!r) {
       await sleep(250 + Math.random() * 350);
       const m = memRef.current;
