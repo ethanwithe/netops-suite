@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { MutableRefObject } from "react";
+import { api } from "../api/client";
 import { usePersistentState } from "../store/persistentState";
 import type { ConsoleSession } from "../utils/webSerial";
 
@@ -70,7 +71,9 @@ export default function LiveCli({ onDownload, onForget, logSize, term, onClear, 
     return Array.from(new Set(all));
   }, [saved, hist, itemCmds]);
 
-  const remember = (line: string) => setHist((h) => [line, ...h.filter((x) => x !== line)].slice(0, 200));
+  // Bit aprende solo los comandos que sueles usar (el servidor descarta cualquier cosa que parezca una clave)
+  const observe = (line: string) => { if (line.trim().length >= 4) void api.post("/mascot/observe", { kind: "comando", text: line.trim().slice(0, 200) }).catch(() => {}); };
+  const remember = (line: string) => { observe(line); setHist((h) => [line, ...h.filter((x) => x !== line)].slice(0, 200)); };
 
   async function sendLine(line: string) {
     const s = session.current;

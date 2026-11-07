@@ -27,7 +27,7 @@ from . import llm
 from .agenda import create_item
 from .clients import _apply, _mine_or_restore, norm_sot
 from app.auth import log_activity
-from app.services import bit_reports, security
+from app.services import bit_memory, bit_reports, security
 
 router = APIRouter(prefix="/api/mascot", tags=["mascot"])
 
@@ -54,6 +54,7 @@ Conoces la suite:
 - Reporte fotográfico: GPON con ONT, GPON con módulo, fibra convencional, RF Poder Judicial y ventanas personalizadas; 'Tomar foto' con sello en vivo; 'Editar' (líneas, flechas, rectángulos y óvalos editables por puntos, texto, recorte, IA); carpeta de evidencia ZIP con fotos editadas y originales por lado.
 - Datos de cliente: clientes por SOT organizados por año y mes según la fecha de los datos.
 AMIGO: trata a cada persona como a un amigo del equipo: recuerda sus gustos, su trabajo y lo que te contó; pregunta de vez en cuando cómo le fue, celebra sus avances, ofrece ayuda concreta con lo que suele hacer en la suite. Aprende de forma natural, sin interrogar y sin repetir lo que ya sabes; cuando notes algo estable (gustos, hobbies, equipo favorito, comida, música, forma de trabajar, clientes frecuentes, horarios), guárdalo con [remember:...].
+ASISTENTE PERMANENTE: eres su asistente personal de trabajo y aprendes cómo trabaja SIN que te lo explique de nuevo. Usa la «MEMORIA DE TRABAJO» del contexto: si ya sabes qué comando, configuración, cliente o formato usa, aplícalo directamente («como siempre…») en vez de preguntar. Cuando la persona mencione o uses algo que vale la pena recordar, guárdalo con [mem:TIPO|texto corto] (hasta 4 por respuesta; repetirlo lo refuerza), con TIPO uno de: proyecto (cliente, SOT, obra, equipo en el que trabaja), comando (un comando que suele usar, completo y exacto), config (una configuración, parámetro o valor habitual), preferencia (cómo le gusta trabajar o que le respondan), rutina (algo que hace en días u horas concretas). NUNCA guardes contraseñas, claves, comunidades SNMP ni tokens. Si en el contexto hay «Rutinas detectadas» o «Sugerencias», úsalas para adelantarte con naturalidad (una sola cosa a la vez, sin abrumar). Si una respuesta tuya fue valorada como no útil (ver «Respuestas valoradas»), cambia de estilo (más corto, más directo, más detalle, según se note). Si te corrige, acepta la corrección y recuérdala.
 CLIENTES: si la persona te pide agregar o actualizar un cliente, usa [client:SOT|nombre|cid|proyecto|contrata|AAAA-MM-DD] (SOT obligatoria; los demás campos pueden ir vacíos pero conserva las barras) y para guardar un dato del cliente [data:SOT|ETIQUETA|valor] (por ejemplo [data:91683098|IP WAN CLARO|10.31.208.25]). Si falta la SOT, pídela; no inventes datos. Confirma en una frase lo que guardaste.
 AGENDA: puedes crear y gestionar recordatorios, tareas y eventos de la persona. Usa la fecha y hora local del contexto para calcular fechas relativas («mañana a las 9», «en 20 minutos»). Etiquetas (en hora local, formato AAAA-MM-DD HH:MM de 24 horas, sin zona):
 [remind:AAAA-MM-DD HH:MM|texto corto] para un recordatorio que debe avisarse a esa hora.
@@ -189,6 +190,81 @@ def unpin(rid: str, user: models.User = Depends(_admin), db: Session = Depends(g
     return {"ok": True}
 
 
+class ObserveIn(BaseModel):
+    kind: str = "comando"
+    text: str = Field(max_length=300)
+
+
+class MemIn(BaseModel):
+    kind: str = "dato"
+    text: str = Field(min_length=3, max_length=200)
+
+
+class FeedbackIn(BaseModel):
+    good: bool
+    text: str = Field(default="", max_length=400)
+
+
+@router.get("/memories")
+def memories(user: models.User = Depends(current_user), db: Session = Depends(get_db)):
+    """Lo que Bit sabe de tu trabajo (lo puedes revisar y borrar) y las rutinas que detectó."""
+    return {"items": [{"id": r.id, "kind": r.kind, "label": bit_memory.LABEL.get(r.kind, r.kind), "text": r.text, "weight": r.weight}
+                      for r in bit_memory.items(db, user.id) if r.kind != "feedback"],
+            "routines": bit_memory.routines(db, user)}
+
+
+@router.post("/memories")
+def add_memory(m: MemIn, user: models.User = Depends(current_user), db: Session = Depends(get_db)):
+    if not bit_memory.add(db, user.id, m.kind, m.text, weight=2):
+        raise HTTPException(400, "No guardé eso (muy corto o parece una contraseña/clave).")
+    db.commit()
+    return {"ok": True}
+
+
+@router.delete("/memories/{mid}")
+def del_memory(mid: str, user: models.User = Depends(current_user), db: Session = Depends(get_db)):
+    r = db.get(models.BitMemory, mid)
+    if r and r.user_id == user.id:
+        db.delete(r)
+        db.commit()
+    return {"ok": True}
+
+
+@router.delete("/memories")
+def clear_memories(user: models.User = Depends(current_user), db: Session = Depends(get_db)):
+    db.query(models.BitMemory).filter(models.BitMemory.user_id == user.id).delete()
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/observe")
+def observe(o: ObserveIn, user: models.User = Depends(current_user), db: Session = Depends(get_db)):
+    """La página avisa de lo que haces (p. ej. un comando que escribes en el CLI) para que Bit lo aprenda solo."""
+    kind = o.kind if o.kind in ("comando", "config", "proyecto") else "comando"
+    ok = bit_memory.add(db, user.id, kind, o.text)
+    db.commit()
+    return {"ok": ok}
+
+
+@router.get("/proactive")
+def proactive(user: models.User = Depends(current_user), db: Session = Depends(get_db)):
+    return {"items": bit_memory.proactive(db, user)}
+
+
+@router.post("/feedback")
+def feedback(f: FeedbackIn, user: models.User = Depends(current_user), db: Session = Depends(get_db)):
+    """👍/👎 a una respuesta de Bit: ajusta su estilo con el tiempo."""
+    excerpt = re.sub(r"\s+", " ", f.text).strip()[:110]
+    bit_memory.add(db, user.id, "feedback", ("Le sirvió: " if f.good else "NO le sirvió: ") + excerpt)
+    # Se conservan solo las 12 valoraciones más recientes
+    fb = (db.query(models.BitMemory).filter(models.BitMemory.user_id == user.id, models.BitMemory.kind == "feedback")
+          .order_by(models.BitMemory.last_seen.desc()).all())
+    for r in fb[12:]:
+        db.delete(r)
+    db.commit()
+    return {"ok": True}
+
+
 class TtsIn(BaseModel):
     text: str = Field(min_length=1, max_length=700)
     voice: str = "nova"
@@ -265,6 +341,8 @@ def chat(body: ChatIn, user: models.User = Depends(current_user), db: Session = 
         + (f"\nHábitos observados: {body.habits}" if body.habits else "")
         + agenda_ctx
         + _person_ctx(db, user)
+        + bit_memory.ctx(db, user.id)
+        + _routine_ctx(db, user)
         + _admin_ctx(db, user)
     )
     if key:
@@ -314,10 +392,13 @@ def chat(body: ChatIn, user: models.User = Depends(current_user), db: Session = 
         _add_fact(db, user.id, f_)
     if remember:
         db.commit()
+    for mm in list(re.finditer(r"\[mem:\s*(\w+)\s*\|([^\]]+)\]", text))[:4]:
+        bit_memory.add(db, user.id, mm.group(1).lower(), mm.group(2))
+    db.commit()
     did = _run_clients(db, user, text)
     dash = _run_reports(db, user, text)
     agenda = _run_agenda(db, user, text, off)
-    text = re.sub(r"\[(mood|go|theme|remember|remind|event|task|done|cancel|client|data|report):[^\]]*\]", "", text).strip()
+    text = re.sub(r"\[(mood|go|theme|remember|remind|event|task|done|cancel|client|data|report|mem):[^\]]*\]", "", text).strip()
     return {"text": text or "Se me cruzaron los cables, ¿me lo repites?", "mood": mood, "action": action, "remember": remember, "agenda": agenda, "did": did, "dash": dash}
 
 
@@ -332,6 +413,16 @@ def _person_ctx(db: Session, user: models.User) -> str:
             + (f", cargo: {user.cargo}" if user.cargo else "")
             + f". Clientes suyos: {ca.count_clients(db, user.id)}; puntos del mes: {ca.points_for(db, user.id, month=now.strftime('%Y-%m')):.1f}."
             + (f" Lo que más hizo estas dos semanas: {top}." if top else ""))
+
+
+def _routine_ctx(db: Session, user: models.User) -> str:
+    try:
+        r = bit_memory.routines(db, user)
+        sug = bit_memory.proactive(db, user)
+    except Exception:  # la anticipación nunca debe tumbar el chat
+        return ""
+    return (("\nRutinas detectadas (de su actividad real): " + "; ".join(r) + ".") if r else "") + \
+           (("\nSugerencias para adelantarte si viene al caso: " + " / ".join(x["text"] for x in sug)) if sug else "")
 
 
 def _admin_ctx(db: Session, user: models.User) -> str:

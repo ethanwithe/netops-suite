@@ -2,8 +2,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import MascotFace from "./MascotFace";
 import { Action, GREET, IDLE_LINES, Mood, QUICK, Reply, answer, norm, routeComment, parseReminder } from "./brain";
+import BitMemories from "./BitMemories";
 import BitDash from "./BitDash";
 import type { Dash } from "./BitDash";
+import { api } from "../api/client";
 import { useAuth } from "../store/auth";
 import { addAgenda, fetchDue, fmtWhen, getAgenda, reloadAgenda } from "../store/agenda";
 import { Listener, STYLES, VoiceOpt, listVoices, listenContinuous, onVoicesReady, speakText, stopSpeaking, sttSupported } from "./voice";
@@ -12,7 +14,7 @@ import { syncMemory, countChat, forget, forgetAll, habitsSummary, learnFrom, mar
 import { THEME_OPTIONS, setTheme, useTheme } from "../store/theme";
 import { useOverlayOpen } from "../components/useOverlayOpen";
 
-interface Msg { who: "bot" | "me" | "note"; text: string; dash?: Dash[] }
+interface Msg { who: "bot" | "me" | "note"; text: string; dash?: Dash[]; rate?: 1 | -1; chips?: { label: string; to: string }[] }
 interface Bubble { text: string; heard?: string }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -195,6 +197,26 @@ export default function Mascot() {
     return () => window.removeEventListener("resize", onR);
   }, []);
 
+  // ---------- se adelanta: una vez al día revisa tu trabajo y te avisa de lo importante ----------
+  useEffect(() => {
+    if (!me?.id) return;
+    const key = `netops.mascot.pro.${me.id}`;
+    const today = new Date().toISOString().slice(0, 10);
+    try { if (localStorage.getItem(key) === today) return; } catch { /* ignorar */ }
+    const t = window.setTimeout(async () => {
+      try {
+        const { data } = await api.get<{ items: { text: string; go?: string }[] }>("/mascot/proactive");
+        try { localStorage.setItem(key, today); } catch { /* ignorar */ }
+        if (!data.items.length) return;
+        const chips = data.items.filter((x) => x.go).map((x) => ({ label: x.go === "/agenda" ? "Ver agenda" : "Ir", to: x.go as string }))
+          .filter((c, k, a) => a.findIndex((z) => z.to === c.to) === k);
+        setMsgs((x) => [...x.slice(-59), { who: "bot", text: "Te adelanto lo que vi en tu trabajo:\n" + data.items.map((i) => "• " + i.text).join("\n"), chips }]);
+        say(data.items[0].text, "think");
+      } catch { /* sin conexión: no pasa nada */ }
+    }, 6000);
+    return () => window.clearTimeout(t);
+  }, [me?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ---------- saludo (una vez por sesión): si no te conoce, pregunta tu nombre ----------
   useEffect(() => {
     let seen = false;
@@ -299,6 +321,14 @@ export default function Mascot() {
     document.addEventListener("visibilitychange", vis);
     return () => { window.clearInterval(iv); document.removeEventListener("visibilitychange", vis); };
   }, [express, speak]);
+
+  /** 👍/👎 a una respuesta: Bit ajusta su estilo con el tiempo. */
+  function rate(i: number, v: 1 | -1) {
+    const m = msgsRef.current[i];
+    if (!m) return;
+    setMsgs((l) => l.map((x, k) => (k === i ? { ...x, rate: v } : x)));
+    void api.post("/mascot/feedback", { good: v === 1, text: m.text }).catch(() => {});
+  }
 
   function runAction(a?: Action | null) {
     if (!a) return;
@@ -516,6 +546,21 @@ export default function Mascot() {
             ) : (
               <div key={i} className={`flex flex-col ${m.who === "me" ? "items-end" : "items-start"}`}>
                 <div className={`max-w-[85%] whitespace-pre-wrap rounded-2xl px-3 py-2 text-[13px] leading-snug ${m.who === "me" ? "rounded-br-sm bg-brand-600 text-white" : "rounded-bl-sm bg-slate-100 text-slate-800"}`}>{m.text}</div>
+                {m.who === "bot" && !!m.chips?.length && (
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    {m.chips.map((c) => <button key={c.to + c.label} type="button" className="rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[11px] text-sky-700 hover:bg-sky-100" onClick={() => runAction({ kind: "go", to: c.to })}>{c.label} →</button>)}
+                  </div>
+                )}
+                {m.who === "bot" && m.text.length > 25 && (
+                  <div className="mt-0.5 flex gap-1 text-[11px] text-slate-400">
+                    {m.rate ? <span>{m.rate === 1 ? "👍 Gracias, lo anoto" : "👎 Lo tendré en cuenta"}</span> : (
+                      <>
+                        <button type="button" title="Me sirvió" className="hover:text-emerald-600" onClick={() => rate(i, 1)}>👍</button>
+                        <button type="button" title="No me sirvió: Bit ajusta su estilo" className="hover:text-red-600" onClick={() => rate(i, -1)}>👎</button>
+                      </>
+                    )}
+                  </div>
+                )}
                 {m.dash?.map((d, k) => <div key={k} className="mt-1.5 w-full max-w-full"><BitDash d={d} onPin /></div>)}
               </div>
             ))}
@@ -558,6 +603,8 @@ export default function Mascot() {
               <label className="flex items-center gap-2"><input type="checkbox" checked={cfg.needName} onChange={(e) => setMascot({ needName: e.target.checked })} />Solo responder si digo «Bit» (ambientes con ruido)</label>
               <label className="flex items-center gap-2"><input type="checkbox" checked={cfg.idle} onChange={(e) => setMascot({ idle: e.target.checked })} />Comentarios espontáneos</label>
               <label className="flex items-center gap-2"><input type="checkbox" checked={cfg.learn} onChange={(e) => setMascot({ learn: e.target.checked })} />Aprender de mí (gustos y hábitos)</label>
+
+              <BitMemories />
 
               <div className="rounded-lg border border-slate-200 p-2">
                 <div className="mb-1 flex items-center justify-between"><b className="text-slate-700">Lo que sé de ti</b>
