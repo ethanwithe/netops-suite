@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
 
 from app import models
-from app.auth import current_user
+from app.auth import admin_user, current_user
 from app.database import get_db
 from . import llm
 from .agenda import create_item
@@ -200,6 +200,13 @@ def _key() -> str:
     return os.getenv("ANTHROPIC_API_KEY", "").strip()
 
 
+@router.get("/ia-estado")
+def ia_estado(_: models.User = Depends(admin_user)):
+    """Para el administrador: qué proveedores de IA ven las variables y cuál fue el último error."""
+    return {"anthropic": bool(_key()), "proveedores": [n for n, _k in llm.configured()], "ultimo_error": llm.last_error,
+            "variables_esperadas": ["ANTHROPIC_API_KEY", "GEMINI_API_KEY", "GROQ_API_KEY"]}
+
+
 @router.get("/status")
 def status():
     return {"ai": bool(_key()) or bool(llm.free_provider()), "model": MODEL if _key() else None, "tts": bool(_openai_key()), "voices": TTS_VOICES if _openai_key() else []}
@@ -286,10 +293,8 @@ def chat(body: ChatIn, user: models.User = Depends(current_user), db: Session = 
     else:
         try:
             text = llm.complete(SYSTEM + ctx, fused, 700).strip()
-        except urllib.error.HTTPError as e:
-            raise HTTPException(502, f"La IA respondió {e.code}")
         except Exception:
-            raise HTTPException(502, "No se pudo contactar a la IA")
+            raise HTTPException(502, "La IA no respondió: " + (llm.last_error or "sin detalle")[:200])
     mood = "neutral"
     m = re.search(r"\[mood:\s*(\w+)\s*\]", text)
     if m and m.group(1) in MOODS:

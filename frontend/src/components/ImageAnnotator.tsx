@@ -433,7 +433,8 @@ export default function ImageAnnotator({ imageUrl, onClose, onSaved }: Props) {
   const [textColor, setTextColor] = useState("#ffffff");
   const [width, setWidth] = useState(4);
   const [dashedLine, setDashedLine] = useState(true);
-  const [dashedShape, setDashedShape] = useState(false);
+  // «Punteada» es una sola preferencia para línea, flecha, rectángulo y elipse (antes eran dos y al cambiar de herramienta se perdía).
+  const dashedShape = dashedLine, setDashedShape = setDashedLine;
   const [curve, setCurve] = useState(false);
   const [textInput, setTextInput] = useState("");
   const [textSize, setTextSize] = useState(28);
@@ -1005,6 +1006,10 @@ export default function ImageAnnotator({ imageUrl, onClose, onSaved }: Props) {
   ];
 
   function pickTool(t: Tool) {
+    // Si había una línea a medio trazar, se conserva en vez de descartarla al cambiar de herramienta.
+    if (tool === "line" && t !== "line" && draftPts.length >= 2) {
+      setObjects([...objects, { id: newId(), k: "poly", pts: draftPts, closed: false, smooth: curve, dashed: dashedLine, arrow: false, color, w: width }]);
+    }
     setTool(t);
     setDraftPts([]); setDragShape(null); setSelVertex(null);
     if (t === "crop") startCrop(); else setCropRect(null);

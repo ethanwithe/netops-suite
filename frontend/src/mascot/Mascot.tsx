@@ -348,7 +348,12 @@ export default function Mascot() {
           tz: new Date().getTimezoneOffset(),
         }),
       });
-      if (!r.ok) return null;
+      if (!r.ok) {
+        let why = "";
+        try { why = String((await r.json())?.detail || ""); } catch { /* sin detalle */ }
+        if (r.status !== 503) setMsgs((m) => [...m.slice(-59), { who: "note", text: `⚠️ La IA no respondió, uso el modo básico. ${why}`.slice(0, 260) }]);
+        return null;
+      }
       return await r.json();
     } catch { return null; }
   }

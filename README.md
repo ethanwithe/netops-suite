@@ -187,6 +187,11 @@ La app corre en Railway, así que no ve tu cable de consola ni los equipos de tu
 - Cuando llega la hora, Bit avisa en voz alta y con una burbuja, y con notificación del navegador si diste permiso (la página debe estar abierta; revisa cada 30 s y al volver a la pestaña).
 - Cada usuario ve solo su agenda. Tabla nueva `agenda_items` (se crea sola al desplegar).
 
+### CLI en vivo del CheckList
+- **Teclado directo:** marca «Teclado directo» y la terminal envía cada tecla al equipo como MobaXterm/PuTTY: **Tab** completa en el router, **?** muestra ayuda, ↑↓ historial del equipo, Ctrl+C cancela, Ctrl+Shift+V pega.
+- **Línea de comandos con autocompletado local:** Tab completa con tus comandos guardados, el historial y los comandos de los ítems del checklist; ↑↓ recorre el historial.
+- **Mis comandos:** guarda comandos o secuencias (uno por línea, con `{WAN}`, `{LAN}`… de los parámetros) y envíalos con un clic. Se guardan en este navegador.
+
 ### Archivos en Telegram (opcional)
 Con las variables de Railway `TELEGRAM_API_ID`, `TELEGRAM_API_HASH` y `TELEGRAM_SESSION` (y opcionalmente `TELEGRAM_CHAT`: `@canal`, id numérico o `me`, por defecto tus *Mensajes guardados*), las fotos subidas y los PDF/ZIP generados se guardan en Telegram con tu propia cuenta (Telethon/MTProto). En Postgres solo queda la referencia (`tg_chat`, `tg_msg`); el backend sirve el archivo por las mismas URLs `/api/files/...`. Si Telegram falla o no está configurado, se guarda en la base como antes.
 1. Saca `api_id`/`api_hash` en https://my.telegram.org → *API development tools*.

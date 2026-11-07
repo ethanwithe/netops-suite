@@ -7,6 +7,7 @@ Modelos ajustables con GEMINI_MODEL / GROQ_MODEL / GROQ_VISION_MODEL.
 """
 import json
 import os
+import urllib.error
 import urllib.request
 
 PROVIDERS = {
@@ -25,21 +26,26 @@ PROVIDERS = {
 }
 
 
+def configured():
+    """Todos los proveedores gratuitos con clave, en orden de preferencia."""
+    out = []
+    for name, p in PROVIDERS.items():
+        k = os.getenv(p["env"], "").strip().strip('"').strip("'")
+        if k:
+            out.append((name, k))
+    return out
+
+
 def free_provider():
     """Devuelve (nombre, clave) del primer proveedor gratuito configurado, o None."""
-    for name, p in PROVIDERS.items():
-        k = os.getenv(p["env"], "").strip()
-        if k:
-            return name, k
-    return None
+    c = configured()
+    return c[0] if c else None
 
 
-def complete(system: str, messages: list, max_tokens: int = 700, image: str | None = None) -> str:
-    """messages: [{role, content}]. image: data URL opcional (se adjunta al último mensaje de usuario)."""
-    fp = free_provider()
-    if not fp:
-        raise RuntimeError("sin proveedor")
-    name, key = fp
+last_error = ""
+
+
+def _one(name: str, key: str, system: str, messages: list, max_tokens: int, image: str | None) -> str:
     p = PROVIDERS[name]
     env, default = p["vision" if image else "model"]
     model = os.getenv(env, "").strip() or default
@@ -47,9 +53,42 @@ def complete(system: str, messages: list, max_tokens: int = 700, image: str | No
     if image:
         last = msgs[-1]
         last["content"] = [{"type": "text", "text": last["content"]}, {"type": "image_url", "image_url": {"url": image}}]
+    body = {"model": model, "messages": msgs, "max_tokens": max_tokens}
+    if name == "gemini" and "2.5" in model:
+        # Gemini 2.5 «piensa» y ese pensamiento gasta max_tokens: sin esto la respuesta llegaba vacía.
+        body["reasoning_effort"] = "none"
+        body["max_tokens"] = max(max_tokens, 1500)
     req = urllib.request.Request(
-        p["url"], data=json.dumps({"model": model, "messages": msgs, "max_tokens": max_tokens}).encode(),
+        p["url"], data=json.dumps(body).encode(),
         headers={"Content-Type": "application/json", "Authorization": f"Bearer {key}"}, method="POST")
     with urllib.request.urlopen(req, timeout=60) as r:
         data = json.loads(r.read())
-    return (data.get("choices") or [{}])[0].get("message", {}).get("content", "") or ""
+    return ((data.get("choices") or [{}])[0].get("message", {}).get("content", "") or "").strip()
+
+
+def complete(system: str, messages: list, max_tokens: int = 700, image: str | None = None) -> str:
+    """messages: [{role, content}]. image: data URL opcional (se adjunta al último mensaje de usuario).
+    Prueba cada proveedor configurado en orden; si uno falla (cuota, error, respuesta vacía) pasa al siguiente."""
+    global last_error
+    provs = configured()
+    if not provs:
+        raise RuntimeError("sin proveedor")
+    errs = []
+    for name, key in provs:
+        try:
+            out = _one(name, key, system, messages, max_tokens, image)
+            if out:
+                last_error = ""
+                return out
+            errs.append(f"{name}: respuesta vacía")
+        except urllib.error.HTTPError as e:
+            try:
+                detail = e.read().decode("utf-8", "replace")[:300]
+            except Exception:
+                detail = ""
+            errs.append(f"{name}: HTTP {e.code} {detail}")
+        except Exception as e:
+            errs.append(f"{name}: {e.__class__.__name__} {e}")
+    last_error = " | ".join(errs)
+    print("[IA] todos los proveedores fallaron:", last_error, flush=True)  # visible en los logs de Railway
+    raise RuntimeError(last_error)
