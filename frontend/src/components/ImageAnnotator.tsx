@@ -355,7 +355,7 @@ async function loadBase(url: string): Promise<HTMLCanvasElement> {
   let src = url;
   let temp: string | null = null;
   if (!url.startsWith("blob:") && !url.startsWith("data:")) {
-    const r = await fetch(url, { mode: "cors", credentials: "omit" });
+    const r = await fetch(url, { credentials: "same-origin" });
     if (!r.ok) throw new Error("No se pudo cargar la imagen.");
     temp = URL.createObjectURL(await r.blob());
     src = temp;
