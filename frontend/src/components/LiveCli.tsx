@@ -37,7 +37,10 @@ const commonPrefix = (a: string[]) => a.reduce((p, s) => { let i = 0; while (i <
  * CLI en vivo del router: salida, teclado directo al equipo (Tab, ?, flechas, Ctrl+C como en MobaXterm),
  * línea con autocompletado local (Tab) e historial, y «Mis comandos» guardados para enviar con un clic.
  */
-export default function LiveCli({ term, onClear, session, connected, busy, itemCmds, fill }: {
+export default function LiveCli({ onDownload, onForget, logSize, term, onClear, session, connected, busy, itemCmds, fill }: {
+  onDownload: () => void;
+  onForget: () => void;
+  logSize: number;
   term: string;
   onClear: () => void;
   session: MutableRefObject<ConsoleSession | null>;
@@ -124,13 +127,15 @@ export default function LiveCli({ term, onClear, session, connected, busy, itemC
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-xs font-medium text-slate-500">CLI del router en vivo</p>
+        <p className="text-xs font-medium text-slate-500">CLI del router en vivo <span className="font-normal text-slate-400">· se guarda sola{logSize ? ` (${Math.max(1, Math.round(logSize / 1024))} KB)` : ""}</span></p>
         <div className="flex items-center gap-3">
           <label className="flex cursor-pointer items-center gap-1 text-xs text-slate-600" title="Cada tecla va directo al equipo: Tab completa, ? ayuda, ↑↓ historial del router, Ctrl+C cancela (como MobaXterm)">
             <input type="checkbox" checked={direct} onChange={(e) => { setDirect(e.target.checked); if (e.target.checked) setTimeout(() => box.current?.focus(), 0); }} />
             Teclado directo (Tab, ?, flechas)
           </label>
-          <button className="text-xs text-slate-400 hover:underline" onClick={onClear}>limpiar</button>
+          <button className="text-xs font-medium text-sky-700 hover:underline disabled:opacity-40" disabled={!logSize} onClick={onDownload} title="Descarga todo lo de la sesión (comandos y respuestas) en un archivo de texto">⬇ Descargar .txt</button>
+          <button className="text-xs text-slate-400 hover:underline" onClick={onClear} title="Solo limpia la pantalla; el registro guardado se conserva">limpiar pantalla</button>
+          <button className="text-xs text-slate-400 hover:text-red-600 hover:underline" disabled={!logSize} onClick={onForget} title="Borra el registro guardado">borrar registro</button>
         </div>
       </div>
 
