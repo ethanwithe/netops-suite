@@ -187,6 +187,13 @@ La app corre en Railway, así que no ve tu cable de consola ni los equipos de tu
 - Cuando llega la hora, Bit avisa en voz alta y con una burbuja, y con notificación del navegador si diste permiso (la página debe estar abierta; revisa cada 30 s y al volver a la pestaña).
 - Cada usuario ve solo su agenda. Tabla nueva `agenda_items` (se crea sola al desplegar).
 
+### Archivos en Telegram (opcional)
+Con las variables de Railway `TELEGRAM_API_ID`, `TELEGRAM_API_HASH` y `TELEGRAM_SESSION` (y opcionalmente `TELEGRAM_CHAT`: `@canal`, id numérico o `me`, por defecto tus *Mensajes guardados*), las fotos subidas y los PDF/ZIP generados se guardan en Telegram con tu propia cuenta (Telethon/MTProto). En Postgres solo queda la referencia (`tg_chat`, `tg_msg`); el backend sirve el archivo por las mismas URLs `/api/files/...`. Si Telegram falla o no está configurado, se guarda en la base como antes.
+1. Saca `api_id`/`api_hash` en https://my.telegram.org → *API development tools*.
+2. En tu laptop: `pip install telethon` y `python backend/tools/telegram_session.py` (con las dos variables definidas). Copia el resultado a Railway como `TELEGRAM_SESSION`.
+3. Admin: `GET /api/files/telegram/status` y `POST /api/files/telegram/migrar` (pasa de a 50 los archivos viejos de la base a Telegram).
+Nota: logos, íconos de la Gráfica y fotos de perfil siguen en la base (son pequeños y se usan en cada render).
+
 ### Bit como amigo: memoria por usuario, clientes y reportes para el administrador
 - **Memoria en el servidor** (tabla `bit_profiles`): Bit recuerda nombre, gustos, hábitos y lo que le cuentas, en cualquier dispositivo y sin mezclarse con otra persona que use el mismo navegador. Bit también ve tu actividad reciente (clientes, puntos, qué haces más) para tratarte como alguien que te conoce. En su panel se avisa que el administrador puede ver un resumen.
 - **Agregar clientes por conversación:** «agrega el cliente SOT 91683098, Maxi Mobility, CID 27348260…» y «guarda la IP WAN 10.31.208.25 del SOT…» (requiere la IA de Bit configurada).

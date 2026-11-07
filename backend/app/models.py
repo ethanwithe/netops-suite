@@ -172,7 +172,10 @@ class StoredFile(Base):
     name = Column(String, primary_key=True)          # nombre en disco (uuid.ext o el del PDF/ZIP)
     kind = Column(String, nullable=False, index=True)  # 'upload' | 'output'
     content_type = Column(String, nullable=False, default="application/octet-stream")
-    data = Column(LargeBinary, nullable=False)
+    data = Column(LargeBinary, nullable=False)          # vacío (b"") cuando el contenido vive en Telegram
+    tg_chat = Column(String, nullable=True)             # referencia en Telegram: chat…
+    tg_msg = Column(Integer, nullable=True)             # …y mensaje (solo se guarda esto, no el archivo)
+    size = Column(Integer, nullable=True)
     created_at = Column(DateTime, default=dt.datetime.utcnow)
 
 

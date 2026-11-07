@@ -2,11 +2,13 @@ import re
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
 from fastapi.responses import FileResponse
 
 from app.config import UPLOADS_DIR, OUTPUTS_DIR
-from app.services import filestore
+from app.auth import admin_user
+from app.services import filestore, telegram_store
+from app import models
 
 router = APIRouter(prefix="/api/files", tags=["files"])
 
@@ -53,3 +55,24 @@ def get_output(filename: str):
         raise HTTPException(404, "Archivo no encontrado.")
     media = "application/zip" if filename.lower().endswith(".zip") else "application/pdf"
     return FileResponse(str(path), media_type=media, filename=filename)
+
+
+@router.get("/telegram/status")
+def telegram_status(_: models.User = Depends(admin_user)):
+    from app.database import SessionLocal
+    db = SessionLocal()
+    try:
+        q = db.query(models.StoredFile)
+        return {"configurado": telegram_store.enabled(), "chat": telegram_store.CHAT,
+                "en_telegram": q.filter(models.StoredFile.tg_msg.isnot(None)).count(),
+                "en_base_de_datos": q.filter(models.StoredFile.tg_msg.is_(None)).count(),
+                "ultimo_error": telegram_store.last_error()}
+    finally:
+        db.close()
+
+
+@router.post("/telegram/migrar")
+def telegram_migrate(_: models.User = Depends(admin_user)):
+    if not telegram_store.enabled():
+        raise HTTPException(400, "Telegram no está configurado (faltan las variables en Railway).")
+    return filestore.migrate_to_telegram()
