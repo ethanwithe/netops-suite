@@ -45,6 +45,30 @@ def free_provider():
 last_error = ""
 
 
+GEMINI_NATIVE = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+WEB = os.getenv("MASCOT_WEB", "1").strip() != "0"
+
+
+def _gemini_web(key: str, model: str, system: str, messages: list, max_tokens: int) -> str:
+    """Gemini con búsqueda de Google integrada (grounding): el modelo decide solo cuándo buscar.
+    No existe en el endpoint compatible con OpenAI, por eso se usa la API nativa."""
+    contents = [{"role": "model" if m["role"] == "assistant" else "user", "parts": [{"text": m["content"]}]} for m in messages]
+    body = {
+        "systemInstruction": {"parts": [{"text": system}]},
+        "contents": contents,
+        "tools": [{"google_search": {}}],
+        "generationConfig": {"maxOutputTokens": max(max_tokens, 4000), "temperature": 0.6,
+                             "thinkingConfig": {"thinkingBudget": 1024}},
+    }
+    req = urllib.request.Request(
+        GEMINI_NATIVE.format(model=model), data=json.dumps(body).encode(),
+        headers={"Content-Type": "application/json", "x-goog-api-key": key}, method="POST")
+    with urllib.request.urlopen(req, timeout=60) as r:
+        data = json.loads(r.read())
+    parts = (((data.get("candidates") or [{}])[0].get("content") or {}).get("parts")) or []
+    return "".join(p_.get("text", "") for p_ in parts if not p_.get("thought")).strip()
+
+
 def _one(name: str, key: str, system: str, messages: list, max_tokens: int, image: str | None, think: bool = False) -> str:
     p = PROVIDERS[name]
     env, default = p["vision" if image else "model"]
@@ -53,6 +77,13 @@ def _one(name: str, key: str, system: str, messages: list, max_tokens: int, imag
     if image:
         last = msgs[-1]
         last["content"] = [{"type": "text", "text": last["content"]}, {"type": "image_url", "image_url": {"url": image}}]
+    if name == "gemini" and think and WEB and not image and "2." in model:
+        try:
+            out = _gemini_web(key, model, system, messages, max_tokens)
+            if out:
+                return out
+        except Exception as e:  # sin cuota de búsqueda o error: se responde sin buscar
+            print("[IA] Gemini con búsqueda falló, sigo sin buscar:", e, flush=True)
     body = {"model": model, "messages": msgs, "max_tokens": max_tokens, "temperature": 0.6 if think else 0.3}
     if name == "gemini" and "2.5" in model:
         # Gemini 2.5 «piensa» y ese pensamiento gasta max_tokens: sin esto la respuesta llegaba vacía.

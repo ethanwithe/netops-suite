@@ -201,7 +201,7 @@ Con las variables de Railway `TELEGRAM_API_ID`, `TELEGRAM_API_HASH` y `TELEGRAM_
 Nota: logos, íconos de la Gráfica y fotos de perfil siguen en la base (son pequeños y se usan en cada render).
 
 ### Razonamiento de Bit
-Bit usa una guía de razonamiento (contexto de la conversación, pasos y verificación, pregunta de aclaración si es ambiguo) y conocimiento de redes/fibra (Huawei, Cisco, Fortinet, MikroTik, GPON). Con Gemini 2.5 usa razonamiento ligero; recuerda los últimos 20 mensajes y puedes pegarle la salida de un comando (hasta 8000 caracteres) para que la interprete. Con `ANTHROPIC_API_KEY` además puede buscar en la web; con Gemini/Groq no hay búsqueda web.
+Bit usa una guía de razonamiento (contexto de la conversación, pasos y verificación, pregunta de aclaración si es ambiguo) y conocimiento de redes/fibra (Huawei, Cisco, Fortinet, MikroTik, GPON). Con Gemini 2.5 usa razonamiento ligero; recuerda los últimos 20 mensajes y puedes pegarle la salida de un comando (hasta 8000 caracteres) para que la interprete. Con `ANTHROPIC_API_KEY` o con `GEMINI_API_KEY` (búsqueda de Google integrada, el modelo decide cuándo buscar) Bit puede buscar en la web; con Groq no hay búsqueda. `MASCOT_WEB=0` la apaga.
 
 ### Bit como amigo: memoria por usuario, clientes y reportes para el administrador
 - **Memoria en el servidor** (tabla `bit_profiles`): Bit recuerda nombre, gustos, hábitos y lo que le cuentas, en cualquier dispositivo y sin mezclarse con otra persona que use el mismo navegador. Bit también ve tu actividad reciente (clientes, puntos, qué haces más) para tratarte como alguien que te conoce. En su panel se avisa que el administrador puede ver un resumen.
