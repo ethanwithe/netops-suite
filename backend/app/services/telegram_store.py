@@ -91,8 +91,8 @@ def upload(name: str, data: bytes) -> Optional[Tuple[str, int]]:
         bio.name = os.path.basename(name)
 
         async def _go():
-            msg = await _client.send_file(_peer(), bio, force_document=True, caption=bio.name[:200],
-                                          file_name=bio.name)
+            # el nombre sale de bio.name (send_file no tiene parámetro file_name)
+            msg = await _client.send_file(_peer(), bio, force_document=True, caption=bio.name[:200])
             return msg.id
 
         mid = _run(_go())

@@ -190,7 +190,7 @@ La app corre en Railway, así que no ve tu cable de consola ni los equipos de tu
 ### CLI en vivo del CheckList
 - **Teclado directo:** marca «Teclado directo» y la terminal envía cada tecla al equipo como MobaXterm/PuTTY: **Tab** completa en el router, **?** muestra ayuda, ↑↓ historial del equipo, Ctrl+C cancela, Ctrl+Shift+V pega.
 - **Línea de comandos con autocompletado local:** Tab completa con tus comandos guardados, el historial y los comandos de los ítems del checklist; ↑↓ recorre el historial.
-- **Sesión guardada y .txt:** todo lo que se envía y devuelve el equipo se guarda solo en este navegador (hasta ~1,5 MB por tipo de checklist), reaparece al recargar y se baja con «⬇ Descargar .txt» (`consola_<SOT>_<fecha>.txt`), con marcas de hora al conectar/desconectar. «limpiar pantalla» no borra el registro; «borrar registro» sí.
+- **Sesión guardada y .txt:** todo lo que se envía y devuelve el equipo se guarda solo en este navegador (hasta ~0,8 MB por tipo de checklist), reaparece al recargar y se baja con «⬇ Descargar .txt» (`consola_<SOT>_<fecha>.txt`), con marcas de hora al conectar/desconectar. «limpiar pantalla» no borra el registro; «borrar registro» sí.
 - **Mis comandos:** guarda comandos o secuencias (uno por línea, con `{WAN}`, `{LAN}`… de los parámetros) y envíalos con un clic. Se guardan en este navegador.
 
 ### Archivos en Telegram (opcional)
@@ -199,6 +199,9 @@ Con las variables de Railway `TELEGRAM_API_ID`, `TELEGRAM_API_HASH` y `TELEGRAM_
 2. En tu laptop: `pip install telethon` y `python backend/tools/telegram_session.py` (con las dos variables definidas). Copia el resultado a Railway como `TELEGRAM_SESSION`.
 3. Admin: `GET /api/files/telegram/status` y `POST /api/files/telegram/migrar` (pasa de a 50 los archivos viejos de la base a Telegram).
 Nota: logos, íconos de la Gráfica y fotos de perfil siguen en la base (son pequeños y se usan en cada render).
+
+### Razonamiento de Bit
+Bit usa una guía de razonamiento (contexto de la conversación, pasos y verificación, pregunta de aclaración si es ambiguo) y conocimiento de redes/fibra (Huawei, Cisco, Fortinet, MikroTik, GPON). Con Gemini 2.5 usa razonamiento ligero; recuerda los últimos 20 mensajes y puedes pegarle la salida de un comando (hasta 8000 caracteres) para que la interprete. Con `ANTHROPIC_API_KEY` o con `GEMINI_API_KEY` (búsqueda de Google integrada, el modelo decide cuándo buscar) Bit puede buscar en la web; con Groq no hay búsqueda. `MASCOT_WEB=0` la apaga.
 
 ### Bit como amigo: memoria por usuario, clientes y reportes para el administrador
 - **Memoria en el servidor** (tabla `bit_profiles`): Bit recuerda nombre, gustos, hábitos y lo que le cuentas, en cualquier dispositivo y sin mezclarse con otra persona que use el mismo navegador. Bit también ve tu actividad reciente (clientes, puntos, qué haces más) para tratarte como alguien que te conoce. En su panel se avisa que el administrador puede ver un resumen.

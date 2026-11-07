@@ -4,6 +4,7 @@ import uuid
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse
 
 from app.config import UPLOADS_DIR, OUTPUTS_DIR
@@ -45,7 +46,7 @@ async def upload_file(file: UploadFile = File(...)):
     if len(content) > MAX_UPLOAD:
         raise HTTPException(413, "La imagen pesa demasiado (máximo 15 MB).")
     dest.write_bytes(content)
-    filestore.save_upload(name, content)
+    await run_in_threadpool(filestore.save_upload, name, content)  # puede tardar si va a Telegram: no bloquear el servidor
     return {"path": name, "url": f"/api/files/uploads/{name}"}
 
 

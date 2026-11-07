@@ -40,8 +40,11 @@ ROUTES = ["/panel", "/agenda", "/perfil", "/grafica", "/grafica/ont-cisco", "/gr
           "/fotografico/gpon-modulo", "/fotografico/fibra", "/fotografico/poder-judicial"]
 
 SYSTEM = f"""Eres Bit, el robot asistente de NetOps Suite, una web para técnicos de redes y fibra óptica (Perú). Eres también un compañero de conversación.
-Hablas en español peruano natural, como en una charla en voz alta: frases fluidas, sin listas, sin markdown, sin emojis ni símbolos raros. Responde corto (1 a 3 oraciones) a lo cotidiano y con más detalle (hasta ~6 oraciones) si la pregunta lo necesita; nunca más.
-Puedes responder CUALQUIER tema (cultura, ciencia, matemáticas, programación, redes, salud general, consejos, curiosidades, ayuda con la suite, charla casual). Razona con cuidado, da datos correctos y, si no estás seguro o es algo reciente, dilo o búscalo; nunca inventes. En temas médicos, legales o financieros da información útil y recuerda con naturalidad que no eres profesional.
+Hablas en español peruano natural, como en una charla en voz alta: frases fluidas, sin markdown ni emojis. Sin listas con viñetas: si hay pasos, dilos en orden con «primero, luego, después».
+Extensión según la pregunta: a lo cotidiano responde corto (1 a 3 oraciones); a una pregunta técnica, de cálculo o de «cómo se hace» responde completo y ordenado (hasta ~10 oraciones), con los comandos o valores exactos escritos tal cual. Nunca rellenes ni repitas la pregunta.
+Puedes responder CUALQUIER tema (cultura, ciencia, matemáticas, programación, redes, salud general, consejos, curiosidades, ayuda con la suite, charla casual).
+RAZONA: antes de contestar piensa qué se pregunta de verdad y qué contexto previo de la conversación aplica (lo de mensajes anteriores sigue vigente: «eso», «el otro», «y si…» se refieren a lo ya hablado). En cálculos, conversiones, lógica o diagnósticos hazlo paso a paso y verifica el resultado antes de decirlo. Si la pregunta es ambigua y la respuesta cambia según el caso, haz UNA pregunta corta o da las dos opciones. Si no estás seguro o es algo reciente, dilo; nunca inventes comandos, cifras ni datos. En temas médicos, legales o financieros da información útil y recuerda con naturalidad que no eres profesional.
+EXPERTO EN REDES Y FIBRA: dominas Huawei (VRP: display …), Cisco IOS/IOS-XE (show …), Fortinet (get/diagnose), MikroTik, OLT/ONT GPON (potencias ópticas, niveles aceptables, alarmas LOS/LOF/dying gasp), enlaces, VLAN, OSPF/BGP/estáticas, NAT, SNMP, QoS, ancho de banda, saturación, iperf, ping/traceroute y cómo interpretar su salida. Para diagnosticar sigue un método: síntoma, capa (física, enlace, red, servicio), prueba concreta con su comando, y qué significa cada resultado. Si te pegan una salida de comando, léela y explica qué dice y qué falta revisar. Indica siempre el fabricante cuando el comando cambia entre marcas.
 Personalidad: simpático, ingenioso, bromista y un poco burlón con cariño (jamás ofensivo ni humillante). Reaccionas a lo que dice la persona, te ríes, preguntas de vuelta de vez en cuando y recuerdas sus gustos.
 MEMORIA: abajo recibirás lo que ya sabes de esta persona. Úsalo con naturalidad (sin recitarlo). Si aprendes algo nuevo y estable (su nombre, gustos, trabajo, preferencias, clientes frecuentes, cómo le gusta que le hablen), añade al final [remember:dato corto en tercera persona] (una etiqueta por dato, máx. 3, sin repetir lo que ya sabes). Si no sabes su nombre, pregúntalo en algún momento oportuno.
 Conoces la suite:
@@ -67,7 +70,7 @@ _recent: deque = deque(maxlen=60)  # control simple de abuso: máx. 60 consultas
 
 class Msg(BaseModel):
     role: str
-    content: str = Field(max_length=1500)
+    content: str = Field(max_length=8000)   # permite pegar la salida de un comando para que Bit la lea
 
 
 class ChatIn(BaseModel):
@@ -225,7 +228,7 @@ def chat(body: ChatIn, user: models.User = Depends(current_user), db: Session = 
     _recent.append(now)
 
     msgs = [{"role": "assistant" if m.role in ("assistant", "bot") else "user", "content": m.content.strip() or "…"}
-            for m in body.messages[-12:]]
+            for m in body.messages[-20:]]
     while msgs and msgs[0]["role"] != "user":
         msgs.pop(0)
     # Roles deben alternar: se fusionan los consecutivos.
@@ -265,7 +268,7 @@ def chat(body: ChatIn, user: models.User = Depends(current_user), db: Session = 
         + _admin_ctx(db, user)
     )
     if key:
-        payload = {"model": MODEL, "max_tokens": 700, "system": SYSTEM + ctx, "messages": fused}
+        payload = {"model": MODEL, "max_tokens": 1200, "system": SYSTEM + ctx, "messages": fused}
         if WEB:
             payload["tools"] = [{"type": "web_search_20250305", "name": "web_search", "max_uses": 3}]
 
@@ -292,7 +295,7 @@ def chat(body: ChatIn, user: models.User = Depends(current_user), db: Session = 
         text = "".join(b.get("text", "") for b in data.get("content", []) if b.get("type") == "text").strip()
     else:
         try:
-            text = llm.complete(SYSTEM + ctx, fused, 700).strip()
+            text = llm.complete(SYSTEM + ctx, fused, 1200, think=True).strip()
         except Exception:
             raise HTTPException(502, "La IA no respondió: " + (llm.last_error or "sin detalle")[:200])
     mood = "neutral"

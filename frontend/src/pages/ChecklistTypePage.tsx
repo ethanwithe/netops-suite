@@ -106,7 +106,7 @@ function Inner({ type }: { type: CkType }) {
   };
   const pushTerm = (chunk: string) => {
     termRef.current = applyChunk(termRef.current, chunk).slice(-40000);
-    fullRef.current = applyChunk(fullRef.current, chunk).slice(-1_500_000);
+    fullRef.current = applyChunk(fullRef.current, chunk).slice(-800_000);
     if (saveTimer.current == null) saveTimer.current = window.setTimeout(() => { saveTimer.current = null; setSavedLog(fullRef.current); }, 2000);
     if (termTimer.current == null) {
       termTimer.current = window.setTimeout(() => { termTimer.current = null; setTerm(termRef.current); }, 120);

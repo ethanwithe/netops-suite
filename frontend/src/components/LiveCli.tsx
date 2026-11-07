@@ -7,6 +7,8 @@ type Saved = { id: string; name: string; cmds: string };
 
 /** Convierte una tecla del navegador en lo que enviaría una terminal real (como MobaXterm/PuTTY). */
 function keyToSeq(e: React.KeyboardEvent): string | null {
+  // AltGr (teclados español/latino: @ \ { } [ ]) llega como Ctrl+Alt: es un carácter normal, no un atajo
+  if (e.key.length === 1 && e.getModifierState("AltGraph")) return e.key;
   if (e.ctrlKey && e.shiftKey) return null; // Ctrl+Shift+C/V: copiar/pegar del navegador
   if (e.ctrlKey && !e.altKey && e.key.length === 1) {
     const k = e.key.toUpperCase();
