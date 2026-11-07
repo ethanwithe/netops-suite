@@ -335,7 +335,7 @@ export default function Mascot() {
   async function askAI(text: string): Promise<(Reply & { remember?: string[]; agenda?: { op: string; title: string }[]; did?: { op: string; title: string }[]; dash?: Dash[] }) | null> {
     if (!aiRef.current) return null;
     try {
-      const history = msgsRef.current.filter((m) => m.who !== "note").slice(-12).map((m) => ({ role: m.who === "me" ? "user" : "assistant", content: m.text }));
+      const history = msgsRef.current.filter((m) => m.who !== "note").slice(-20).map((m) => ({ role: m.who === "me" ? "user" : "assistant", content: m.text }));
       const m = memRef.current;
       const r = await fetch("/api/mascot/chat", {
         method: "POST",

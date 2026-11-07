@@ -45,7 +45,7 @@ def free_provider():
 last_error = ""
 
 
-def _one(name: str, key: str, system: str, messages: list, max_tokens: int, image: str | None) -> str:
+def _one(name: str, key: str, system: str, messages: list, max_tokens: int, image: str | None, think: bool = False) -> str:
     p = PROVIDERS[name]
     env, default = p["vision" if image else "model"]
     model = os.getenv(env, "").strip() or default
@@ -53,11 +53,12 @@ def _one(name: str, key: str, system: str, messages: list, max_tokens: int, imag
     if image:
         last = msgs[-1]
         last["content"] = [{"type": "text", "text": last["content"]}, {"type": "image_url", "image_url": {"url": image}}]
-    body = {"model": model, "messages": msgs, "max_tokens": max_tokens}
+    body = {"model": model, "messages": msgs, "max_tokens": max_tokens, "temperature": 0.6 if think else 0.3}
     if name == "gemini" and "2.5" in model:
         # Gemini 2.5 «piensa» y ese pensamiento gasta max_tokens: sin esto la respuesta llegaba vacía.
-        body["reasoning_effort"] = "none"
-        body["max_tokens"] = max(max_tokens, 1500)
+        # think=True (chat de Bit): razonamiento ligero; el «pensamiento» gasta tokens, por eso el margen grande.
+        body["reasoning_effort"] = "low" if think else "none"
+        body["max_tokens"] = max(max_tokens, 4000 if think else 1500)
     req = urllib.request.Request(
         p["url"], data=json.dumps(body).encode(),
         headers={"Content-Type": "application/json", "Authorization": f"Bearer {key}"}, method="POST")
@@ -66,7 +67,7 @@ def _one(name: str, key: str, system: str, messages: list, max_tokens: int, imag
     return ((data.get("choices") or [{}])[0].get("message", {}).get("content", "") or "").strip()
 
 
-def complete(system: str, messages: list, max_tokens: int = 700, image: str | None = None) -> str:
+def complete(system: str, messages: list, max_tokens: int = 700, image: str | None = None, think: bool = False) -> str:
     """messages: [{role, content}]. image: data URL opcional (se adjunta al último mensaje de usuario).
     Prueba cada proveedor configurado en orden; si uno falla (cuota, error, respuesta vacía) pasa al siguiente."""
     global last_error
@@ -76,7 +77,7 @@ def complete(system: str, messages: list, max_tokens: int = 700, image: str | No
     errs = []
     for name, key in provs:
         try:
-            out = _one(name, key, system, messages, max_tokens, image)
+            out = _one(name, key, system, messages, max_tokens, image, think)
             if out:
                 last_error = ""
                 return out
