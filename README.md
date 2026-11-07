@@ -208,6 +208,9 @@ Nota: logos, íconos de la Gráfica y fotos de perfil siguen en la base (son peq
 - **Mejora con el tiempo:** 👍/👎 en cada respuesta (`POST /api/mascot/feedback`); guarda las 12 valoraciones más recientes y Bit ajusta su estilo.
 - Tabla nueva `bit_memories` (se crea sola).
 
+### Editor de imágenes con Gemini
+«Transformar con IA» (edición generativa) usa **Gemini** (`GEMINI_API_KEY`, modelo `gemini-2.5-flash-image`, ajustable con `GEMINI_IMAGE_MODEL`); si falla y hay `OPENAI_API_KEY`, prueba con OpenAI. «Analizar y ajustar» (brillo, sombras, recortes, difuminado) ya funciona con Gemini y no inventa píxeles. Ojo: el modelo de imagen de Gemini suele requerir facturación activa en tu cuenta de Google AI Studio y devuelve imágenes de ~1024 px.
+
 ### Razonamiento de Bit
 Bit usa una guía de razonamiento (contexto de la conversación, pasos y verificación, pregunta de aclaración si es ambiguo) y conocimiento de redes/fibra (Huawei, Cisco, Fortinet, MikroTik, GPON). Con Gemini 2.5 usa razonamiento ligero; recuerda los últimos 20 mensajes y puedes pegarle la salida de un comando (hasta 8000 caracteres) para que la interprete. Con `ANTHROPIC_API_KEY` o con `GEMINI_API_KEY` (búsqueda de Google integrada, el modelo decide cuándo buscar) Bit puede buscar en la web; con Groq no hay búsqueda. `MASCOT_WEB=0` la apaga.
 
