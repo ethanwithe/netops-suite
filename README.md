@@ -156,7 +156,7 @@ subir archivo: **pegar con Ctrl+V** (útil si copiaste una captura de pantalla) 
   y **se obliga a cambiar la contraseña al entrar**. Cámbiala de inmediato.
 - **Roles**: `superadmin` (todo, crea administradores), `admin` (ve todo, gestiona usuarios) y `user` (solo sus clientes).
 - **Por usuario el admin define**: activo/desactivado, vigencia (fechas desde/hasta), horario diario (HH:MM, hora de Lima),
-  qué funciones puede usar (Pruebas, Plantillas, CheckList, Fotos, Poder Judicial, Bit/IA, Exportar, Editar catálogos),
+  qué funciones puede usar (Gráfica, Plantillas, CheckList, Fotos, Poder Judicial, Bit/IA, Exportar, Editar catálogos),
   restablecer contraseña y cerrar sus sesiones.
 - **Perfil**: cada usuario edita sus datos, foto y contraseña. **Mis clientes**: los suyos (y los compartidos).
 - **Clientes de todos** (admin): ver/editar cualquiera, filtrar por usuario o mes, **asociar varios usuarios** a una SOT
@@ -166,6 +166,39 @@ subir archivo: **pegar con Ctrl+V** (útil si copiaste una captura de pantalla) 
 - **Actividad** (admin): inicios de sesión, clientes, reportes, exportaciones y cambios por usuario.
 - Variables opcionales: `AUTH_SECRET` (firma de sesiones; si falta se deriva de la base de datos) y `APP_TZ` (por defecto `America/Lima`).
 - Nuevas dependencias: `openpyxl`, `python-docx`, `python-pptx` (exportes).
+
+### Gráfica: editor de diagramas (como PowerPoint/Canva)
+- Ventana **Gráfica** con un desplegable de diagramas; por ahora **«Internet con ONT y Router Cisco»** (réplica del PPTX de ejemplo: mismos iconos, textos, flechas y cuadro Claro).
+- Los datos se piden al inicio y se llenan solos desde el cliente guardado (SOT, CID, proyecto, empresa, dirección…); **«Realizado por»** sale del nombre del perfil de la cuenta.
+- Todo es editable: mover, cambiar tamaño, girar, textos (también dentro de la tabla), colores, flechas, cambiar de icono, agregar texto/formas/líneas, duplicar, capas, deshacer/rehacer.
+- Pestaña **Iconos**: biblioteca compartida (los del ejemplo vienen cargados; cada usuario sube los suyos, PNG/JPG/WEBP/GIF hasta 4 MB).
+- Exporta a **PPTX** (formas, textos y tabla editables en PowerPoint) y **PDF**.
+
+### CheckList: consola y SSH desde tu laptop (puente local)
+La app corre en Railway, así que no ve tu cable de consola ni los equipos de tu red. Para eso está **`puente.py`** (se descarga desde la tarjeta de conexión del CheckList):
+- Se abre en tu laptop (`python puente.py` / `py puente.py`); la primera vez instala solo `pyserial` y `paramiko`. Muestra un código que se pega una vez en la página.
+- **Consola:** detecta solo los puertos COM/USB y los lista; el SSH **sale desde tu laptop**, por eso llega a equipos de tu red local, VPN o cable.
+- La página solo habla con `127.0.0.1:8766` y con ese código; la contraseña del equipo no pasa por Railway ni se guarda.
+- Sigue existiendo la consola directa del navegador (Web Serial, Chrome/Edge) como alternativa sin el puente.
+
+### Agenda y Bit: recordatorios, tareas y eventos
+- Pantalla **Agenda** (Mi cuenta): recordatorios, tareas y eventos propios, con hora editable y vencidos en rojo.
+- **Bit** los maneja hablando o escribiendo: «recuérdame mañana a las 9 llamar al cliente», «tarea: subir fotos del SOT», «¿qué tengo pendiente?», «marca como hecho…». Con IA entiende lenguaje libre; sin IA entiende frases sencillas («en 20 minutos», «mañana a las 9», «el lunes a las 8:30»).
+- Cuando llega la hora, Bit avisa en voz alta y con una burbuja, y con notificación del navegador si diste permiso (la página debe estar abierta; revisa cada 30 s y al volver a la pestaña).
+- Cada usuario ve solo su agenda. Tabla nueva `agenda_items` (se crea sola al desplegar).
+
+### Archivos en Telegram (opcional)
+Con las variables de Railway `TELEGRAM_API_ID`, `TELEGRAM_API_HASH` y `TELEGRAM_SESSION` (y opcionalmente `TELEGRAM_CHAT`: `@canal`, id numérico o `me`, por defecto tus *Mensajes guardados*), las fotos subidas y los PDF/ZIP generados se guardan en Telegram con tu propia cuenta (Telethon/MTProto). En Postgres solo queda la referencia (`tg_chat`, `tg_msg`); el backend sirve el archivo por las mismas URLs `/api/files/...`. Si Telegram falla o no está configurado, se guarda en la base como antes.
+1. Saca `api_id`/`api_hash` en https://my.telegram.org → *API development tools*.
+2. En tu laptop: `pip install telethon` y `python backend/tools/telegram_session.py` (con las dos variables definidas). Copia el resultado a Railway como `TELEGRAM_SESSION`.
+3. Admin: `GET /api/files/telegram/status` y `POST /api/files/telegram/migrar` (pasa de a 50 los archivos viejos de la base a Telegram).
+Nota: logos, íconos de la Gráfica y fotos de perfil siguen en la base (son pequeños y se usan en cada render).
+
+### Bit como amigo: memoria por usuario, clientes y reportes para el administrador
+- **Memoria en el servidor** (tabla `bit_profiles`): Bit recuerda nombre, gustos, hábitos y lo que le cuentas, en cualquier dispositivo y sin mezclarse con otra persona que use el mismo navegador. Bit también ve tu actividad reciente (clientes, puntos, qué haces más) para tratarte como alguien que te conoce. En su panel se avisa que el administrador puede ver un resumen.
+- **Agregar clientes por conversación:** «agrega el cliente SOT 91683098, Maxi Mobility, CID 27348260…» y «guarda la IP WAN 10.31.208.25 del SOT…» (requiere la IA de Bit configurada).
+- **Para administradores:** Bit conoce una tabla de todos los usuarios (último ingreso, clientes, puntos del mes, acciones de 7 días, gustos aprendidos). Se le pregunta «¿cómo va Juan?», «¿quién ha trabajado más este mes?» y arma **dashboards en el chat** (barras, líneas, tablas y ficha de usuario). Con **Fijar** quedan en *Admin → Reportes de Bit*, que se recalculan al abrir.
+- Tablas nuevas: `bit_profiles`, `bit_reports` (se crean solas).
 
 ### Reporte Fotográfico estilo Poder Judicial (secciones y celdas)
 

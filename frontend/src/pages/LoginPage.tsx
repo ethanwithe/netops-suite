@@ -68,7 +68,7 @@ export function ForcePassword({ me }: { me: Me }) {
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
-    if (n1.length < 6) { setError("La nueva contraseña debe tener al menos 6 caracteres."); return; }
+    if (n1.length < 8) { setError("La nueva contraseña debe tener al menos 8 caracteres."); return; }
     if (n1 !== n2) { setError("Las contraseñas nuevas no coinciden."); return; }
     setBusy(true);
     setError(null);

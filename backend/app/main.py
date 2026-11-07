@@ -13,11 +13,11 @@ from sqlalchemy import inspect, text
 from app.database import Base, engine, SessionLocal
 from app import db_seed
 from app.routers import services, vendors, templates, checklist, photos, tests, files, serial_ports, tools, logos, clients, mascot, imageai
-from app.routers import auth as auth_router, admin as admin_router, exports as exports_router
+from app.routers import auth as auth_router, admin as admin_router, exports as exports_router, diagrams as diagrams_router, agenda as agenda_router
 from app import auth as authlib, models
 from app.services import security
 
-app = FastAPI(title="NetOps Suite API", version="1.0.0")
+app = FastAPI(title="NetOps Suite API", version="1.0.0", docs_url=None, redoc_url=None, openapi_url=None)
 
 app.add_middleware(
     CORSMiddleware,
@@ -26,6 +26,32 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
+
+
+@app.middleware("http")
+async def security_layer(request: Request, call_next):
+    """Anti-CSRF (peticiones que modifican datos solo desde este mismo sitio) y cabeceras de seguridad."""
+    if request.url.path.startswith("/api") and request.method not in SAFE_METHODS:
+        origin = request.headers.get("origin", "")
+        if origin:
+            host = request.headers.get("x-forwarded-host") or request.headers.get("host", "")
+            same = origin.split("://", 1)[-1].rstrip("/") == host
+            if not same and origin.rstrip("/") not in [o.strip().rstrip("/") for o in CORS_ORIGINS]:
+                return JSONResponse({"detail": "Origen no permitido."}, status_code=403)
+    resp = await call_next(request)
+    h = resp.headers
+    h.setdefault("X-Content-Type-Options", "nosniff")
+    h.setdefault("X-Frame-Options", "SAMEORIGIN")
+    h.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    h.setdefault("Permissions-Policy", "camera=(self), microphone=(self), geolocation=(self)")
+    if request.headers.get("x-forwarded-proto") == "https" or request.url.scheme == "https":
+        h.setdefault("Strict-Transport-Security", "max-age=15552000")
+    if request.url.path.startswith("/api"):
+        h.setdefault("Cache-Control", "no-store") if "Cache-Control" not in h else None
+    return resp
+
 
 @app.middleware("http")
 async def require_login(request: Request, call_next):
@@ -42,6 +68,8 @@ async def require_login(request: Request, call_next):
 app.include_router(auth_router.router)
 app.include_router(admin_router.router)
 app.include_router(exports_router.router)
+app.include_router(diagrams_router.router)
+app.include_router(agenda_router.router)
 app.include_router(services.router)
 app.include_router(vendors.router)
 app.include_router(templates.router)
@@ -70,6 +98,15 @@ def _ensure_columns() -> None:
                 # los ítems que ya existían son de "Fibra convencional"
                 conn.execute(text("ALTER TABLE photo_items ADD COLUMN tipo VARCHAR NOT NULL DEFAULT 'fibra'"))
                 conn.execute(text("CREATE INDEX IF NOT EXISTS ix_photo_items_tipo ON photo_items (tipo)"))
+    if "stored_files" in insp.get_table_names():
+        cols = {c["name"] for c in insp.get_columns("stored_files")}
+        with engine.begin() as conn:
+            if "tg_chat" not in cols:
+                conn.execute(text("ALTER TABLE stored_files ADD COLUMN tg_chat VARCHAR"))
+            if "tg_msg" not in cols:
+                conn.execute(text("ALTER TABLE stored_files ADD COLUMN tg_msg INTEGER"))
+            if "size" not in cols:
+                conn.execute(text("ALTER TABLE stored_files ADD COLUMN size INTEGER"))
     if "clients" in insp.get_table_names():
         cols = {c["name"] for c in insp.get_columns("clients")}
         with engine.begin() as conn:
@@ -119,6 +156,8 @@ def on_startup():
     db = SessionLocal()
     try:
         _ensure_users_and_migrate(db)
+        from app.services.diagram_seed import seed_diagram_icons
+        seed_diagram_icons(db)
         db_seed.seed_if_empty(db)
         db_seed.seed_photo_tipos(db)
         db_seed.seed_checklist_templates(db)

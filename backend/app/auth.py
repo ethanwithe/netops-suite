@@ -17,14 +17,16 @@ PUBLIC_PATHS = {"/api/health", "/api/auth/login", "/api/auth/logout", "/api/tool
 
 # prefijo de ruta -> función que hay que tener
 FEATURE_BY_PREFIX = [
-    ("/api/tests", "pruebas"),
-    ("/api/serial", "pruebas"),
+    ("/api/tests", "plantillas"),
+    ("/api/serial", "plantillas"),
     ("/api/templates", "plantillas"),
     ("/api/checklist", "checklist"),
     ("/api/photos", "fotografico"),
     ("/api/mascot", "asistente"),
     ("/api/imageai", "asistente"),
     ("/api/export", "exportar"),
+    ("/api/diagrams", "grafica"),
+    ("/api/agenda", "asistente"),
 ]
 
 # Rutas que modifican catálogos (no son "usar" la función): piden editar_catalogos.

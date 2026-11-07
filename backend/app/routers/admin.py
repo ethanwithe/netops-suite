@@ -103,8 +103,8 @@ def create_user(p: UserIn, actor: models.User = Depends(admin_user), db: Session
     username = p.username.strip().lower()
     if not _USER.match(username):
         raise HTTPException(400, "Usuario: 3 a 40 caracteres, solo letras, números, punto, guion y guion bajo.")
-    if len(p.password) < 6:
-        raise HTTPException(400, "La contraseña debe tener al menos 6 caracteres.")
+    if len(p.password) < 8:
+        raise HTTPException(400, "La contraseña debe tener al menos 8 caracteres.")
     if db.query(models.User).filter(models.User.username == username).first():
         raise HTTPException(409, "Ese usuario ya existe.")
     u = models.User(
@@ -156,7 +156,7 @@ def update_user(user_id: str, p: UserIn, actor: models.User = Depends(admin_user
 
 
 class ResetIn(BaseModel):
-    password: str = Field(min_length=6, max_length=100)
+    password: str = Field(min_length=8, max_length=100)
     must_change: bool = True
 
 

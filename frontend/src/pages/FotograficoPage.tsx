@@ -38,7 +38,7 @@ import type { ImportedProject } from "../components/ImportPdfButton";
 import { savePjForm } from "../store/pjForm";
 import { useNavigate } from "react-router-dom";
 import type { FotoTipo } from "../store/photoReportStore";
-import { addExtra, importReport, removeExtra, resolveOpcion, updateExtra, useOpciones } from "../store/photoReportStore";
+import { addExtra, removeExtra, resolveOpcion, updateExtra, useOpciones } from "../store/photoReportStore";
 import { useWorkspace } from "../store/workspaces";
 import WorkspaceBar from "../components/WorkspaceBar";
 import ClientPicker from "../components/ClientPicker";

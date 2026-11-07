@@ -18,6 +18,9 @@ import { useWorkspace } from "../store/workspaces";
 import WorkspaceBar from "../components/WorkspaceBar";
 import type { ClientRecord } from "../store/clients";
 import { SerialSession, webSerialSupported } from "../utils/webSerial";
+import type { ConsoleSession } from "../utils/webSerial";
+import { PuenteSession, puenteEstado } from "../utils/puente";
+import type { PuenteEstado } from "../utils/puente";
 import {
   extractBandwidthMbps, extractModel, fechaLarga, fillCmd, hoyISO, isSatItem, parseRates, servicioLabel,
 } from "../utils/checklistInfo";
@@ -73,7 +76,15 @@ function Inner({ type }: { type: CkType }) {
   const [pdfError, setPdfError] = usePersistentState<string | null>(`checklist.pdfError.${type.id}`, null, mem);
   const [baud, setBaud] = usePersistentState("checklist.baud", 9600);
   const [connected, setConnected] = useState(false);
-  const session = useRef<SerialSession | null>(null);
+  const session = useRef<ConsoleSession | null>(null);
+
+  // Puente local (programa en tu laptop): consola por cable detectada sola + SSH desde tu red
+  const [via, setVia] = usePersistentState<"serial" | "ssh">("checklist.via", "serial");
+  const [code, setCode] = usePersistentState("puente.codigo", "");
+  const [puerto, setPuerto] = usePersistentState("checklist.puerto", "");
+  const [ssh, setSsh] = usePersistentState("checklist.ssh", { host: "", port: 22, user: "" });
+  const [pass, setPass] = useState("");
+  const [pst, setPst] = useState<PuenteEstado | null>(null);
 
   // CLI en vivo: todo lo que se envía y devuelve el router
   const termRef = useRef("");
@@ -107,6 +118,14 @@ function Inner({ type }: { type: CkType }) {
   }, [data.params]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => () => { void session.current?.close(); }, []);
+  useEffect(() => {
+    if (connected) return;
+    let alive = true;
+    const tick = async () => { const r = await puenteEstado(code); if (alive) { setPst(r); if (r.kind === "ok" && r.ports.length && !r.ports.some((x) => x.device === puerto)) setPuerto((r.ports.find((x) => x.usb) ?? r.ports[0]).device); } };
+    void tick();
+    const t = window.setInterval(() => void tick(), 3000);
+    return () => { alive = false; window.clearInterval(t); };
+  }, [connected, code]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const row = (itemId: string): Row => s.rows[itemId] ?? emptyRow;
   const setRow = (itemId: string, patch: Partial<Row>) =>
@@ -155,27 +174,41 @@ function Inner({ type }: { type: CkType }) {
   const wan = s.params["WAN"] ?? "";
 
   // ---------------- conexión por consola ----------------
-  async function connect() {
+  async function connect(mode: "puente" | "navegador" = "puente") {
     try {
-      const sess = new SerialSession();
-      sess.onData = pushTerm;
-      await sess.connect(baud);
+      let sess: ConsoleSession;
+      setLog(via === "ssh" ? "Conectando por SSH desde tu laptop…" : "Abriendo la consola…");
+      if (mode === "navegador") {
+        const w = new SerialSession();
+        w.onData = pushTerm;
+        await w.connect(baud);
+        sess = w;
+      } else {
+        const ps = new PuenteSession(code.trim());
+        ps.onData = pushTerm;
+        await ps.connect(via === "ssh"
+          ? { kind: "ssh", host: ssh.host, port: Number(ssh.port) || 22, user: ssh.user, password: pass }
+          : { kind: "serial", port: puerto, baud });
+        sess = ps;
+      }
+      sess.onClose = (why) => { setConnected(false); session.current = null; setLog(why); };
       session.current = sess;
       setConnected(true);
-      setLog("Consola conectada. Preparando el equipo...");
+      setLog(via === "ssh" && mode === "puente" ? "SSH conectado. Preparando el equipo..." : "Consola conectada. Preparando el equipo...");
       for (const c of data.setup) await sess.run(c, { maxMs: 8000 });
-      setLog("Consola lista.");
+      setLog(via === "ssh" && mode === "puente" ? "SSH listo." : "Consola lista.");
     } catch (e) {
       setConnected(false);
+      session.current?.close().catch(() => {});
       session.current = null;
-      setLog(`No se pudo abrir la consola: ${(e as Error).message || e}`);
+      setLog(`No se pudo conectar: ${(e as Error).message || e}`);
     }
   }
   async function disconnect() {
     await session.current?.close();
     session.current = null;
     setConnected(false);
-    setLog("Consola desconectada.");
+    setLog("Desconectado.");
   }
 
   /** Datos que se leen solos de la salida (solo si aún están vacíos). */
@@ -196,7 +229,7 @@ function Inner({ type }: { type: CkType }) {
 
   async function runItems(items: CkItem[], label: string) {
     const sess = session.current;
-    if (!sess?.connected) { alert("Primero conecta la consola (botón «Conectar consola»)."); return; }
+    if (!sess?.connected) { alert("Primero conecta la consola o el SSH (tarjeta de conexión)."); return; }
     const candidates = items.filter((it) => it.cmd.trim() && row(it.id).incluir);
     const omitidos = candidates.filter((it) => isSatItem(it) && !saturando);
     const todo = candidates.filter((it) => !(isSatItem(it) && !saturando));
@@ -303,7 +336,7 @@ function Inner({ type }: { type: CkType }) {
             <li>Llena <b>SOT, CID, Cliente</b> y la <b>fecha</b> (se elige en el calendario). Elige el logo.</li>
             <li>Completa los <b>parámetros</b> (interfaz WAN/LAN, IP del siguiente salto, IP remota…). Los comandos los usan solos.</li>
             <li>
-              Pulsa <b>Conectar consola</b> (Chrome o Edge) y elige el puerto del cable de consola. Luego ejecuta{" "}
+              Abre el <b>puente</b> en tu laptop y conecta por <b>consola</b> (el puerto se detecta solo) o por <b>SSH</b> a un equipo de tu red. Luego ejecuta{" "}
               <b>un ítem</b>, <b>una sección</b> o <b>todo</b>. Puedes repetir los que quieras las veces que quieras.
             </li>
             <li>El <b>modelo</b> y el <b>ancho de banda</b> se leen solos de la configuración; si no, escríbelos.</li>
@@ -368,25 +401,77 @@ function Inner({ type }: { type: CkType }) {
 
           <div className="card space-y-2">
             <div className="flex flex-wrap items-center gap-2">
-              {!webSerialSupported() ? (
-                <p className="text-sm text-amber-700">
-                  Tu navegador no permite usar la consola (hace falta Chrome o Edge en computadora). Puedes pegar las salidas a mano.
-                </p>
-              ) : connected ? (
+              {connected ? (
                 <>
-                  <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-700">Consola conectada</span>
+                  <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-700">{via === "ssh" ? "SSH conectado" : "Consola conectada"}</span>
                   <button className="btn-secondary text-xs" onClick={disconnect} disabled={!!busy}>Desconectar</button>
                 </>
               ) : (
-                <>
-                  <button className="btn-primary text-sm" onClick={connect}>Conectar consola (USB/COM)</button>
-                  <label className="text-xs text-slate-500">
-                    Baudios{" "}
-                    <select className="input" value={baud} onChange={(e) => setBaud(Number(e.target.value))}>
-                      {[9600, 19200, 38400, 57600, 115200].map((b) => <option key={b}>{b}</option>)}
-                    </select>
-                  </label>
-                </>
+                <div className="w-full space-y-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="seg">
+                      <button type="button" className={via === "serial" ? "on" : ""} onClick={() => setVia("serial")}>Consola (cable USB/COM)</button>
+                      <button type="button" className={via === "ssh" ? "on" : ""} onClick={() => setVia("ssh")}>SSH</button>
+                    </div>
+                    <span className={`rounded-full px-3 py-1 text-xs font-medium ${pst?.kind === "ok" ? "bg-green-100 text-green-700" : pst?.kind === "codigo" ? "bg-amber-100 text-amber-700" : "bg-slate-200 text-slate-600"}`}>
+                      {pst?.kind === "ok" ? "Puente de tu laptop: activo" : pst?.kind === "codigo" ? "Puente abierto: falta el código" : "Puente de tu laptop: no detectado"}
+                    </span>
+                  </div>
+
+                  {pst?.kind !== "ok" && (
+                    <div className="rounded-lg bg-slate-50 p-3 text-xs text-slate-600 space-y-2">
+                      <p>
+                        La página está en la nube y no ve el cable ni tu red. El <b>puente</b> es un programa que se abre en tu laptop y le presta a la página
+                        la consola y el SSH (sale desde tu laptop, así que llega a tu red local).
+                      </p>
+                      <ol className="list-decimal space-y-1 pl-5">
+                        <li><a className="font-medium text-brand-600 underline" href="/api/tools/puente.py" download>Descarga puente.py</a> (necesita Python 3.8+; la primera vez instala solo <code>pyserial</code> y <code>paramiko</code>).</li>
+                        <li>Ábrelo: <code>python puente.py</code> (en Windows: <code>py puente.py</code>) y déjalo abierto.</li>
+                        <li>Copia el código que muestra y pégalo aquí (se recuerda).</li>
+                      </ol>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <input className="input w-40 font-mono text-xs uppercase" placeholder="Código del puente" value={code} onChange={(e) => setCode(e.target.value.trim())} />
+                        {pst?.kind === "codigo" && <span className="text-amber-700">El código no coincide con el que muestra el puente.</span>}
+                      </div>
+                    </div>
+                  )}
+
+                  {via === "serial" && (
+                    <div className="flex flex-wrap items-center gap-2">
+                      {pst?.kind === "ok" ? (
+                        pst.ports.length ? (
+                          <label className="text-xs text-slate-500">
+                            Puerto{" "}
+                            <select className="input" value={puerto} onChange={(e) => setPuerto(e.target.value)}>
+                              {pst.ports.map((p) => <option key={p.device} value={p.device}>{p.device} — {p.desc || "puerto serie"}{p.usb ? " (USB)" : ""}</option>)}
+                            </select>
+                          </label>
+                        ) : (
+                          <span className="text-xs text-amber-700">El puente no ve ningún puerto COM. Conecta el cable de consola (instala el driver CP210x/FTDI/CH340 si hace falta) y se detecta solo.</span>
+                        )
+                      ) : null}
+                      <label className="text-xs text-slate-500">
+                        Baudios{" "}
+                        <select className="input" value={baud} onChange={(e) => setBaud(Number(e.target.value))}>
+                          {[9600, 19200, 38400, 57600, 115200].map((b) => <option key={b}>{b}</option>)}
+                        </select>
+                      </label>
+                      <button className="btn-primary text-sm" disabled={pst?.kind !== "ok" || !puerto} onClick={() => connect("puente")}>Conectar consola</button>
+                      {webSerialSupported() && <button className="btn-secondary text-xs" onClick={() => connect("navegador")} title="Sin el puente: el navegador te deja elegir el puerto (Chrome/Edge)">Elegir puerto con el navegador</button>}
+                    </div>
+                  )}
+
+                  {via === "ssh" && (
+                    <div className="flex flex-wrap items-end gap-2">
+                      <label className="text-xs text-slate-500">IP o nombre del equipo<input className="input mt-0.5 block w-44" placeholder="192.168.1.1" value={ssh.host} onChange={(e) => setSsh({ ...ssh, host: e.target.value })} /></label>
+                      <label className="text-xs text-slate-500">Puerto<input className="input mt-0.5 block w-20" type="number" value={ssh.port} onChange={(e) => setSsh({ ...ssh, port: Number(e.target.value) })} /></label>
+                      <label className="text-xs text-slate-500">Usuario<input className="input mt-0.5 block w-32" value={ssh.user} onChange={(e) => setSsh({ ...ssh, user: e.target.value })} /></label>
+                      <label className="text-xs text-slate-500">Contraseña<input className="input mt-0.5 block w-36" type="password" autoComplete="off" value={pass} onChange={(e) => setPass(e.target.value)} /></label>
+                      <button className="btn-primary text-sm" disabled={pst?.kind !== "ok" || !ssh.host.trim() || !ssh.user.trim()} onClick={() => connect("puente")}>Conectar por SSH</button>
+                      <p className="w-full text-[11px] text-slate-400">La conexión sale de tu laptop (no de la nube) y la contraseña no se guarda ni sale de tu computadora.</p>
+                    </div>
+                  )}
+                </div>
               )}
               <div className="ml-auto flex gap-2">
                 <button className="btn-primary text-sm" disabled={!connected || !!busy} onClick={() => runItems(allItems, "all")}>Ejecutar todo</button>
@@ -435,7 +520,13 @@ function Inner({ type }: { type: CkType }) {
             <summary className="cursor-pointer font-medium text-slate-700">Permisos que necesita (qué te va a pedir el navegador y tu laptop)</summary>
             <ul className="mt-2 list-disc space-y-2 pl-5">
               <li>
-                <b>Consola (cable USB/COM):</b> al pulsar «Conectar consola» el navegador te muestra una lista de puertos y tú eliges el del cable; ese es el
+                <b>Puente de tu laptop (recomendado, consola y SSH):</b> como la página está en la nube, no puede ver tu cable de consola ni los equipos de tu red.
+                <code>puente.py</code> corre en tu laptop, detecta solo los puertos COM y abre el SSH desde tu red local. La página solo se comunica con él en{" "}
+                <code>127.0.0.1</code> y con su código. Chrome/Edge pueden preguntar si permites a este sitio conectarse a dispositivos de tu red local: acepta.
+                Safari no lo permite; usa Chrome, Edge o Firefox.
+              </li>
+              <li>
+                <b>Consola con el navegador (alternativa sin el puente):</b> al pulsar «Conectar consola» el navegador te muestra una lista de puertos y tú eliges el del cable; ese es el
                 permiso. Hace falta <b>Chrome o Edge</b> en computadora y la página en <b>https</b> (Railway ya lo es).{" "}
                 <span className={webSerialSupported() && window.isSecureContext ? "text-green-700" : "text-red-600"}>
                   {webSerialSupported() && window.isSecureContext ? "Sí: este navegador lo permite." : "No: este navegador/página no lo permite."}

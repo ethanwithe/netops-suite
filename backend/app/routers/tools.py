@@ -23,3 +23,14 @@ def download_saturador():
     return FileResponse(
         str(_SATURADOR), media_type="text/x-python", filename="saturador.py"
     )
+
+
+_PUENTE = Path(__file__).resolve().parent.parent / "static_tools" / "puente.py"
+
+
+@router.get("/puente.py")
+def download_puente():
+    """Puente local: presta a la página (en la nube) la consola por cable y el SSH de la laptop del técnico."""
+    if not _PUENTE.is_file():
+        raise HTTPException(404, "No se encontró el puente en el servidor.")
+    return FileResponse(str(_PUENTE), media_type="text/x-python", filename="puente.py")

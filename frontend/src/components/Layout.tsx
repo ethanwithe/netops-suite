@@ -12,12 +12,12 @@ import { Drop } from "./WaterDrops";
 import Backdrop from "./Backdrop";
 import TabBar, { TabGroup } from "./TabBar";
 import { initLiquid } from "../liquid";
+import { TEMPLATES } from "../diagram/templates";
 import { can, displayName, logout, useAuth } from "../store/auth";
 import { Avatar } from "../pages/ProfilePage";
 import { getActingClient, setActingClient } from "../api/client";
 
 const NAV = [
-  { to: "/pruebas", label: "Pruebas", desc: "SSH / Serial + PDF", feature: "pruebas" },
   { to: "/plantillas", label: "Plantillas", desc: "Crear y aplicar", feature: "plantillas" },
 ];
 
@@ -31,10 +31,13 @@ const FOTO_SUB = [
 const TITLES: Record<string, string> = {
   "/panel": "Panel",
   "/perfil": "Mi perfil",
+  "/agenda": "Agenda",
   "/admin/usuarios": "Usuarios",
   "/admin/clientes": "Clientes de todos",
   "/admin/actividad": "Actividad",
-  "/pruebas": "Pruebas",
+  "/admin/reportes": "Reportes de Bit",
+  "/grafica/iconos": "Iconos",
+  ...Object.fromEntries(TEMPLATES.map((t) => [`/grafica/${t.id}`, t.label])),
   "/plantillas": "Plantillas",
   "/checklist": "CheckList",
   ...Object.fromEntries(FOTO_SUB.map((o) => [o.to, o.label])),
@@ -82,6 +85,10 @@ export default function Layout() {
     ...(okFoto ? custom.map((w) => ({ to: windowRoute(w.id), label: w.nombre })) : []),
   ];
   const titles: Record<string, string> = { ...TITLES, "/clientes": "Mis clientes", ...Object.fromEntries(years.map((y) => [`/clientes/${y.year}`, `Clientes ${y.year}`])), ...Object.fromEntries(ckSub.map((o) => [o.to, o.label])), "/checklist": "CheckList", ...Object.fromEntries(custom.map((w) => [windowRoute(w.id), w.nombre])) };
+  const inGr = pathname.startsWith("/grafica");
+  const [grOpen, setGrOpen] = useState(inGr);
+  const grShown = grOpen || inGr;
+  const grSub = [...TEMPLATES.map((t) => ({ to: `/grafica/${t.id}`, label: t.label })), { to: "/grafica/iconos", label: "Iconos" }];
   const inFoto = pathname.startsWith("/fotografico");
   const [fotoOpen, setFotoOpen] = useState(inFoto);
   const fotoShown = fotoOpen || inFoto;
@@ -110,12 +117,13 @@ export default function Layout() {
   };
 
   const tabGroups: TabGroup[] = [
-    { id: "pn", label: "Panel", prefixes: ["/panel", "/perfil"], items: [{ to: "/panel", label: "Panel" }, { to: "/perfil", label: "Mi perfil" }] },
-    ...(can(me, "pruebas") || can(me, "plantillas") ? [{ id: "tl", label: "Pruebas", prefixes: ["/pruebas", "/plantillas"], items: NAV.filter((n) => can(me, n.feature)).map((n) => ({ to: n.to, label: n.label })) }] : []),
+    { id: "pn", label: "Panel", prefixes: ["/panel", "/perfil", "/agenda"], items: [{ to: "/panel", label: "Panel" }, { to: "/agenda", label: "Agenda" }, { to: "/perfil", label: "Mi perfil" }] },
+    ...(can(me, "grafica") ? [{ id: "gr", label: "Gráfica", prefixes: ["/grafica"], items: grSub }] : []),
+    ...(can(me, "plantillas") ? [{ id: "tl", label: "Plantillas", prefixes: ["/plantillas"], items: [{ to: "/plantillas", label: "Plantillas" }] }] : []),
     ...(can(me, "checklist") ? [{ id: "ck", label: "CheckList", prefixes: ["/checklist"], items: ckSub }] : []),
     ...(okFoto || can(me, "poder_judicial") ? [{ id: "ft", label: "Fotos", prefixes: ["/fotografico"], items: fotoSub }] : []),
     { id: "cl", label: "Clientes", prefixes: ["/clientes"], items: [{ to: "/clientes", label: "Mis clientes" }, ...years.map((y) => ({ to: `/clientes/${y.year}`, label: `Clientes ${y.year}` }))] },
-    ...(me?.is_admin ? [{ id: "ad", label: "Admin", prefixes: ["/admin"], items: [{ to: "/admin/usuarios", label: "Usuarios" }, { to: "/admin/clientes", label: "Clientes de todos" }, { to: "/admin/actividad", label: "Actividad" }] }] : []),
+    ...(me?.is_admin ? [{ id: "ad", label: "Admin", prefixes: ["/admin"], items: [{ to: "/admin/usuarios", label: "Usuarios" }, { to: "/admin/clientes", label: "Clientes de todos" }, { to: "/admin/actividad", label: "Actividad" }, { to: "/admin/reportes", label: "Reportes de Bit" }] }] : []),
   ];
   const link = (isActive: boolean) => `side-item ${isActive ? "active" : ""}`;
   const sub = (isActive: boolean) => `side-item ${isActive ? "active" : ""}`;
@@ -168,6 +176,9 @@ export default function Layout() {
           <NavLink to="/panel" className={({ isActive }) => link(isActive)}>
             <span><span className="block">Panel</span><span className="block text-[11px] font-normal opacity-60">Mis puntos y clientes</span></span>
           </NavLink>
+          <NavLink to="/agenda" className={({ isActive }) => link(isActive)}>
+            <span><span className="block">Agenda</span><span className="block text-[11px] font-normal opacity-60">Recordatorios y tareas</span></span>
+          </NavLink>
           <NavLink to="/perfil" className={({ isActive }) => link(isActive)}>
             <span><span className="block">Mi perfil</span><span className="block text-[11px] font-normal opacity-60">Datos, foto y contraseña</span></span>
           </NavLink>
@@ -177,9 +188,15 @@ export default function Layout() {
               <NavLink to="/admin/usuarios" className={({ isActive }) => link(isActive)}><span className="block">Usuarios</span></NavLink>
               <NavLink to="/admin/clientes" className={({ isActive }) => link(isActive)}><span className="block">Clientes de todos</span></NavLink>
               <NavLink to="/admin/actividad" className={({ isActive }) => link(isActive)}><span className="block">Actividad</span></NavLink>
+              <NavLink to="/admin/reportes" className={({ isActive }) => link(isActive)}><span className="block">Reportes de Bit</span></NavLink>
             </>
           )}
           <div className="side-group">Operación</div>
+          {can(me, "grafica") && (
+            <Group inside={inGr} shown={grShown} onToggle={() => setGrOpen(!grShown)} title="Gráfica" desc={`${TEMPLATES.length} diagrama(s) · iconos`}>
+              {grSub.map((o) => subLink(o))}
+            </Group>
+          )}
           {NAV.filter((n) => can(me, n.feature)).map((item) => (
             <NavLink key={item.to} to={item.to} className={({ isActive }) => link(isActive)}>
               <span>
@@ -204,8 +221,8 @@ export default function Layout() {
             {addBtn("+ Nuevo año", newYear)}
           </Group>
         </nav>
-        <div className="side-drop" style={{ right: -14, bottom: 34, ["--dur" as any]: "11s" }}><Drop size={74} kind="bead" /></div>
-        <div className="side-drop" style={{ left: 18, bottom: 54, ["--dur" as any]: "9s", ["--delay" as any]: "-3s" }}><Drop size={30} kind="tear" /></div>
+        <div className="side-drop" style={{ right: -22, bottom: -14, ["--dur" as any]: "11s" }}><Drop size={74} kind="bead" /></div>
+        <div className="side-drop" style={{ left: 14, bottom: 6, ["--dur" as any]: "9s", ["--delay" as any]: "-3s" }}><Drop size={30} kind="tear" /></div>
         <div className="relative flex items-center justify-between border-t border-white/10 px-5 py-3 text-[11px] text-slate-400">
           <span>NetOps Suite v1.0</span>
           <span className="h-1.5 w-1.5 rounded-full bg-cyan2-400 shadow-[0_0_8px_#38d0f7]" />

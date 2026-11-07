@@ -112,7 +112,7 @@ function UserEditor({ initial, features, isSuper, self, onClose, onSaved }: {
   }
   async function doReset() {
     if (!initial) return;
-    if (newPw.length < 6) { setError("La contraseña nueva debe tener al menos 6 caracteres."); return; }
+    if (newPw.length < 8) { setError("La contraseña nueva debe tener al menos 8 caracteres."); return; }
     try { await resetPassword(initial.id, newPw, mustChange); setNewPw(""); setError(null); alert("Contraseña actualizada. Sus sesiones abiertas se cerraron."); }
     catch (e) { setError(apiErrorMessage(e, "No se pudo cambiar la contraseña.")); }
   }
@@ -149,8 +149,9 @@ function UserEditor({ initial, features, isSuper, self, onClose, onSaved }: {
               {(isSuper || initial?.role === "superadmin") && <option value="superadmin">Superadmin (todo, incluso crear administradores)</option>}
             </select>
           </label>
-          <label className="flex items-center gap-2 self-end pb-2 text-sm">
-            <input type="checkbox" checked={f.active} disabled={self} onChange={(e) => setF({ ...f, active: e.target.checked })} /> Usuario activo
+          <label className="flex items-center justify-between gap-3 self-end pb-2 text-sm">
+            <span>Usuario activo</span>
+            <input type="checkbox" className="ios" checked={f.active} disabled={self} onChange={(e) => setF({ ...f, active: e.target.checked })} />
           </label>
         </div>
 
@@ -169,11 +170,11 @@ function UserEditor({ initial, features, isSuper, self, onClose, onSaved }: {
 
         <fieldset className="space-y-2 rounded-lg border border-slate-200 p-3">
           <legend className="px-1 text-xs font-semibold text-slate-600">Qué puede hacer {isAdminRole && "(los administradores tienen todo)"}</legend>
-          <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-x-6 sm:grid-cols-2">
             {features.map((ft) => (
-              <label key={ft.key} className="flex items-center gap-2 text-sm">
-                <input type="checkbox" disabled={isAdminRole} checked={allowed(ft.key)} onChange={(e) => setF({ ...f, permissions: { ...f.permissions, [ft.key]: e.target.checked } })} />
-                {ft.label}
+              <label key={ft.key} className="flex items-center justify-between gap-3 py-1 text-sm">
+                <span>{ft.label}</span>
+                <input type="checkbox" className="ios" disabled={isAdminRole} checked={allowed(ft.key)} onChange={(e) => setF({ ...f, permissions: { ...f.permissions, [ft.key]: e.target.checked } })} />
               </label>
             ))}
           </div>

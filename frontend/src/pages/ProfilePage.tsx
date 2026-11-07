@@ -75,7 +75,7 @@ function Password() {
   const [cur, setCur] = useState(""); const [n1, setN1] = useState(""); const [n2, setN2] = useState("");
   const [msg, setMsg] = useState<{ ok: boolean; t: string } | null>(null);
   async function save() {
-    if (n1.length < 6) return setMsg({ ok: false, t: "La nueva contraseña debe tener al menos 6 caracteres." });
+    if (n1.length < 8) return setMsg({ ok: false, t: "La nueva contraseña debe tener al menos 8 caracteres." });
     if (n1 !== n2) return setMsg({ ok: false, t: "Las contraseñas nuevas no coinciden." });
     try { const r = await api.post<Me>("/auth/password", { current: cur, new: n1 }); setMe(r.data); setCur(""); setN1(""); setN2(""); setMsg({ ok: true, t: "Contraseña actualizada." }); }
     catch (e) { setMsg({ ok: false, t: apiErrorMessage(e, "No se pudo cambiar la contraseña.") }); }

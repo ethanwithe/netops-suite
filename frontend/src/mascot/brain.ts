@@ -69,7 +69,7 @@ export function routeComment(pathname: string): { text: string; mood: Mood } | n
   if (p.startsWith("/clientes")) return R("Datos de cliente: todo ordenadito por año y mes. Me emociono.", "happy");
   if (p.startsWith("/fotografico")) return R("Reporte fotográfico: sonrían… bueno, sonríe el equipo.", "wink");
   if (p.startsWith("/plantillas")) return R("Plantillas: escribe una vez, aplica cien. Eficiencia pura.", "happy");
-  if (p.startsWith("/pruebas")) return R("Pruebas: si algo falla, la culpa es del cable. Siempre.", "smug");
+  if (p.startsWith("/grafica")) return R("La ventana gráfica todavía está en construcción. Pronto.", "smug");
   return null;
 }
 
@@ -230,7 +230,7 @@ const INTENTS: Intent[] = [
   { keys: ["pdf", "genera pdf", "informe"], reply: () => ({ text: "El PDF del CheckList sale con estilo Claro y se llama «checklist_sot_<sot>-<cliente>.pdf». Lo generas al final con «Generar PDF».", mood: "neutral" }) },
   { keys: ["reporte fotografico", "fotografico", "fotos", "foto", "camara", "sello", "evidencia", "zip", "carpeta"], reply: () => ({ text: "Reporte fotográfico: «Tomar foto» muestra el sello en vivo (elige esquina), «Editar» dibuja líneas, flechas, texto y recorta. Al final «Descargar carpeta de evidencia» crea un ZIP con fotos editadas y originales, separadas por lado. Te llevo.", mood: "wink", action: { kind: "go", to: "/fotografico/gpon-ont" } }) },
   { keys: ["plantilla", "plantillas", "aplicar al equipo"], reply: () => ({ text: "Plantillas: crea el comando una vez y aplícalo a los equipos. Te llevo.", mood: "happy", action: { kind: "go", to: "/plantillas" } }) },
-  { keys: ["pruebas", "ssh"], reply: () => ({ text: "Pruebas: SSH/Serial con resultado en PDF. Te llevo.", mood: "neutral", action: { kind: "go", to: "/pruebas" } }) },
+  { keys: ["grafica", "gráfica", "grafico"], reply: () => ({ text: "La ventana Gráfica está en construcción. Te llevo a verla.", mood: "neutral", action: { kind: "go", to: "/grafica" } }) },
   { keys: ["logo", "logotipo"], reply: () => ({ text: "Los logos se eligen o suben dentro de cada ventana. El del CheckList es independiente del reporte fotográfico.", mood: "neutral" }) },
   // Burlas
   { keys: ["tonto", "bobo", "inutil", "estupido", "feo", "malo", "lento"], reply: () => ({ text: pick(["Tú lo dices, pero yo tengo uptime del 99.99 %. ¿Y tú?", "Auch. Mi ego tiene un firewall, pero igual cuenta.", "Qué cruel. Eso lo anoto en el log como «error de usuario»."]), mood: "angry" }) },
@@ -303,3 +303,57 @@ export const IDLE_LINES: { text: string; mood: Mood }[] = [
   { text: "Yo solo digo: el 99 % de las caídas es el cable.", mood: "smug" },
   { text: "Hidrátate. Yo no lo necesito, pero tú sí.", mood: "happy" },
 ];
+
+/* ---------- Agenda por texto (modo básico, sin IA) ---------- */
+export interface ParsedReminder { kind: "recordatorio" | "tarea" | "evento"; title: string; due: Date | null }
+const DIAS = ["domingo", "lunes", "martes", "miercoles", "jueves", "viernes", "sabado"];
+
+/** Entiende «recuérdame en 20 minutos revisar la OLT», «mañana a las 9 llamar al cliente», «tarea: subir fotos». */
+export function parseReminder(raw: string, now = new Date()): ParsedReminder | null {
+  let t = " " + norm(raw) + " ";
+  const trig = /\b(recuerdame|recordarme|recordame|recordatorio|avisame|agendame|agenda|agendar|anotame|anota|apunta|apuntame|pon(me)? (una )?(tarea|recordatorio))\b/;
+  const isTask = /\b(tarea|pendiente)\b/.test(t);
+  if (!trig.test(t) && !isTask) return null;
+  let due: Date | null = null;
+  const d = new Date(now);
+  let m: RegExpExecArray | null;
+  if ((m = /\ben (\d+|un|una|media) (minutos?|min|horas?|hrs?|dias?)\b/.exec(t))) {
+    const n = m[1] === "un" || m[1] === "una" ? 1 : m[1] === "media" ? 0.5 : Number(m[1]);
+    const u = m[2];
+    const ms = /^(min)/.test(u) ? 60000 : /^(h)/.test(u) ? 3600000 : 86400000;
+    due = new Date(now.getTime() + n * ms);
+    t = t.replace(m[0], " ");
+  } else {
+    let dayShift: number | null = null;
+    if (/\bpasado manana\b/.test(t)) { dayShift = 2; t = t.replace(/\bpasado manana\b/, " "); }
+    else if (/\bmanana\b/.test(t) && !/\bmanana\b.*\b(de la manana)\b/.test(t)) { dayShift = 1; t = t.replace(/\bmanana\b/, " "); }
+    else if (/\bhoy\b/.test(t)) { dayShift = 0; t = t.replace(/\bhoy\b/, " "); }
+    else if ((m = new RegExp(`\\b(el )?(${DIAS.join("|")})\\b`).exec(t))) {
+      const target = DIAS.indexOf(m[2]);
+      dayShift = ((target - now.getDay() + 7) % 7) || 7;
+      t = t.replace(m[0], " ");
+    }
+    const tm = /\ba las? (\d{1,2})(?:[: ](\d{2})(?!\d))?\s*(am|pm|a m|p m|de la manana|de la tarde|de la noche)?/.exec(t);
+    if (tm) {
+      let h = Number(tm[1]); const mi = Number(tm[2] ?? 0); const ap = tm[3] ?? "";
+      if (/p m|pm|tarde|noche/.test(ap) && h < 12) h += 12;
+      if (/^(am|a m|de la manana)/.test(ap) && h === 12) h = 0;
+      if (h > 23 || mi > 59) return null;
+      d.setHours(h, mi, 0, 0);
+      if (dayShift === null) dayShift = d.getTime() <= now.getTime() ? 1 : 0;   // «a las 9» ya pasó hoy -> mañana
+      t = t.replace(tm[0], " ");
+    } else if (dayShift !== null) d.setHours(9, 0, 0, 0);
+    if (dayShift !== null) { d.setDate(d.getDate() + dayShift); due = d; }
+  }
+  const title = t.replace(trig, " ").replace(/\b(una|un|la|el|que|de|para|por favor|porfa|tarea|recordatorio|pendiente|:)\b/g, (w) => (w === ":" ? " " : /^(tarea|recordatorio|pendiente)$/.test(w) ? " " : w))
+    .replace(/[:,]/g, " ").replace(/\s+/g, " ").trim().replace(/^(que|de|para)\s+/, "");
+  const orig = raw.replace(/\s+/g, " ").trim();
+  // Se prefiere el texto original (con tildes y mayúsculas) quitando las mismas palabras de la orden
+  const cleaned = orig.replace(/^(por favor,?\s*)?(bit,?\s*)?(recu[eé]rdame|recordarme|av[ií]same|ag[eé]ndame|an[oó]tame|apunta(me)?|pon(me)? (una )?(tarea|recordatorio))\s*(que\s+|de\s+|para\s+)?/i, "")
+    .replace(/\b(en (\d+|un|una|media) (minutos?|min|horas?|hrs?|d[ií]as?)|pasado ma[ñn]ana|ma[ñn]ana|hoy|(el )?(lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bado|domingo)|a las? \d{1,2}([: ]\d{2})?\s*(am|pm|a\.?m\.?|p\.?m\.?|de la (ma[ñn]ana|tarde|noche))?)\b/gi, " ")
+    .replace(/\s+/g, " ").replace(/^[\s,:;-]+|[\s,:;-]+$/g, "");
+  const finalTitle = (cleaned.length >= 3 ? cleaned : title).replace(/^(tarea|recordatorio|pendiente)\s*[:\-]?\s*/i, "").replace(/^(de la|del|de|que|para)\s+/i, "").replace(/^./, (c) => c.toUpperCase());
+  if (!finalTitle) return null;
+  if (!due && !isTask) return null;   // un recordatorio necesita hora
+  return { kind: isTask && !due ? "tarea" : /\b(cita|reunion|evento)\b/.test(t) ? "evento" : isTask ? "tarea" : "recordatorio", title: finalTitle, due };
+}

@@ -172,7 +172,10 @@ class StoredFile(Base):
     name = Column(String, primary_key=True)          # nombre en disco (uuid.ext o el del PDF/ZIP)
     kind = Column(String, nullable=False, index=True)  # 'upload' | 'output'
     content_type = Column(String, nullable=False, default="application/octet-stream")
-    data = Column(LargeBinary, nullable=False)
+    data = Column(LargeBinary, nullable=False)          # vacío (b"") cuando el contenido vive en Telegram
+    tg_chat = Column(String, nullable=True)             # referencia en Telegram: chat…
+    tg_msg = Column(Integer, nullable=True)             # …y mensaje (solo se guarda esto, no el archivo)
+    size = Column(Integer, nullable=True)
     created_at = Column(DateTime, default=dt.datetime.utcnow)
 
 
@@ -263,3 +266,58 @@ class ActivityLog(Base):
     detail = Column(Text, nullable=False, default="")
     client_id = Column(String, nullable=True)
     at = Column(DateTime, default=dt.datetime.utcnow, index=True)
+
+
+class DiagramIcon(Base):
+    """Icono de la biblioteca de diagramas (equipos, nubes, logos...). Es compartida entre usuarios;
+    los que vienen con el sistema (builtin) no se pueden borrar."""
+    __tablename__ = "diagram_icons"
+
+    id = Column(String, primary_key=True)             # 'olt', 'router-cisco-c1121x' o un uuid
+    name = Column(String, nullable=False, default="")
+    categoria = Column(String, nullable=False, default="Equipos")
+    content_type = Column(String, nullable=False, default="image/png")
+    data = Column(LargeBinary, nullable=False)
+    builtin = Column(Boolean, nullable=False, default=False)
+    owner_id = Column(String, nullable=True)
+    created_at = Column(DateTime, default=dt.datetime.utcnow)
+
+
+class AgendaItem(Base):
+    """Recordatorio, tarea o evento de la agenda personal (lo crea el usuario o su asistente Bit)."""
+    __tablename__ = "agenda_items"
+
+    id = Column(String, primary_key=True, default=gen_uuid)
+    user_id = Column(String, nullable=False, index=True)
+    kind = Column(String, nullable=False, default="recordatorio")   # recordatorio | tarea | evento
+    title = Column(String, nullable=False)
+    notes = Column(Text, nullable=False, default="")
+    due_at = Column(DateTime, nullable=True, index=True)             # UTC
+    done = Column(Boolean, nullable=False, default=False)
+    notified = Column(Boolean, nullable=False, default=False)
+    created_at = Column(DateTime, default=dt.datetime.utcnow)
+
+
+class BitProfile(Base):
+    """Lo que Bit sabe de cada usuario (nombre, gustos, hábitos). Vive en el servidor, no en el navegador."""
+    __tablename__ = "bit_profiles"
+
+    user_id = Column(String, primary_key=True)
+    name = Column(String, nullable=False, default="")
+    facts = Column(JSON, nullable=False, default=list)
+    routes = Column(JSON, nullable=False, default=dict)
+    hours = Column(JSON, nullable=False, default=list)
+    asked = Column(Boolean, nullable=False, default=False)
+    chats = Column(Integer, nullable=False, default=0)
+    updated_at = Column(DateTime, default=dt.datetime.utcnow)
+
+
+class BitReport(Base):
+    """Reporte fijado por un administrador desde el chat con Bit (se vuelve a calcular al abrirlo)."""
+    __tablename__ = "bit_reports"
+
+    id = Column(String, primary_key=True, default=gen_uuid)
+    user_id = Column(String, nullable=False, index=True)
+    title = Column(String, nullable=False, default="")
+    spec = Column(JSON, nullable=False, default=dict)    # {"report": "...", "params": {...}}
+    created_at = Column(DateTime, default=dt.datetime.utcnow)
