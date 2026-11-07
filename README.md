@@ -209,7 +209,10 @@ Nota: logos, íconos de la Gráfica y fotos de perfil siguen en la base (son peq
 - Tabla nueva `bit_memories` (se crea sola).
 
 ### Editor de imágenes con Gemini
-«Transformar con IA» (edición generativa) usa **Gemini** (`GEMINI_API_KEY`, modelo `gemini-2.5-flash-image`, ajustable con `GEMINI_IMAGE_MODEL`); si falla y hay `OPENAI_API_KEY`, prueba con OpenAI. «Analizar y ajustar» (brillo, sombras, recortes, difuminado) ya funciona con Gemini y no inventa píxeles. Ojo: el modelo de imagen de Gemini suele requerir facturación activa en tu cuenta de Google AI Studio y devuelve imágenes de ~1024 px.
+«Transformar con IA» (edición generativa) usa **Gemini** (`GEMINI_API_KEY`, modelo `gemini-2.5-flash-image` por defecto; si Google lo retira, el servidor descubre solo el vigente; ajustable con `GEMINI_IMAGE_MODEL`); si falla y hay `OPENAI_API_KEY`, prueba con OpenAI. «Analizar y ajustar» (brillo, sombras, recortes, difuminado) ya funciona con Gemini y no inventa píxeles. Ojo: el modelo de imagen de Gemini suele requerir facturación activa en tu cuenta de Google AI Studio y devuelve imágenes de ~1024 px.
+
+### Modelos de Gemini que Google retira
+Si un modelo de Gemini da 404 («no longer available»), el servidor consulta la lista de modelos de tu clave, elige el flash estable más nuevo (texto o imagen) y reintenta, y lo recuerda hasta el próximo despliegue. Por defecto usa `gemini-3.8-flash`; puedes fijar otro con `GEMINI_MODEL` en Railway.
 
 ### Razonamiento de Bit
 Bit usa una guía de razonamiento (contexto de la conversación, pasos y verificación, pregunta de aclaración si es ambiguo) y conocimiento de redes/fibra (Huawei, Cisco, Fortinet, MikroTik, GPON). Con Gemini 2.5 usa razonamiento ligero; recuerda los últimos 20 mensajes y puedes pegarle la salida de un comando (hasta 8000 caracteres) para que la interprete. Con `ANTHROPIC_API_KEY` o con `GEMINI_API_KEY` (búsqueda de Google integrada, el modelo decide cuándo buscar) Bit puede buscar en la web; con Groq no hay búsqueda. `MASCOT_WEB=0` la apaga.
