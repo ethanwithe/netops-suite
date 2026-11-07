@@ -7,6 +7,7 @@ import Spinner from "../components/Spinner";
 import ChecklistStructure from "../components/ChecklistStructure";
 import ImageAnnotator from "../components/ImageAnnotator";
 import SaturadorPanel from "../components/SaturadorPanel";
+import LiveCli from "../components/LiveCli";
 import { NO_LOGO } from "../logo";
 import type { LogoSel } from "../logo";
 import { usePersistentState } from "../store/persistentState";
@@ -90,15 +91,18 @@ function Inner({ type }: { type: CkType }) {
   const termRef = useRef("");
   const [term, setTerm] = useState("");
   const termTimer = useRef<number | null>(null);
-  const termBox = useRef<HTMLPreElement>(null);
-  const [typed, setTyped] = useState("");
   const pushTerm = (chunk: string) => {
-    termRef.current = (termRef.current + chunk.replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, "").replace(/\r/g, "")).slice(-40000);
+    // Aplica el eco del equipo como una terminal: el retroceso borra, y se ignoran \r, campana y colores
+    let out = termRef.current;
+    for (const ch of chunk.replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, "")) {
+      if (ch === "\b" || ch === "\x7f") { if (out && !out.endsWith("\n")) out = out.slice(0, -1); }
+      else if (ch !== "\r" && ch !== "\x07" && ch !== "\0") out += ch;
+    }
+    termRef.current = out.slice(-40000);
     if (termTimer.current == null) {
       termTimer.current = window.setTimeout(() => { termTimer.current = null; setTerm(termRef.current); }, 120);
     }
   };
-  useEffect(() => { if (termBox.current) termBox.current.scrollTop = termBox.current.scrollHeight; }, [term]);
 
   // Saturación: el agente local o, si usas iperf/Ostinato, la marcas tú
   const [agentRunning, setAgentRunning] = useState(false);
@@ -483,17 +487,8 @@ function Inner({ type }: { type: CkType }) {
             {log && <p className="font-mono text-xs text-slate-600 break-all">{log}</p>}
 
             {(connected || term) && (
-              <div className="space-y-1">
-                <div className="flex items-center justify-between">
-                  <p className="text-xs font-medium text-slate-500">CLI del router en vivo (todo lo que se envía y devuelve)</p>
-                  <button className="text-xs text-slate-400 hover:underline" onClick={() => { termRef.current = ""; setTerm(""); }}>limpiar</button>
-                </div>
-                <pre ref={termBox} className="h-56 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-black p-3 font-mono text-[11px] leading-snug text-green-200">{term || "(esperando datos de la consola…)"}</pre>
-                <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); if (typed.trim() && connected && !busy) { void session.current?.typed(typed); setTyped(""); } }}>
-                  <input className="input flex-1 font-mono text-xs" value={typed} disabled={!connected || !!busy} placeholder="Escribe un comando y Enter (se ejecuta en el router)" onChange={(e) => setTyped(e.target.value)} />
-                  <button className="btn-secondary text-xs" disabled={!connected || !!busy || !typed.trim()}>Enviar</button>
-                </form>
-              </div>
+              <LiveCli term={term} onClear={() => { termRef.current = ""; setTerm(""); }} session={session} connected={connected} busy={!!busy}
+                itemCmds={allItems.map((i) => i.cmd).filter(Boolean)} fill={(c) => fillCmd(c, s.params).cmd} />
             )}
           </div>
 

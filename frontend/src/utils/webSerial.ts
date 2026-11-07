@@ -64,6 +64,12 @@ export abstract class ConsoleSession {
     return cleanOutput(this.buf);
   }
 
+  /** Envía bytes tal cual (una tecla, Tab, Ctrl+C…): para el «teclado directo» del CLI. */
+  async raw(text: string) {
+    if (!this.connected) return;
+    await this.write(text);
+  }
+
   /** Escribe en la consola tal cual (para que tú también puedas teclear comandos). */
   async typed(text: string) {
     if (!this.connected) throw new Error("La consola no está conectada.");
