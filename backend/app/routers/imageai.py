@@ -143,9 +143,13 @@ FIDELITY = ("Esta foto es para un informe técnico de redes y fibra óptica. Haz
             "no cambies ni inventes texto, números, etiquetas, puertos, cables, equipos ni caras. Mantén la proporción de la imagen.")
 
 
-def _gemini_edit(key: str, img: bytes, ctype: str, prompt: str) -> str:
+_IMG_RESOLVED: dict = {}
+
+
+def _gemini_edit(key: str, img: bytes, ctype: str, prompt: str, _retry: bool = False) -> str:
     """Edición/mejora con Gemini (modelo de imagen). Devuelve un data URL."""
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_IMAGE_MODEL}:generateContent"
+    model = _IMG_RESOLVED.get(GEMINI_IMAGE_MODEL, GEMINI_IMAGE_MODEL)
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
     body = {"contents": [{"role": "user", "parts": [{"text": f"{prompt}\n\n{FIDELITY}"},
                                                       {"inlineData": {"mimeType": ctype, "data": base64.b64encode(img).decode()}}]}],
             "generationConfig": {"responseModalities": ["IMAGE", "TEXT"]}}
@@ -155,6 +159,11 @@ def _gemini_edit(key: str, img: bytes, ctype: str, prompt: str) -> str:
         with urllib.request.urlopen(req, timeout=180) as r:
             data = json.loads(r.read())
     except urllib.error.HTTPError as e:
+        if e.code == 404 and not _retry:  # modelo retirado: se busca el vigente y se reintenta una vez
+            new = llm.discover_gemini(key, image=True)
+            if new and new != model:
+                _IMG_RESOLVED[GEMINI_IMAGE_MODEL] = new
+                return _gemini_edit(key, img, ctype, prompt, _retry=True)
         try:
             detail = json.loads(e.read().decode("utf-8", "replace")).get("error", {}).get("message", "")
         except Exception:
