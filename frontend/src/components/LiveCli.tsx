@@ -145,11 +145,11 @@ export default function LiveCli({ term, onClear, session, connected, busy, itemC
 
       {!direct && (
         <>
-          <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); if (typed.trim() && !off) { void sendLine(typed); setTyped(""); setHi(-1); setMatches([]); } }}>
+          <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); if (!connected) return; if (typed.trim()) { if (!off) { void sendLine(typed); setTyped(""); setHi(-1); setMatches([]); } } else void session.current?.raw("\r"); }}>
             <input className="input flex-1 font-mono text-xs" value={typed} disabled={off} spellCheck={false} autoComplete="off"
-              placeholder="Escribe un comando y Enter · Tab completa con tus comandos/historial · ↑↓ historial"
+              placeholder="Comando + Enter · vacío + Enter = solo Enter al equipo · Tab completa · ↑↓ historial"
               onChange={(e) => { setTyped(e.target.value); setMatches([]); setHi(-1); }} onKeyDown={onInputKey} />
-            <button className="btn-secondary text-xs" disabled={off || !typed.trim()}>Enviar</button>
+            <button className="btn-secondary text-xs" disabled={!connected} title="Con la línea vacía envía solo Enter">{typed.trim() ? "Enviar" : "Enter ↵"}</button>
           </form>
           {matches.length > 0 && (
             <div className="flex flex-wrap gap-1">
@@ -160,6 +160,14 @@ export default function LiveCli({ term, onClear, session, connected, busy, itemC
           )}
         </>
       )}
+
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="text-[11px] text-slate-400">Teclas al equipo:</span>
+        {([["Enter ↵", "\r"], ["Espacio", " "], ["Y", "y"], ["N", "n"], ["Tab", "\t"], ["?", "?"], ["Esc", "\x1b"], ["Ctrl+C", "\x03"]] as const).map(([l, seq]) => (
+          <button key={l} type="button" disabled={!connected} className="rounded border border-slate-200 px-2 py-0.5 font-mono text-[11px] text-slate-600 hover:bg-sky-50 disabled:opacity-40"
+            title="Se envía al router al instante (aunque esté corriendo algo)" onClick={() => void session.current?.raw(seq)}>{l}</button>
+        ))}
+      </div>
 
       <details className="rounded-lg border border-slate-200 px-3 py-2" open={saved.length > 0}>
         <summary className="cursor-pointer text-xs font-medium text-slate-600">Mis comandos ({saved.length})</summary>
