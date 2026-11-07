@@ -190,6 +190,7 @@ La app corre en Railway, así que no ve tu cable de consola ni los equipos de tu
 ### CLI en vivo del CheckList
 - **Teclado directo:** marca «Teclado directo» y la terminal envía cada tecla al equipo como MobaXterm/PuTTY: **Tab** completa en el router, **?** muestra ayuda, ↑↓ historial del equipo, Ctrl+C cancela, Ctrl+Shift+V pega.
 - **Línea de comandos con autocompletado local:** Tab completa con tus comandos guardados, el historial y los comandos de los ítems del checklist; ↑↓ recorre el historial.
+- **Sesión guardada y .txt:** todo lo que se envía y devuelve el equipo se guarda solo en este navegador (hasta ~1,5 MB por tipo de checklist), reaparece al recargar y se baja con «⬇ Descargar .txt» (`consola_<SOT>_<fecha>.txt`), con marcas de hora al conectar/desconectar. «limpiar pantalla» no borra el registro; «borrar registro» sí.
 - **Mis comandos:** guarda comandos o secuencias (uno por línea, con `{WAN}`, `{LAN}`… de los parámetros) y envíalos con un clic. Se guardan en este navegador.
 
 ### Archivos en Telegram (opcional)

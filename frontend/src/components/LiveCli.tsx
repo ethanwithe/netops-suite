@@ -37,7 +37,10 @@ const commonPrefix = (a: string[]) => a.reduce((p, s) => { let i = 0; while (i <
  * CLI en vivo del router: salida, teclado directo al equipo (Tab, ?, flechas, Ctrl+C como en MobaXterm),
  * línea con autocompletado local (Tab) e historial, y «Mis comandos» guardados para enviar con un clic.
  */
-export default function LiveCli({ term, onClear, session, connected, busy, itemCmds, fill }: {
+export default function LiveCli({ onDownload, onForget, logSize, term, onClear, session, connected, busy, itemCmds, fill }: {
+  onDownload: () => void;
+  onForget: () => void;
+  logSize: number;
   term: string;
   onClear: () => void;
   session: MutableRefObject<ConsoleSession | null>;
@@ -124,13 +127,15 @@ export default function LiveCli({ term, onClear, session, connected, busy, itemC
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-xs font-medium text-slate-500">CLI del router en vivo</p>
+        <p className="text-xs font-medium text-slate-500">CLI del router en vivo <span className="font-normal text-slate-400">· se guarda sola{logSize ? ` (${Math.max(1, Math.round(logSize / 1024))} KB)` : ""}</span></p>
         <div className="flex items-center gap-3">
           <label className="flex cursor-pointer items-center gap-1 text-xs text-slate-600" title="Cada tecla va directo al equipo: Tab completa, ? ayuda, ↑↓ historial del router, Ctrl+C cancela (como MobaXterm)">
             <input type="checkbox" checked={direct} onChange={(e) => { setDirect(e.target.checked); if (e.target.checked) setTimeout(() => box.current?.focus(), 0); }} />
             Teclado directo (Tab, ?, flechas)
           </label>
-          <button className="text-xs text-slate-400 hover:underline" onClick={onClear}>limpiar</button>
+          <button className="text-xs font-medium text-sky-700 hover:underline disabled:opacity-40" disabled={!logSize} onClick={onDownload} title="Descarga todo lo de la sesión (comandos y respuestas) en un archivo de texto">⬇ Descargar .txt</button>
+          <button className="text-xs text-slate-400 hover:underline" onClick={onClear} title="Solo limpia la pantalla; el registro guardado se conserva">limpiar pantalla</button>
+          <button className="text-xs text-slate-400 hover:text-red-600 hover:underline" disabled={!logSize} onClick={onForget} title="Borra el registro guardado">borrar registro</button>
         </div>
       </div>
 
@@ -145,11 +150,11 @@ export default function LiveCli({ term, onClear, session, connected, busy, itemC
 
       {!direct && (
         <>
-          <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); if (typed.trim() && !off) { void sendLine(typed); setTyped(""); setHi(-1); setMatches([]); } }}>
+          <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); if (!connected) return; if (typed.trim()) { if (!off) { void sendLine(typed); setTyped(""); setHi(-1); setMatches([]); } } else void session.current?.raw("\r"); }}>
             <input className="input flex-1 font-mono text-xs" value={typed} disabled={off} spellCheck={false} autoComplete="off"
-              placeholder="Escribe un comando y Enter · Tab completa con tus comandos/historial · ↑↓ historial"
+              placeholder="Comando + Enter · vacío + Enter = solo Enter al equipo · Tab completa · ↑↓ historial"
               onChange={(e) => { setTyped(e.target.value); setMatches([]); setHi(-1); }} onKeyDown={onInputKey} />
-            <button className="btn-secondary text-xs" disabled={off || !typed.trim()}>Enviar</button>
+            <button className="btn-secondary text-xs" disabled={!connected} title="Con la línea vacía envía solo Enter">{typed.trim() ? "Enviar" : "Enter ↵"}</button>
           </form>
           {matches.length > 0 && (
             <div className="flex flex-wrap gap-1">
@@ -160,6 +165,14 @@ export default function LiveCli({ term, onClear, session, connected, busy, itemC
           )}
         </>
       )}
+
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="text-[11px] text-slate-400">Teclas al equipo:</span>
+        {([["Enter ↵", "\r"], ["Espacio", " "], ["Y", "y"], ["N", "n"], ["Tab", "\t"], ["?", "?"], ["Esc", "\x1b"], ["Ctrl+C", "\x03"]] as const).map(([l, seq]) => (
+          <button key={l} type="button" disabled={!connected} className="rounded border border-slate-200 px-2 py-0.5 font-mono text-[11px] text-slate-600 hover:bg-sky-50 disabled:opacity-40"
+            title="Se envía al router al instante (aunque esté corriendo algo)" onClick={() => void session.current?.raw(seq)}>{l}</button>
+        ))}
+      </div>
 
       <details className="rounded-lg border border-slate-200 px-3 py-2" open={saved.length > 0}>
         <summary className="cursor-pointer text-xs font-medium text-slate-600">Mis comandos ({saved.length})</summary>

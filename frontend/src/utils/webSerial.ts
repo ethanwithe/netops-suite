@@ -10,6 +10,8 @@ export const webSerialSupported = () => typeof navigator !== "undefined" && "ser
 const ANSI = /\x1b\[[0-9;?]*[a-zA-Z]/g;
 const MORE = /(-{2,}\s*more\s*-{2,}|<--- more --->|--more\(.*?\)--)/i;
 // Prompt al final: <Huawei>  [Huawei-if]  Router#  Router>  FGT (vdom) #
+/** Pausas que solo piden una tecla para seguir («Press any key», «Press ENTER to continue»). */
+const CONTINUE = /(press\s+(any\s+key|enter|return)|presione\s+(cualquier\s+tecla|enter)|hit\s+(any\s+key|enter))[^\n]{0,50}$/i;
 const PROMPT = /(?:^|\n)[^\n]{0,80}[>\]#$]\s?$/;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -53,6 +55,9 @@ export abstract class ConsoleSession {
         if (MORE.test(tail) && Date.now() - moreSeen > 100) {
           moreSeen = Date.now();
           await this.write(" ");
+        } else if (CONTINUE.test(tail.replace(ANSI, "")) && Date.now() - moreSeen > 400) {
+          moreSeen = Date.now();
+          await this.write("\r");
         }
         continue;
       }

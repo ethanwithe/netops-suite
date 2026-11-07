@@ -88,21 +88,44 @@ function Inner({ type }: { type: CkType }) {
   const [pst, setPst] = useState<PuenteEstado | null>(null);
 
   // CLI en vivo: todo lo que se envía y devuelve el router
-  const termRef = useRef("");
-  const [term, setTerm] = useState("");
+  // La sesión completa se guarda sola (en este navegador) y se puede bajar como .txt
+  const [savedLog, setSavedLog] = usePersistentState<string>(`checklist.clilog.${type.id}`, "");
+  const fullRef = useRef(savedLog);
+  const saveTimer = useRef<number | null>(null);
+  const termRef = useRef(savedLog.slice(-40000));
+  const [term, setTerm] = useState(termRef.current);
   const termTimer = useRef<number | null>(null);
-  const pushTerm = (chunk: string) => {
-    // Aplica el eco del equipo como una terminal: el retroceso borra, y se ignoran \r, campana y colores
-    let out = termRef.current;
+  // Aplica el eco del equipo como una terminal: el retroceso borra, y se ignoran \r, campana y colores
+  const applyChunk = (prev: string, chunk: string) => {
+    let out = prev;
     for (const ch of chunk.replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, "")) {
       if (ch === "\b" || ch === "\x7f") { if (out && !out.endsWith("\n")) out = out.slice(0, -1); }
       else if (ch !== "\r" && ch !== "\x07" && ch !== "\0") out += ch;
     }
-    termRef.current = out.slice(-40000);
+    return out;
+  };
+  const pushTerm = (chunk: string) => {
+    termRef.current = applyChunk(termRef.current, chunk).slice(-40000);
+    fullRef.current = applyChunk(fullRef.current, chunk).slice(-1_500_000);
+    if (saveTimer.current == null) saveTimer.current = window.setTimeout(() => { saveTimer.current = null; setSavedLog(fullRef.current); }, 2000);
     if (termTimer.current == null) {
       termTimer.current = window.setTimeout(() => { termTimer.current = null; setTerm(termRef.current); }, 120);
     }
   };
+  const mark = (txt: string) => pushTerm(`\n===== ${new Date().toLocaleString("es-PE")} · ${txt} =====\n`);
+  function downloadLog() {
+    const blob = new Blob([fullRef.current || "(sin registro)"], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const el = document.createElement("a");
+    el.href = url;
+    el.download = `consola_${(s.sot || "sesion").replace(/[^\w.-]+/g, "_")}_${hoyISO()}.txt`;
+    el.click();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  }
+  function forgetLog() {
+    if (!confirm("¿Borrar el registro guardado de la consola? No se puede deshacer.")) return;
+    fullRef.current = ""; termRef.current = ""; setTerm(""); setSavedLog("");
+  }
 
   // Saturación: el agente local o, si usas iperf/Ostinato, la marcas tú
   const [agentRunning, setAgentRunning] = useState(false);
@@ -121,7 +144,10 @@ function Inner({ type }: { type: CkType }) {
     });
   }, [data.params]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => () => { void session.current?.close(); }, []);
+  useEffect(() => () => {
+    void session.current?.close();
+    if (saveTimer.current != null) { window.clearTimeout(saveTimer.current); setSavedLog(fullRef.current); }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (connected) return;
     let alive = true;
@@ -195,9 +221,10 @@ function Inner({ type }: { type: CkType }) {
           : { kind: "serial", port: puerto, baud });
         sess = ps;
       }
-      sess.onClose = (why) => { setConnected(false); session.current = null; setLog(why); };
+      sess.onClose = (why) => { setConnected(false); session.current = null; setLog(why); mark("Conexión cerrada: " + why); };
       session.current = sess;
       setConnected(true);
+      mark(via === "ssh" && mode === "puente" ? `Conectado por SSH a ${ssh.host}` : "Conectado por consola");
       setLog(via === "ssh" && mode === "puente" ? "SSH conectado. Preparando el equipo..." : "Consola conectada. Preparando el equipo...");
       for (const c of data.setup) await sess.run(c, { maxMs: 8000 });
       setLog(via === "ssh" && mode === "puente" ? "SSH listo." : "Consola lista.");
@@ -209,6 +236,7 @@ function Inner({ type }: { type: CkType }) {
     }
   }
   async function disconnect() {
+    mark("Desconectado");
     await session.current?.close();
     session.current = null;
     setConnected(false);
@@ -487,7 +515,7 @@ function Inner({ type }: { type: CkType }) {
             {log && <p className="font-mono text-xs text-slate-600 break-all">{log}</p>}
 
             {(connected || term) && (
-              <LiveCli term={term} onClear={() => { termRef.current = ""; setTerm(""); }} session={session} connected={connected} busy={!!busy}
+              <LiveCli onDownload={downloadLog} onForget={forgetLog} logSize={fullRef.current.length || savedLog.length} term={term} onClear={() => { termRef.current = ""; setTerm(""); }} session={session} connected={connected} busy={!!busy}
                 itemCmds={allItems.map((i) => i.cmd).filter(Boolean)} fill={(c) => fillCmd(c, s.params).cmd} />
             )}
           </div>
