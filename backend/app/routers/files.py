@@ -24,6 +24,16 @@ def _safe(name: str) -> str:
     return name
 
 
+def _safe_output(name: str) -> str:
+    """Los reportes llevan el nombre del cliente (espacios, tildes, paréntesis…): se aceptan, pero nunca
+    rutas, archivos ocultos ni caracteres de control."""
+    n = name or ""
+    if (not n or len(n) > 200 or n.startswith(".") or ".." in n or "/" in n or "\\" in n
+            or any(ord(c) < 32 or ord(c) == 127 for c in n)):
+        raise HTTPException(404, "Archivo no encontrado.")
+    return n
+
+
 @router.post("/upload")
 async def upload_file(file: UploadFile = File(...)):
     ext = Path(file.filename or "").suffix.lower()
@@ -50,7 +60,7 @@ def get_upload(filename: str):
 
 @router.get("/outputs/{filename}")
 def get_output(filename: str):
-    filename = _safe(filename)
+    filename = _safe_output(filename)
     path = filestore.ensure_output(filename) or (OUTPUTS_DIR / filename)
     if not path.is_file():
         raise HTTPException(404, "Archivo no encontrado.")

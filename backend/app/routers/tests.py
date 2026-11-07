@@ -1,3 +1,4 @@
+from urllib.parse import quote
 import uuid
 
 from fastapi import APIRouter, Depends, WebSocket
@@ -55,4 +56,4 @@ def generate_tests_pdf(payload: schemas.TestsPdfRequest, db: Session = Depends(g
     out_path = str(OUTPUTS_DIR / out_name)
     build_pdf(meta, payload.config_text, results, out_path=out_path)
     filestore.save_output(out_path)
-    return {"filename": out_name, "url": f"/api/files/outputs/{out_name}", "warnings": warnings}
+    return {"filename": out_name, "url": f"/api/files/outputs/{quote(out_name)}", "warnings": warnings}
