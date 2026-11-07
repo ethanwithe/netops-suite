@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from app import models
 from app.auth import current_user, log_activity
 from app.database import get_db
-from app.services import security
+from app.services import filestore, security
 from app.services.diagram_pptx import build_pptx
 
 router = APIRouter(prefix="/api/diagrams", tags=["diagrams"])
@@ -120,6 +120,7 @@ def export_pptx(p: ExportIn, user: models.User = Depends(current_user), db: Sess
     except Exception as e:  # datos del editor mal formados
         raise HTTPException(400, f"No se pudo armar el PPTX: {e}")
     log_activity(db, user, "diagrama_exportado", f"pptx · {p.filename}")
+    filestore.archive(f"{_safe(p.filename)}.pptx", data)
     return Response(content=data, media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
                     headers={"Content-Disposition": f'attachment; filename="{_safe(p.filename)}.pptx"'})
 
@@ -140,5 +141,6 @@ def export_pdf(p: ExportIn, user: models.User = Depends(current_user), db: Sessi
     except Exception as e:
         raise HTTPException(400, f"No se pudo armar el PDF: {e}")
     log_activity(db, user, "diagrama_exportado", f"pdf · {p.filename}")
+    filestore.archive(f"{_safe(p.filename)}.pdf", data)
     return Response(content=data, media_type="application/pdf",
                     headers={"Content-Disposition": f'attachment; filename="{_safe(p.filename)}.pdf"'})

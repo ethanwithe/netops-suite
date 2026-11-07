@@ -5,6 +5,9 @@ reinicio o un nuevo despliegue) se restaura desde la base de datos al pedirlo.
 """
 import mimetypes
 import os
+import re
+import threading
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -105,3 +108,11 @@ def migrate_to_telegram(limit: int = 50) -> dict:
         return {"movidos": moved, "fallidos": failed, "pendientes": left}
     finally:
         db.close()
+
+
+def archive(name: str, data: bytes) -> None:
+    """Guarda en segundo plano una copia de un archivo exportado (xlsx, docx, pptx, pdf, txt…)
+    para no hacer esperar la descarga. Va a Telegram si está configurado, o a la base de datos."""
+    safe = re.sub(r"[^A-Za-z0-9._-]+", "_", os.path.basename(name)).strip("_") or "archivo"
+    stored = f"{time.strftime('%Y%m%d-%H%M%S')}_{safe}"[:150]
+    threading.Thread(target=_store, args=("output", stored, data), daemon=True).start()

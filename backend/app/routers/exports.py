@@ -16,7 +16,7 @@ from app import models
 from app.auth import current_user, log_activity
 from app.database import get_db
 from app.services import client_access as ca
-from app.services import security
+from app.services import filestore, security
 
 router = APIRouter(prefix="/api/export", tags=["export"])
 
@@ -193,6 +193,7 @@ def _build(fmt: str, title: str, subtitle: str, rows, details, extra_sheets=None
 
 
 def _respond(fmt: str, data: bytes, name: str) -> Response:
+    filestore.archive(f"{name}.{fmt}", data)
     return Response(content=data, media_type=MEDIA[fmt],
                     headers={"Content-Disposition": f'attachment; filename="{_safe(name)}.{fmt}"'})
 
