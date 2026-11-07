@@ -200,6 +200,17 @@ Con las variables de Railway `TELEGRAM_API_ID`, `TELEGRAM_API_HASH` y `TELEGRAM_
 3. Admin: `GET /api/files/telegram/status` y `POST /api/files/telegram/migrar` (pasa de a 50 los archivos viejos de la base a Telegram).
 Nota: logos, íconos de la Gráfica y fotos de perfil siguen en la base (son pequeños y se usan en cada render).
 
+### Bit como asistente permanente (memoria de trabajo)
+- **Memoria de trabajo por usuario** (tabla `bit_memories`): proyectos/clientes, comandos, configuraciones, preferencias y rutinas. Lo repetido pesa más (×n) y se usa sin pedir que lo expliques otra vez. Máximo 200 recuerdos; se olvida lo menos usado. Nunca guarda contraseñas, claves, comunidades SNMP ni tokens (filtro en el servidor).
+- **Aprende solo:** de la conversación (`[mem:tipo|texto]`) y de lo que haces (los comandos que escribes o envías desde el CLI del CheckList → `POST /api/mascot/observe`).
+- **Rutinas:** se deducen de la actividad real de 60 días (horas y días de más trabajo, qué sueles hacer cada día de la semana). Se ven en el panel de Bit → *Mi memoria de trabajo*, donde también puedes enseñarle algo, quitar recuerdos u olvidar todo.
+- **Se adelanta:** una vez al día Bit revisa tu trabajo (`GET /api/mascot/proactive`) y te avisa de pendientes vencidos o de hoy, SOT que tocaste sin generar reporte y lo que sueles hacer ese día, con botón para ir a la pantalla.
+- **Mejora con el tiempo:** 👍/👎 en cada respuesta (`POST /api/mascot/feedback`); guarda las 12 valoraciones más recientes y Bit ajusta su estilo.
+- Tabla nueva `bit_memories` (se crea sola).
+
+### Editor de imágenes con Gemini
+«Transformar con IA» (edición generativa) usa **Gemini** (`GEMINI_API_KEY`, modelo `gemini-2.5-flash-image`, ajustable con `GEMINI_IMAGE_MODEL`); si falla y hay `OPENAI_API_KEY`, prueba con OpenAI. «Analizar y ajustar» (brillo, sombras, recortes, difuminado) ya funciona con Gemini y no inventa píxeles. Ojo: el modelo de imagen de Gemini suele requerir facturación activa en tu cuenta de Google AI Studio y devuelve imágenes de ~1024 px.
+
 ### Razonamiento de Bit
 Bit usa una guía de razonamiento (contexto de la conversación, pasos y verificación, pregunta de aclaración si es ambiguo) y conocimiento de redes/fibra (Huawei, Cisco, Fortinet, MikroTik, GPON). Con Gemini 2.5 usa razonamiento ligero; recuerda los últimos 20 mensajes y puedes pegarle la salida de un comando (hasta 8000 caracteres) para que la interprete. Con `ANTHROPIC_API_KEY` o con `GEMINI_API_KEY` (búsqueda de Google integrada, el modelo decide cuándo buscar) Bit puede buscar en la web; con Groq no hay búsqueda. `MASCOT_WEB=0` la apaga.
 

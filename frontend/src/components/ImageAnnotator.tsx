@@ -412,7 +412,7 @@ function toDataUrl(c: HTMLCanvasElement, max = 1280, q = 0.86): string {
 }
 
 const AI_CHIPS = ["Mejorar la calidad general", "Aclarar las sombras", "Más nitidez en los textos", "Corregir el color amarillento", "Difuminar caras y placas"];
-const EDIT_CHIPS = ["Quitar el objeto del fondo", "Limpiar y ordenar el fondo", "Mejorar iluminación como foto profesional"];
+const EDIT_CHIPS = ["Mejorar nitidez y reducir ruido sin cambiar el contenido", "Aclarar la foto (está oscura)", "Quitar el objeto del fondo", "Limpiar y ordenar el fondo", "Mejorar iluminación como foto profesional"];
 
 export default function ImageAnnotator({ imageUrl, onClose, onSaved }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -454,7 +454,7 @@ export default function ImageAnnotator({ imageUrl, onClose, onSaved }: Props) {
 
   const [panel, setPanel] = useState<null | "adjust" | "ai">(null);
   const [menu, setMenu] = useState<null | "img" | "more">(null);
-  const [aiStatus, setAiStatus] = useState<{ adjust: boolean; edit: boolean } | null>(null);
+  const [aiStatus, setAiStatus] = useState<{ adjust: boolean; edit: boolean; edit_provider?: string | null } | null>(null);
   const [aiPrompt, setAiPrompt] = useState("");
   const [aiBusy, setAiBusy] = useState(false);
   const [aiNote, setAiNote] = useState<string | null>(null);
@@ -1196,7 +1196,7 @@ export default function ImageAnnotator({ imageUrl, onClose, onSaved }: Props) {
                 <button className="btn-secondary px-3 py-1.5 text-xs" onClick={smartLocal}>Mejora rápida (sin IA)</button>
               </div>
               <p className="mt-1.5 text-[10.5px] leading-snug text-slate-500">
-                {aiStatus?.adjust ? "La IA mira la foto y elige ajustes, recortes y zonas a difuminar sin inventar nada: segura para evidencias." : "IA no configurada en el servidor (falta ANTHROPIC_API_KEY): usa la mejora rápida."}
+                {aiStatus?.adjust ? "La IA mira la foto y elige ajustes, recortes y zonas a difuminar sin inventar nada: segura para evidencias." : "IA no configurada en el servidor (falta ANTHROPIC_API_KEY o GEMINI_API_KEY): usa la mejora rápida."}
               </p>
               <div className="mt-2 border-t border-slate-200 pt-2">
                 <b className="text-[11px] text-slate-700">Cambiar la imagen (generativa)</b>
@@ -1205,7 +1205,7 @@ export default function ImageAnnotator({ imageUrl, onClose, onSaved }: Props) {
                 </div>
                 <button className="btn-secondary mt-1.5 px-3 py-1.5 text-xs" disabled={aiBusy || !aiStatus?.edit || !aiPrompt.trim()} onClick={() => aiEdit(aiPrompt)}>Transformar con IA</button>
                 <p className="mt-1 text-[10.5px] leading-snug text-slate-500">
-                  {aiStatus?.edit ? "Modifica el contenido de la foto según tu instrucción. Se puede deshacer." : "No disponible: el servidor necesita OPENAI_API_KEY para editar imágenes."}
+                  {aiStatus?.edit ? `Modifica el contenido de la foto según tu instrucción (${aiStatus.edit_provider === "gemini" ? "Gemini" : "OpenAI"}). Se puede deshacer.` : "No disponible: el servidor necesita GEMINI_API_KEY (o OPENAI_API_KEY) para editar imágenes."}
                 </p>
               </div>
               {aiNote && <p className="mt-2 rounded-md bg-slate-100 p-2 text-[11px] text-slate-700">{aiNote}</p>}

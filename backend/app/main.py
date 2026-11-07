@@ -98,6 +98,13 @@ def _ensure_columns() -> None:
                 # los ítems que ya existían son de "Fibra convencional"
                 conn.execute(text("ALTER TABLE photo_items ADD COLUMN tipo VARCHAR NOT NULL DEFAULT 'fibra'"))
                 conn.execute(text("CREATE INDEX IF NOT EXISTS ix_photo_items_tipo ON photo_items (tipo)"))
+    if "bit_profiles" in insp.get_table_names():
+        cols = {c["name"] for c in insp.get_columns("bit_profiles")}
+        with engine.begin() as conn:
+            if "summary" not in cols:
+                conn.execute(text("ALTER TABLE bit_profiles ADD COLUMN summary TEXT"))
+            if "style" not in cols:
+                conn.execute(text("ALTER TABLE bit_profiles ADD COLUMN style JSON"))
     if "stored_files" in insp.get_table_names():
         cols = {c["name"] for c in insp.get_columns("stored_files")}
         with engine.begin() as conn:

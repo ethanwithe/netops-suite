@@ -309,7 +309,21 @@ class BitProfile(Base):
     hours = Column(JSON, nullable=False, default=list)
     asked = Column(Boolean, nullable=False, default=False)
     chats = Column(Integer, nullable=False, default=0)
+    summary = Column(Text, nullable=True)      # resumen de cómo trabaja la persona (Bit lo reescribe con el tiempo)
+    style = Column(JSON, nullable=True)        # votos 👍/👎 y motivos: cómo le gusta que responda
     updated_at = Column(DateTime, default=dt.datetime.utcnow)
+
+
+class BitEvent(Base):
+    """Cosas que hace la persona y Bit aprende: pantallas que abre, comandos que usa, SOT en los que trabaja."""
+    __tablename__ = "bit_events"
+
+    id = Column(String, primary_key=True, default=gen_uuid)
+    user_id = Column(String, nullable=False, index=True)
+    kind = Column(String, nullable=False, index=True)    # page | cmd | sot | checklist
+    key = Column(String, nullable=False, default="")
+    detail = Column(String, nullable=False, default="")
+    at = Column(DateTime, default=dt.datetime.utcnow, index=True)
 
 
 class BitReport(Base):
@@ -321,3 +335,18 @@ class BitReport(Base):
     title = Column(String, nullable=False, default="")
     spec = Column(JSON, nullable=False, default=dict)    # {"report": "...", "params": {...}}
     created_at = Column(DateTime, default=dt.datetime.utcnow)
+
+
+class BitMemory(Base):
+    """Memoria de trabajo de Bit por usuario: proyectos, comandos, configuraciones, preferencias y rutinas.
+    Cada vez que se repite algo su peso sube (lo habitual pesa más); es la base para anticiparse."""
+    __tablename__ = "bit_memories"
+
+    id = Column(String, primary_key=True, default=gen_uuid)
+    user_id = Column(String, nullable=False, index=True)
+    kind = Column(String, nullable=False, default="dato")     # proyecto | comando | config | preferencia | rutina | feedback | dato
+    text = Column(Text, nullable=False)
+    key = Column(String, nullable=False, index=True)          # texto normalizado (evita duplicados)
+    weight = Column(Integer, nullable=False, default=1)
+    created_at = Column(DateTime, default=dt.datetime.utcnow)
+    last_seen = Column(DateTime, default=dt.datetime.utcnow, index=True)

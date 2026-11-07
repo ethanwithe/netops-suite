@@ -4,7 +4,7 @@ IA para el editor de imágenes.
 - /adjust  (Claude con visión, ANTHROPIC_API_KEY): entiende la foto y lo que pide el
   usuario y devuelve ajustes (brillo, sombras, nitidez…), un recorte sugerido y zonas a
   difuminar. No inventa píxeles: es seguro para evidencias.
-- /edit    (edición generativa, OPENAI_API_KEY): cambia la imagen según la instrucción
+- /edit    (edición generativa: Gemini con GEMINI_API_KEY —modelo de imagen— o, si falla, OpenAI con OPENAI_API_KEY): cambia la imagen según la instrucción
   (quitar objetos, cambiar fondo, limpiar, etc.). Modifica el contenido de la foto.
 Sin las claves, el editor usa su mejora local y avisa.
 """
@@ -17,6 +17,7 @@ import urllib.request
 import uuid
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 
 from . import llm
@@ -25,6 +26,7 @@ router = APIRouter(prefix="/api/imageai", tags=["imageai"])
 
 VISION_MODEL = os.getenv("IMAGE_AI_MODEL", "claude-sonnet-5-5").strip() or "claude-sonnet-5-5"
 EDIT_MODEL = os.getenv("IMAGE_EDIT_MODEL", "gpt-image-1").strip() or "gpt-image-1"
+GEMINI_IMAGE_MODEL = os.getenv("GEMINI_IMAGE_MODEL", "gemini-2.5-flash-image").strip() or "gemini-2.5-flash-image"
 MAX_B64 = 8_000_000
 
 SYSTEM = """Eres el asistente de edición de fotos de una herramienta de documentación técnica (redes, fibra óptica, equipos, instalaciones).
@@ -51,13 +53,18 @@ def _anthropic_key() -> str:
     return os.getenv("ANTHROPIC_API_KEY", "").strip()
 
 
+def _gemini_key() -> str:
+    return os.getenv("GEMINI_API_KEY", "").strip().strip('"').strip("'")
+
+
 def _openai_key() -> str:
     return os.getenv("OPENAI_API_KEY", "").strip()
 
 
 @router.get("/status")
 def status():
-    return {"adjust": bool(_anthropic_key()) or bool(llm.free_provider()), "edit": bool(_openai_key())}
+    return {"adjust": bool(_anthropic_key()) or bool(llm.free_provider()), "edit": bool(_openai_key()) or bool(_gemini_key()),
+            "edit_provider": "gemini" if _gemini_key() else ("openai" if _openai_key() else None)}
 
 
 def _num(v, lo, hi, default=0):
@@ -132,10 +139,43 @@ def adjust(body: AdjustIn):
     return {"note": str(res.get("note") or "Listo.")[:400], "adjust": out, "crop": crop, "blur": blur}
 
 
+FIDELITY = ("Esta foto es para un informe técnico de redes y fibra óptica. Haz SOLO lo que se pide y conserva todo lo demás idéntico: "
+            "no cambies ni inventes texto, números, etiquetas, puertos, cables, equipos ni caras. Mantén la proporción de la imagen.")
+
+
+def _gemini_edit(key: str, img: bytes, ctype: str, prompt: str) -> str:
+    """Edición/mejora con Gemini (modelo de imagen). Devuelve un data URL."""
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_IMAGE_MODEL}:generateContent"
+    body = {"contents": [{"role": "user", "parts": [{"text": f"{prompt}\n\n{FIDELITY}"},
+                                                      {"inlineData": {"mimeType": ctype, "data": base64.b64encode(img).decode()}}]}],
+            "generationConfig": {"responseModalities": ["IMAGE", "TEXT"]}}
+    req = urllib.request.Request(url, data=json.dumps(body).encode(), method="POST",
+                                 headers={"Content-Type": "application/json", "x-goog-api-key": key})
+    try:
+        with urllib.request.urlopen(req, timeout=180) as r:
+            data = json.loads(r.read())
+    except urllib.error.HTTPError as e:
+        try:
+            detail = json.loads(e.read().decode("utf-8", "replace")).get("error", {}).get("message", "")
+        except Exception:
+            detail = ""
+        print("[IA imagen] Gemini respondió", e.code, detail[:300], flush=True)
+        hint = " (tu clave de Gemini puede no tener acceso a generar imágenes: ese modelo suele requerir facturación activa)" if e.code in (403, 429) else ""
+        raise HTTPException(502, f"Gemini respondió {e.code}{hint}")
+    except Exception:
+        raise HTTPException(502, "No se pudo contactar a Gemini")
+    for cand in data.get("candidates") or []:
+        for p_ in (cand.get("content") or {}).get("parts") or []:
+            inl = p_.get("inlineData") or p_.get("inline_data")
+            if inl and inl.get("data"):
+                return f"data:{inl.get('mimeType') or inl.get('mime_type') or 'image/png'};base64,{inl['data']}"
+    raise HTTPException(502, "Gemini no devolvió una imagen (puede haber rechazado la instrucción)")
+
+
 @router.post("/edit")
 async def edit(file: UploadFile = File(...), prompt: str = Form(...)):
-    key = _openai_key()
-    if not key:
+    gkey, key = _gemini_key(), _openai_key()
+    if not key and not gkey:
         raise HTTPException(503, "Edición generativa no configurada")
     prompt = prompt.strip()[:900]
     if not prompt:
@@ -144,6 +184,13 @@ async def edit(file: UploadFile = File(...), prompt: str = Form(...)):
     if len(img) > 12_000_000:
         raise HTTPException(413, "Imagen demasiado grande")
     ctype = file.content_type or "image/jpeg"
+    if gkey:
+        try:
+            return {"image": await run_in_threadpool(_gemini_edit, gkey, img, ctype, prompt)}
+        except HTTPException:
+            if not key:
+                raise
+            # Gemini falló y hay OpenAI configurado: se intenta con él
     ext = "png" if "png" in ctype else "jpg"
     boundary = uuid.uuid4().hex
     parts = []
