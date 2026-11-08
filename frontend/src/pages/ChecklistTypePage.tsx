@@ -74,6 +74,7 @@ function Inner({ type }: { type: CkType }) {
   const [log, setLog] = usePersistentState<string>(`checklist.log.${type.id}`, "", mem);
   const [busy, setBusy] = usePersistentState<string | null>(`checklist.busy.${type.id}`, null, mem);
   const [pdf, setPdf] = usePersistentState<{ url: string; filename: string; warnings: string[] } | null>(`checklist.pdf.${type.id}`, null, mem);
+  const [word, setWord] = usePersistentState<{ url: string; filename: string; warnings: string[] } | null>(`checklist.docx.${type.id}`, null, mem);
   const [pdfError, setPdfError] = usePersistentState<string | null>(`checklist.pdfError.${type.id}`, null, mem);
   const [baud, setBaud] = usePersistentState("checklist.baud", 9600);
   const [connected, setConnected] = useState(false);
@@ -303,7 +304,7 @@ function Inner({ type }: { type: CkType }) {
   }
 
   // ---------------- PDF ----------------
-  async function generate() {
+  async function generate(kind: "pdf" | "docx" = "pdf") {
     const sections = data.sections
       .map((sec) => ({
         titulo: sec.titulo,
@@ -319,26 +320,26 @@ function Inner({ type }: { type: CkType }) {
     const vacios = sections.flatMap((x) => x.items).filter((i) => !i.texto.trim() && !i.images.length).length;
     if (vacios && !confirm(`${vacios} ítem(s) están vacíos (sin salida ni captura). ¿Generar de todas formas?`)) return;
 
-    setBusy("pdf");
-    setPdf(null);
+    setBusy(kind);
+    if (kind === "pdf") setPdf(null); else setWord(null);
     setPdfError(null);
     try {
-      const { data: r } = await api.post("/checklist/report-pdf", {
+      const { data: r } = await api.post(kind === "pdf" ? "/checklist/report-pdf" : "/checklist/report-docx", {
         titulo: "CheckList de Claro",
         servicio_label: servicioLabel(data.servicio, data.vendor, s.ancho, s.modelo),
         sot: s.sot, cid: s.cid, cliente: s.cliente, fecha: fechaLarga(s.fecha),
         logo_id: logo.id, logo_path: logo.id ? null : logo.path || null,
         sections,
       });
-      setPdf({ url: r.url, filename: r.filename, warnings: r.warnings ?? [] });
+      (kind === "pdf" ? setPdf : setWord)({ url: r.url, filename: r.filename, warnings: r.warnings ?? [] });
       if (s.sot.trim()) {
         void syncClient({
           sot: s.sot, nombre: s.cliente, fecha: s.fecha, cid: s.cid, datos: datosSot,
-          reporte: { tipo: "checklist", nombre: type.nombre, filename: r.filename, url: r.url },
+          reporte: { tipo: "checklist", nombre: type.nombre + (kind === "docx" ? " (Word)" : ""), filename: r.filename, url: r.url },
         }).catch(() => {});
       }
     } catch (e) {
-      setPdfError(apiErrorMessage(e, "No se pudo generar el PDF."));
+      setPdfError(apiErrorMessage(e, kind === "pdf" ? "No se pudo generar el PDF." : "No se pudo generar el Word."));
     } finally {
       setBusy(null);
     }
@@ -347,7 +348,7 @@ function Inner({ type }: { type: CkType }) {
   function newReport() {
     if (confirm("¿Empezar un checklist nuevo?\n\nSe borran los datos, salidas y capturas. El logo se conserva.")) {
       setS(freshRun(data));
-      setPdf(null);
+      setPdf(null); setWord(null);
       setLog("");
     }
   }
@@ -374,7 +375,7 @@ function Inner({ type }: { type: CkType }) {
             <li>El <b>modelo</b> y el <b>ancho de banda</b> se leen solos de la configuración; si no, escríbelos.</li>
             <li>Los ítems de <b>TEXTO</b> salen como texto en el PDF; los de <b>FOTO</b> con tus capturas (pega con Ctrl+V o sube la imagen). Speedtest e iperf van como captura.</li>
             <li>Sin cable de consola, pega la salida del comando a mano en el cuadro de cada ítem.</li>
-            <li>Pulsa <b>Generar PDF</b>. El archivo se llama <i>checklist_sot_&lt;sot&gt;-&lt;cliente&gt;.pdf</i>.</li>
+            <li>Pulsa <b>Generar PDF</b> (o <b>Generar Word</b> para tenerlo editable). El archivo se llama <i>checklist_sot_&lt;sot&gt;-&lt;cliente&gt;.pdf</i>.</li>
             <li>En <b>Estructura</b> puedes agregar, quitar o reordenar secciones, ítems y comandos.</li>
           </ol>
         </details>
@@ -661,8 +662,11 @@ function Inner({ type }: { type: CkType }) {
           ))}
 
           <div className="card flex flex-wrap items-center gap-3">
-            <button className="btn-primary" onClick={generate} disabled={!!busy}>
+            <button className="btn-primary" onClick={() => generate("pdf")} disabled={!!busy}>
               {busy === "pdf" ? "Generando PDF..." : "Generar PDF"}
+            </button>
+            <button className="btn-secondary" onClick={() => generate("docx")} disabled={!!busy} title="El mismo CheckList en Word, editable">
+              {busy === "docx" ? "Generando Word..." : "Generar Word"}
             </button>
             {pdfError && <span className="text-sm text-red-600">{pdfError}</span>}
             {pdf && (
@@ -670,7 +674,12 @@ function Inner({ type }: { type: CkType }) {
                 Descargar {pdf.filename}
               </a>
             )}
-            {pdf?.warnings.map((w) => <p key={w} className="w-full text-xs text-amber-600">{w}</p>)}
+            {word && (
+              <a href={word.url} target="_blank" rel="noreferrer" download={word.filename} className="text-sm font-medium text-brand-600 hover:underline break-all">
+                Descargar {word.filename}
+              </a>
+            )}
+            {[...(pdf?.warnings ?? []), ...(word?.warnings ?? [])].filter((w, i, a) => a.indexOf(w) === i).map((w) => <p key={w} className="w-full text-xs text-amber-600">{w}</p>)}
           </div>
         </>
       )}

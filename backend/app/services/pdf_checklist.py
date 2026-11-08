@@ -55,16 +55,19 @@ def _draw_header_footer(c, page_num, meta):
     logo = logo_reader(meta.get("logo"))
     if logo is not None:
         try:
+            # El logo va DENTRO de la cabecera (entre el borde de la hoja y la raya a HEADER_H), con aire arriba y abajo.
+            # Antes la caja bajaba hasta 3,3 cm y el logo cruzaba la raya.
+            box_h = HEADER_H - 1.0 * cm
             c.drawImage(
-                logo, PAGE_W - MARGIN - 4.6 * cm, top - MARGIN - 1.7 * cm,
-                width=4.6 * cm, height=1.7 * cm,
-                preserveAspectRatio=True, anchor="ne", mask="auto",
+                logo, PAGE_W - MARGIN - 4.6 * cm, top - HEADER_H + 0.3 * cm,
+                width=4.6 * cm, height=box_h,
+                preserveAspectRatio=True, anchor="e", mask="auto",
             )
         except Exception:
             pass
 
     x = MARGIN
-    y = top - MARGIN - 0.3 * cm
+    y = top - 1.35 * cm   # el bloque de texto queda dentro de la cabecera, sin tocar la raya
     c.setFillColor(TITLE_COLOR)
     c.setFont("Helvetica-Bold", 13)
     c.drawString(x, y, _safe(meta.get("titulo") or "CheckList de Claro"))

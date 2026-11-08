@@ -14,6 +14,7 @@ from reportlab.pdfgen import canvas
 
 K = 0.75          # puntos de PDF por px del lienzo
 PT = 1.2698       # px por punto de fuente (igual que en el PPTX)
+from app.services.diagram_fit import PAD_X  # noqa: E402
 _HEX = re.compile(r"^#?([0-9a-fA-F]{6})$")
 
 
@@ -88,6 +89,8 @@ def _dash(c, dash):
 
 
 def build_pdf(doc: dict, load_icon: Callable[[str], bytes | None]) -> bytes:
+    from app.services.diagram_fit import fit_doc
+    doc = fit_doc(doc)
     W, H = float(doc.get("w", 1920)), float(doc.get("h", 1080))
     buf = io.BytesIO()
     c = canvas.Canvas(buf, pagesize=(W * K, H * K))
@@ -109,7 +112,9 @@ def build_pdf(doc: dict, load_icon: Callable[[str], bytes | None]) -> bytes:
                 if el.get("fill"):
                     c.setFillColor(_col(el["fill"]))
                     c.rect(el["x"] * K, -(el["y"] + el["h"]) * K, el["w"] * K, el["h"] * K, fill=1, stroke=0)
-                _text(c, el, el["x"], el["y"], el["w"], el["h"])
+                    _text(c, el, el["x"], el["y"], el["w"], el["h"], anchor_mid=True, inner_pad=PAD_X)
+                else:
+                    _text(c, el, el["x"], el["y"], el["w"], el["h"])
             rotated(el, draw)
         elif t == "rect":
             def draw(el=el):

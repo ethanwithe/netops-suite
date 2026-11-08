@@ -19,6 +19,8 @@ from app.services import telegram_store
 
 def _store(kind: str, name: str, data: bytes) -> None:
     ctype = mimetypes.guess_type(name)[0] or "application/octet-stream"
+    if name.lower().endswith(".docx"):
+        ctype = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     # Con Telegram configurado el contenido va allá y en la base solo queda la referencia;
     # si Telegram falla, se guarda en la base como antes (no se pierde nada).
     ref = telegram_store.upload(name, data)
