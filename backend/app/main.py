@@ -5,6 +5,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.gzip import GZipMiddleware
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.config import CORS_ORIGINS
@@ -199,6 +200,16 @@ class SPAStaticFiles(StaticFiles):
     """
 
     async def get_response(self, path: str, scope):
+        resp = await self._get(path, scope)
+        # Los archivos de /assets llevan el hash en el nombre (cambian en cada versión): se guardan un año.
+        # index.html nunca se guarda, para que un despliegue nuevo se vea al recargar.
+        if path.startswith("assets/") and resp.status_code == 200:
+            resp.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        elif resp.status_code == 200 and "text/html" in resp.headers.get("content-type", ""):
+            resp.headers["Cache-Control"] = "no-cache"
+        return resp
+
+    async def _get(self, path: str, scope):
         try:
             response = await super().get_response(path, scope)
         except StarletteHTTPException as exc:
@@ -217,6 +228,23 @@ class SPAStaticFiles(StaticFiles):
             return False
         return "." not in path.rsplit("/", 1)[-1]
 
+
+class FastGZip:
+    """Comprime (gzip) JS, CSS, HTML y JSON: la página baja unas 3-4 veces menos. No toca imágenes, PDF/ZIP ni audio."""
+
+    SKIP = ("/api/files", "/api/tools", "/api/mascot/tts", "/api/diagrams/icons", "/api/auth/avatar", "/api/logos", "/api/export")
+
+    def __init__(self, app):
+        self.plain = app
+        self.gz = GZipMiddleware(app, minimum_size=1024)
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http" and not scope["path"].startswith(self.SKIP):
+            return await self.gz(scope, receive, send)
+        return await self.plain(scope, receive, send)
+
+
+app.add_middleware(FastGZip)
 
 FRONTEND_DIST = Path(__file__).resolve().parent / "static_frontend"
 if FRONTEND_DIST.is_dir():

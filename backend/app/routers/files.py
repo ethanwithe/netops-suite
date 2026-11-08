@@ -56,7 +56,8 @@ def get_upload(filename: str):
     path = filestore.ensure_upload(filename)
     if not path.is_file():
         raise HTTPException(404, "Archivo no encontrado.")
-    return FileResponse(str(path))
+    # el nombre es un uuid y el contenido nunca cambia: el navegador la guarda y no vuelve a pedirla (antes: no-store)
+    return FileResponse(str(path), headers={"Cache-Control": "private, max-age=604800, immutable"})
 
 
 @router.get("/outputs/{filename}")

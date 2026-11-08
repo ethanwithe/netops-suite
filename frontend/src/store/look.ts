@@ -25,11 +25,20 @@ export const LOOK_DEFAULTS: Look = { scene: "none", drops: true, bgHue: null, dr
 const KEY = "netops.look";
 const listeners = new Set<() => void>();
 
+/** PC o celular modesto (pocos núcleos/poca memoria) o «reducir movimiento»: arranca sin gotas animadas ni cristal líquido. */
+function modest(): boolean {
+  try {
+    const n = navigator as Navigator & { deviceMemory?: number };
+    return (n.hardwareConcurrency ?? 8) <= 4 || (n.deviceMemory ?? 8) <= 4 || matchMedia("(prefers-reduced-motion: reduce)").matches;
+  } catch { return false; }
+}
+
 function read(): Look {
+  const base: Look = modest() ? { ...LOOK_DEFAULTS, drops: false, glass: false } : { ...LOOK_DEFAULTS };
   try {
     const v = JSON.parse(localStorage.getItem(KEY) || "{}");
-    return { ...LOOK_DEFAULTS, ...v };
-  } catch { return { ...LOOK_DEFAULTS }; }
+    return { ...base, ...v };
+  } catch { return base; }
 }
 let look: Look = read();
 

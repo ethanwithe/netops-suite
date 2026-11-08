@@ -5,6 +5,7 @@ Quién es el usuario de cada petición y qué puede hacer. Lo usan el middleware
 """
 
 import re
+import time
 
 from fastapi import Depends, HTTPException, Request, WebSocket, WebSocketException
 from sqlalchemy.orm import Session
@@ -67,23 +68,55 @@ def required_feature(path: str, method: str) -> str | None:
     return None
 
 
+# Caché de 5 s de quién es el dueño de una sesión: una página abre ~10 peticiones a la vez y cada una
+# consultaba el usuario en la base. Las reglas por hora (vigencia, horario) se siguen evaluando en cada petición.
+_AUTH_TTL = 5.0
+_AUTH_CACHE: dict = {}
+
+
+def clear_auth_cache() -> None:
+    _AUTH_CACHE.clear()
+
+
+def _cached_user(db, token: str):
+    now = time.monotonic()
+    hit = _AUTH_CACHE.get(token)
+    if hit and now - hit[0] < _AUTH_TTL:
+        return hit[1]
+    user = user_from_token(db, token)
+    if user:
+        db.expunge(user)
+        if len(_AUTH_CACHE) > 500:
+            _AUTH_CACHE.clear()
+        _AUTH_CACHE[token] = (now, user)
+    else:
+        _AUTH_CACHE.pop(token, None)
+    return user
+
+
 def check_request(path: str, method: str, token: str):
     """Devuelve (user, error) donde error = (status, code, mensaje) o None."""
+    if token:
+        hit = _AUTH_CACHE.get(token)
+        if hit and time.monotonic() - hit[0] < _AUTH_TTL:
+            return _verdict(hit[1], path, method)
     db = SessionLocal()
     try:
-        user = user_from_token(db, token)
-        if not user:
-            return None, (401, "no_session", "Inicia sesión para continuar.")
-        problem = security.access_problem(user)
-        if problem:
-            return None, (403, "no_access", problem)
-        feat = required_feature(path, method)
-        if feat and not security.has_feature(user, feat):
-            return None, (403, "no_permission", f"No tienes permiso para: {security.FEATURES.get(feat, feat)}.")
-        db.expunge(user)
-        return user, None
+        return _verdict(_cached_user(db, token) if token else None, path, method)
     finally:
         db.close()
+
+
+def _verdict(user, path: str, method: str):
+    if not user:
+        return None, (401, "no_session", "Inicia sesión para continuar.")
+    problem = security.access_problem(user)
+    if problem:
+        return None, (403, "no_access", problem)
+    feat = required_feature(path, method)
+    if feat and not security.has_feature(user, feat):
+        return None, (403, "no_permission", f"No tienes permiso para: {security.FEATURES.get(feat, feat)}.")
+    return user, None
 
 
 def current_user(request: Request, db: Session = Depends(get_db)) -> models.User:

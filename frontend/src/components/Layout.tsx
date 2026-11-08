@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { Suspense, lazy, useEffect, useRef, useState } from "react";
+import Spinner from "./Spinner";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import WindowEditor from "./WindowEditor";
 import { createWindow, usePhotoWindows, windowRoute } from "../store/photoWindows";
@@ -7,7 +8,8 @@ import NewChecklistModal from "./NewChecklistModal";
 import { checklistRoute, createChecklistType, useChecklistTypes } from "../store/checklistTypes";
 import { usePersistentState } from "../store/persistentState";
 import ThemeSwitcher from "./ThemeSwitcher";
-import Mascot from "../mascot/Mascot";
+// Bit se carga aparte, después de que la pantalla ya apareció
+const Mascot = lazy(() => import("../mascot/Mascot"));
 import { Drop } from "./WaterDrops";
 import Backdrop from "./Backdrop";
 import TabBar, { TabGroup } from "./TabBar";
@@ -100,6 +102,8 @@ export default function Layout() {
   const [desktopOpen, setDesktopOpen] = usePersistentState("layout.sidebar", true);
 
   useEffect(() => initLiquid(), []);
+  // ubicación lista de antemano (solo si el permiso ya estaba concedido): la cámara y el sello no esperan
+  useEffect(() => { const t = window.setTimeout(() => { void import("../utils/photoStamp").then((m) => m.warmPlace()).catch(() => {}); }, 1500); return () => window.clearTimeout(t); }, []);
 
   // Al cambiar de pantalla se cierra el panel (modo celular).
   useEffect(() => setOpen(false), [pathname]);
@@ -265,12 +269,12 @@ export default function Layout() {
         )}
         <main ref={mainRef} className="flex-1 overflow-y-auto overflow-x-hidden">
           <div key={pathname} className="view-enter page-pad w-full max-lg:pb-28">
-            <Outlet />
+            <Suspense fallback={<div className="flex justify-center py-16"><Spinner className="h-7 w-7 text-brand-600" /></div>}><Outlet /></Suspense>
           </div>
         </main>
       </div>
       <TabBar groups={tabGroups} menuOpen={open} onMenu={() => setOpen((o) => !o)} />
-      {can(me, "asistente") && <Mascot />}
+      {can(me, "asistente") && <Suspense fallback={null}><Mascot /></Suspense>}
       {creatingCk && (
         <NewChecklistModal
           onCancel={() => setCreatingCk(false)}
