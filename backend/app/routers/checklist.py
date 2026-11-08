@@ -172,10 +172,8 @@ def _resolve_upload_path(rel_path: str) -> str:
     return str(filestore.ensure_upload(os.path.basename(rel_path)))
 
 
-@router.post("/report-pdf")
-def generate_checklist_report_pdf(
-    payload: schemas.ChecklistReportRequest, db: Session = Depends(get_db)
-):
+def _prepare_report(payload: schemas.ChecklistReportRequest, db: Session):
+    """Ítems con sus capturas ya resueltas en disco, metadatos y avisos (lo usan el PDF y el Word)."""
     warnings: list = []
     sections = []
     for sec in payload.sections:
@@ -201,21 +199,49 @@ def generate_checklist_report_pdf(
         "equipo": payload.equipo,
         "logo": resolve_logo(db, payload.logo_id, payload.logo_path, "", warnings),
     }
+    return meta, sections, warnings
 
-    out_name = build_checklist_filename(payload.sot, payload.cliente)
+
+def _publish(out_name: str, build, warnings: list, pages=None):
+    """Genera el archivo en un temporal, lo mueve a su sitio, lo guarda (base de datos/Telegram) y responde."""
+    from urllib.parse import quote
     out_path = OUTPUTS_DIR / out_name
-    tmp_path = OUTPUTS_DIR / f".{out_name}.{os.getpid()}.tmp"
+    tmp_path = OUTPUTS_DIR / f".{os.getpid()}.{out_name}.tmp"
     try:
-        _, pages = build_checklist_pdf(meta, sections, str(tmp_path))
+        res = build(str(tmp_path))
         os.replace(tmp_path, out_path)
         filestore.save_output(out_path)
     finally:
         if tmp_path.exists():
             tmp_path.unlink()
-    from urllib.parse import quote
     return {
         "filename": out_name,
         "url": f"/api/files/outputs/{quote(out_name)}",
-        "pages": pages,
+        "pages": res[1] if isinstance(res, tuple) and len(res) > 1 else pages,
         "warnings": warnings,
     }
+
+
+@router.post("/report-pdf")
+def generate_checklist_report_pdf(
+    payload: schemas.ChecklistReportRequest, db: Session = Depends(get_db)
+):
+    meta, sections, warnings = _prepare_report(payload, db)
+    out_name = build_checklist_filename(payload.sot, payload.cliente)
+    return _publish(out_name, lambda path: build_checklist_pdf(meta, sections, path), warnings)
+
+
+@router.post("/report-docx")
+def generate_checklist_report_docx(
+    payload: schemas.ChecklistReportRequest, db: Session = Depends(get_db)
+):
+    """El mismo CheckList en Word (.docx), editable."""
+    from app.services.docx_checklist import build_checklist_docx
+    meta, sections, warnings = _prepare_report(payload, db)
+    out_name = build_checklist_filename(payload.sot, payload.cliente)[:-4] + ".docx"
+    try:
+        return _publish(out_name, lambda path: build_checklist_docx(meta, sections, path), warnings)
+    except HTTPException:
+        raise
+    except Exception as e:  # imagen o dato que Word no pudo armar
+        raise HTTPException(400, f"No se pudo armar el Word: {e}")

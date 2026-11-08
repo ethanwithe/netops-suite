@@ -66,7 +66,12 @@ def get_output(filename: str):
     path = filestore.ensure_output(filename) or (OUTPUTS_DIR / filename)
     if not path.is_file():
         raise HTTPException(404, "Archivo no encontrado.")
-    media = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+    ext = filename.lower().rsplit(".", 1)[-1]
+    media = {
+        "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    }.get(ext) or mimetypes.guess_type(filename)[0] or "application/octet-stream"
     return FileResponse(str(path), media_type=media, filename=filename)
 
 
