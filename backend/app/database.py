@@ -37,6 +37,9 @@ def _connect_args(url: str) -> dict:
 engine = create_engine(
     DATABASE_URL,
     pool_pre_ping=True,
+    pool_size=10,        # al abrir una pantalla llegan ~10 peticiones a la vez: con el pool por defecto (5) esperaban turno
+    max_overflow=20,
+    pool_recycle=1800,
     connect_args=_connect_args(DATABASE_URL),
 )
 

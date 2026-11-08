@@ -1,26 +1,28 @@
-import { useEffect } from "react";
+import { lazy, useEffect } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import Layout from "./components/Layout";
 import Spinner from "./components/Spinner";
-import GraficaPage from "./pages/GraficaPage";
-import DiagramIconsPage from "./pages/DiagramIconsPage";
 import { TEMPLATES } from "./diagram/templates";
-import PlantillasPage from "./pages/PlantillasPage";
-import ChecklistTypePage from "./pages/ChecklistTypePage";
-import ChecklistHome from "./pages/ChecklistHome";
-import ClientsPage from "./pages/ClientsPage";
-import SaturadorPage from "./pages/SaturadorPage";
-import FotograficoPage from "./pages/FotograficoPage";
-import CustomFotograficoPage from "./pages/CustomFotograficoPage";
-import PoderJudicialPage from "./pages/PoderJudicialPage";
 import LoginPage, { ForcePassword } from "./pages/LoginPage";
-import DashboardPage from "./pages/DashboardPage";
-import ProfilePage from "./pages/ProfilePage";
-import AgendaPage from "./pages/AgendaPage";
-import BitReportsPage from "./pages/BitReportsPage";
-import AdminUsersPage from "./pages/AdminUsersPage";
-import ActivityPage from "./pages/ActivityPage";
 import { can, loadMe, useAuth } from "./store/auth";
+
+// Cada pantalla se descarga solo cuando la abres (antes todo se bajaba de golpe al entrar)
+const GraficaPage = lazy(() => import("./pages/GraficaPage"));
+const DiagramIconsPage = lazy(() => import("./pages/DiagramIconsPage"));
+const PlantillasPage = lazy(() => import("./pages/PlantillasPage"));
+const ChecklistTypePage = lazy(() => import("./pages/ChecklistTypePage"));
+const ChecklistHome = lazy(() => import("./pages/ChecklistHome"));
+const ClientsPage = lazy(() => import("./pages/ClientsPage"));
+const SaturadorPage = lazy(() => import("./pages/SaturadorPage"));
+const FotograficoPage = lazy(() => import("./pages/FotograficoPage"));
+const CustomFotograficoPage = lazy(() => import("./pages/CustomFotograficoPage"));
+const PoderJudicialPage = lazy(() => import("./pages/PoderJudicialPage"));
+const DashboardPage = lazy(() => import("./pages/DashboardPage"));
+const ProfilePage = lazy(() => import("./pages/ProfilePage"));
+const AgendaPage = lazy(() => import("./pages/AgendaPage"));
+const BitReportsPage = lazy(() => import("./pages/BitReportsPage"));
+const AdminUsersPage = lazy(() => import("./pages/AdminUsersPage"));
+const ActivityPage = lazy(() => import("./pages/ActivityPage"));
 
 /** Muestra la página solo si el usuario tiene esa función (o es administrador). */
 function Need({ feature, admin, children }: { feature?: string; admin?: boolean; children: JSX.Element }) {
@@ -34,6 +36,12 @@ function Need({ feature, admin, children }: { feature?: string; admin?: boolean;
 export default function App() {
   const { me, loading } = useAuth();
   useEffect(() => { void loadMe(); }, []);
+  // Con la sesión iniciada y el navegador libre, se adelantan las pantallas más usadas para que abran al instante
+  useEffect(() => {
+    if (!me) return;
+    const ric = (window as unknown as { requestIdleCallback?: (f: () => void) => void }).requestIdleCallback ?? ((f: () => void) => window.setTimeout(f, 1500));
+    ric(() => { void import("./pages/ChecklistTypePage"); void import("./pages/FotograficoPage"); void import("./pages/ClientsPage"); void import("./pages/GraficaPage"); });
+  }, [me?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (loading) {
     return <div className="flex min-h-[100dvh] items-center justify-center"><Spinner className="h-8 w-8 text-brand-600" /></div>;

@@ -214,6 +214,12 @@ Nota: logos, íconos de la Gráfica y fotos de perfil siguen en la base (son peq
 ### Modelos de Gemini que Google retira
 Si un modelo de Gemini da 404 («no longer available»), el servidor consulta la lista de modelos de tu clave, elige el flash estable más nuevo (texto o imagen) y reintenta, y lo recuerda hasta el próximo despliegue. Por defecto usa `gemini-3.8-flash`; puedes fijar otro con `GEMINI_MODEL` en Railway.
 
+### Velocidad
+- **Ubicación del sello:** la dirección sale en dos fases (zona en ~0,3 s y luego la calle exacta, que queda en caché) y, si el permiso de ubicación ya estaba concedido, la posición se calienta al abrir la página para que la cámara no espere. Una lectura vieja que el navegador tenía guardada nunca se imprime en el sello.
+- **Servidor:** caché de 5 s de la sesión en el middleware (antes cada petición consultaba el usuario dos veces), pool de conexiones más grande (10+20) y caché de un día para las fotos subidas (antes `no-store`: se bajaban de nuevo en cada vista).
+- **Navegador:** las fuentes de Google ya no bloquean el primer pintado; en equipos modestos (≤4 núcleos, ≤4 GB o «reducir movimiento») arrancan sin gotas animadas ni cristal líquido (se activan en *Aspecto*).
+- **Railway (recomendado):** usa en `DATABASE_URL` la referencia interna `${{Postgres.DATABASE_URL}}` (host `postgres.railway.internal`), no la URL pública `*.proxy.rlwy.net`: cada consulta es mucho más rápida. Con `WEB_CONCURRENCY=2` el servidor atiende con 2 procesos y un PDF pesado ya no frena al resto.
+
 ### Razonamiento de Bit
 Bit usa una guía de razonamiento (contexto de la conversación, pasos y verificación, pregunta de aclaración si es ambiguo) y conocimiento de redes/fibra (Huawei, Cisco, Fortinet, MikroTik, GPON). Con Gemini 2.5 usa razonamiento ligero; recuerda los últimos 20 mensajes y puedes pegarle la salida de un comando (hasta 8000 caracteres) para que la interprete. Con `ANTHROPIC_API_KEY` o con `GEMINI_API_KEY` (búsqueda de Google integrada, el modelo decide cuándo buscar) Bit puede buscar en la web; con Groq no hay búsqueda. `MASCOT_WEB=0` la apaga.
 
