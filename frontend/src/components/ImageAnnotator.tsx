@@ -137,14 +137,19 @@ function drawPoly(ctx: CanvasRenderingContext2D, o: Poly, s: number, lw: number)
   if (o.arrow && !o.closed) {
     const size = Math.max(lw * 4, 12);
     const tip = flat[flat.length - 1];
-    // punto de la línea a 0,75·cabeza de la punta: la línea termina ahí para que la punta quede limpia
-    let acc = 0, k = flat.length - 1;
-    while (k > 0 && acc < size * 0.75) { acc += dist(flat[k], flat[k - 1]); k--; }
-    const base = flat[k];
-    if (dist(base, tip) > 1) {
-      head = { tip, ang: Math.atan2(tip.y - base.y, tip.x - base.x), size };
+    // la línea termina a 0,75·cabeza de la punta (interpolando sobre el último tramo) para que la punta quede limpia
+    let need = size * 0.75, k = flat.length - 1;
+    while (k > 0 && dist(flat[k], flat[k - 1]) < need) { need -= dist(flat[k], flat[k - 1]); k--; }
+    let base: Point;
+    if (k > 0) {
+      const a = flat[k - 1], b = flat[k], d = dist(a, b) || 1, t = need / d;
+      base = { x: b.x + (a.x - b.x) * t, y: b.y + (a.y - b.y) * t };
       flat = [...flat.slice(0, k), base];
+    } else {
+      base = flat[0];
+      flat = [flat[0], flat[0]];
     }
+    if (dist(base, tip) > 1) head = { tip, ang: Math.atan2(tip.y - base.y, tip.x - base.x), size };
   }
 
   ctx.beginPath();
@@ -454,6 +459,7 @@ export default function ImageAnnotator({ imageUrl, onClose, onSaved }: Props) {
 
   const [panel, setPanel] = useState<null | "adjust" | "ai">(null);
   const [menu, setMenu] = useState<null | "img" | "more">(null);
+  const [moreAt, setMoreAt] = useState({ top: 80, right: 8 });
   const [aiStatus, setAiStatus] = useState<{ adjust: boolean; edit: boolean; edit_provider?: string | null } | null>(null);
   const [aiPrompt, setAiPrompt] = useState("");
   const [aiBusy, setAiBusy] = useState(false);
@@ -1121,11 +1127,11 @@ export default function ImageAnnotator({ imageUrl, onClose, onSaved }: Props) {
           )}
           {tool === "select" && selected && (
             <div className="relative ml-auto shrink-0">
-              <button className={ib(menu === "more")} onClick={() => setMenu(menu === "more" ? null : "more")}>Más opciones ▾</button>
+              <button className={ib(menu === "more")} onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setMoreAt({ top: r.bottom + 4, right: Math.max(8, window.innerWidth - r.right) }); setMenu(menu === "more" ? null : "more"); }}>Más opciones ▾</button>
               {menu === "more" && (
                 <>
                   <div className="fixed inset-0 z-10" onClick={() => setMenu(null)} />
-                  <div role="menu" className="absolute right-0 top-full z-20 mt-1 w-52 rounded-lg border border-slate-200 bg-white p-1 shadow-lg">
+                  <div role="menu" style={{ top: moreAt.top, right: moreAt.right }} className="fixed z-20 w-52 rounded-lg border border-slate-200 bg-white p-1 shadow-lg">
                     {selPoly && <button className={mi} disabled={selVertex == null} onClick={() => { if (selVertex != null) removeVertex(selVertex); setMenu(null); }}>Quitar el punto elegido</button>}
                     {selPoly && selPoly.pts.length >= 3 && <button className={mi} onClick={() => { patchPoly({ closed: !selPoly.closed, arrow: selPoly.closed ? selPoly.arrow : false }); setMenu(null); }}>{selPoly.closed ? "Abrir figura" : "Cerrar figura"}</button>}
                     <button className={mi} onClick={() => { scaleSelected(1.15); setMenu(null); }}>Agrandar</button>
