@@ -157,7 +157,29 @@ def _grad(c):
     return c.get("fill")
 
 
+def clean_icon(data: bytes) -> bytes | None:
+    """Reescribe el icono como PNG limpio (RGBA, sin perfil de color ni formatos raros).
+    PowerPoint dibuja mal algunos PNG/GIF/WEBP (paleta con transparencia, 16 bits, perfiles ICC): salen como un bloque
+    de color liso por encima de todo. Pasarlos por aquí lo evita; además admite WEBP, que PowerPoint no lee."""
+    try:
+        from PIL import Image, ImageOps
+        im = Image.open(io.BytesIO(data))
+        im = ImageOps.exif_transpose(im)
+        im.load()
+        if max(im.size) > 2000:
+            k = 2000 / max(im.size)
+            im = im.resize((max(1, round(im.width * k)), max(1, round(im.height * k))))
+        im = im.convert("RGBA")
+        out = io.BytesIO()
+        im.save(out, "PNG")
+        return out.getvalue()
+    except Exception:
+        return data  # que python-pptx decida si lo entiende
+
+
 def build_pptx(doc: dict, load_icon) -> bytes:
+    from app.services.diagram_fit import fit_doc, PAD_X
+    doc = fit_doc(doc)
     prs = Presentation()
     W, H = doc.get("w", 1920), doc.get("h", 1080)
     prs.slide_width, prs.slide_height = Emu(emu(W)), Emu(emu(H))
@@ -188,6 +210,9 @@ def build_pptx(doc: dict, load_icon) -> bytes:
             tf.margin_left = tf.margin_right = tf.margin_top = tf.margin_bottom = 0
             if el.get("fill"):
                 _set_sp_fill(tb, el["fill"])
+                # sobre el color la letra no toca el borde: aire a los lados y centrada en vertical
+                tf.margin_left = tf.margin_right = Emu(emu(PAD_X))
+                tf.vertical_anchor = MSO_ANCHOR.MIDDLE
             _fill_paragraphs(tf, el.get("text", ""), size=el.get("size", 12), bold=el.get("bold"), italic=el.get("italic"),
                              color=el.get("color") or "#000000", align=el.get("align", "l"), line_h=el.get("lineH"), spc_bef=el.get("spcBef"))
             _rotate(tb, el.get("rot"))
@@ -197,6 +222,9 @@ def build_pptx(doc: dict, load_icon) -> bytes:
                       HEAD.get(el.get("head") or "none", ""), HEAD.get(el.get("tail") or "none", ""))
         elif t == "image":
             data = load_icon(el.get("icon"))
+            if not data:
+                continue
+            data = clean_icon(data)
             if not data:
                 continue
             pic = sh.add_picture(io.BytesIO(data), emu(el["x"]), emu(el["y"]), emu(el["w"]), emu(el["h"]))
