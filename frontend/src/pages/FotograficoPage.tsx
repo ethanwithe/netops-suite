@@ -102,7 +102,7 @@ export default function FotograficoPage({
   onConfigure?: () => void;
 }) {
   // La pestaña activa se recuerda al ir a otra página y volver.
-  const [tab, setTab] = usePersistentState<"run" | "items" | "opc">(`fotografico.tab.${tipo}`, "run");
+  const [tab, setTab] = usePersistentState<"run" | "items" | "opc" | "sec">(`fotografico.tab.${tipo}`, "run");
   const [items, setItems] = useState<PhotoItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
