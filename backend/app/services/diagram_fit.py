@@ -34,6 +34,8 @@ def fit_filled_text(el: dict) -> dict:
         e["lineH"] = round(fpx * 1.15, 2)
     if not e.get("fill"):
         return e
+    if "\n" not in str(e["text"]):
+        e.pop("lineH", None)   # una sola línea sobre color: interlineado normal (el fijo la sube y se sale de la caja en PowerPoint)
     lines = str(e["text"]).split("\n")
     lead = float(e["lineH"]) if e.get("lineH") else fpx * 1.2
     spc = float(e.get("spcBef") or 0)

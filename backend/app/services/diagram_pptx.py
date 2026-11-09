@@ -74,24 +74,42 @@ def _fill_xml(fill):
     return g
 
 
+# Orden que exige el esquema dentro de <p:spPr>: xfrm, geometría, RELLENO, LÍNEA, efectos… PowerPoint ignora (y usa el
+# estilo azul con degradado de la plantilla) lo que llegue desordenado; LibreOffice no es tan estricto.
+_AFTER_FILL = ("a:ln", "a:effectLst", "a:effectDag", "a:scene3d", "a:sp3d", "a:extLst")
+_AFTER_LINE = ("a:effectLst", "a:effectDag", "a:scene3d", "a:sp3d", "a:extLst")
+
+
+def _insert_ordered(spPr, new, after_tags):
+    for tag in after_tags:
+        nxt = spPr.find(qn(tag))
+        if nxt is not None:
+            nxt.addprevious(new)
+            return
+    spPr.append(new)
+
+
+def _drop_style(shape):
+    """Quita <p:style> (relleno/línea/fuente por defecto del tema) para que nada azul se cuele por detrás."""
+    st = shape._element.find(qn("p:style"))
+    if st is not None:
+        shape._element.remove(st)
+
+
 def _set_sp_fill(shape, fill):
     spPr = shape._element.spPr
     for tag in ("a:noFill", "a:solidFill", "a:gradFill", "a:blipFill", "a:pattFill"):
         for e in spPr.findall(qn(tag)):
             spPr.remove(e)
-    new = _fill_xml(fill)
-    ln = spPr.find(qn("a:ln"))
-    if ln is not None:
-        ln.addprevious(new)
-    else:
-        spPr.append(new)
+    _insert_ordered(spPr, _fill_xml(fill), _AFTER_FILL)
 
 
 def _set_line(shape, color, width_px, dash="", head="", tail=""):
     spPr = shape._element.spPr
     for e in spPr.findall(qn("a:ln")):
         spPr.remove(e)
-    ln = etree.SubElement(spPr, qn("a:ln"))
+    ln = etree.Element(qn("a:ln"))
+    _insert_ordered(spPr, ln, _AFTER_LINE)
     if not color or not width_px:
         etree.SubElement(ln, qn("a:noFill"))
         return
@@ -195,6 +213,7 @@ def build_pptx(doc: dict, load_icon) -> bytes:
             s.shadow.inherit = False
             _set_sp_fill(s, el.get("fill"))
             _set_line(s, el.get("stroke"), el.get("strokeW", 0), el.get("dash", ""))
+            _drop_style(s)
             if (el.get("text") or "").strip():
                 tf = s.text_frame
                 tf.word_wrap = True
@@ -220,6 +239,7 @@ def build_pptx(doc: dict, load_icon) -> bytes:
             c = sh.add_connector(MSO_CONNECTOR.STRAIGHT, emu(el["x1"]), emu(el["y1"]), emu(el["x2"]), emu(el["y2"]))
             _set_line(c, el.get("stroke", "#000000"), el.get("strokeW", 1), el.get("dash", ""),
                       HEAD.get(el.get("head") or "none", ""), HEAD.get(el.get("tail") or "none", ""))
+            _drop_style(c)
         elif t == "image":
             data = load_icon(el.get("icon"))
             if not data:
