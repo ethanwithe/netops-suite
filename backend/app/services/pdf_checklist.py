@@ -37,6 +37,18 @@ TEXT_SIZE = 6.8
 TEXT_LEAD = 8.0
 
 
+def _draw_colored(c, x, y, line, base, dark, first=False):
+    """Dibuja una línea con colores tipo MobaXterm (IPs, interfaces, up/down, prompt)."""
+    from app.services.term_colors import line_segments
+    for txt, rgb in line_segments(line, dark, first):
+        if rgb:
+            c.setFillColorRGB(rgb[0] / 255, rgb[1] / 255, rgb[2] / 255)
+        else:
+            c.setFillColor(base)
+        c.drawString(x, y, txt)
+        x += c.stringWidth(txt, TEXT_FONT, TEXT_SIZE)
+
+
 def _safe(text) -> str:
     """Las fuentes estándar solo entienden latin-1; lo demás se cambia por '?'."""
     return str(text or "").replace("\t", "    ").encode("latin-1", "replace").decode("latin-1")
@@ -160,14 +172,14 @@ def build_checklist_pdf(meta, sections, out_path, progress_cb=None):
                     if draw:
                         c.setFont(TEXT_FONT, TEXT_SIZE)
                         c.setFillColorRGB(0, 0, 0)
-                    for line in lines:
+                    for li, line in enumerate(lines):
                         if y - TEXT_LEAD < bottom:
                             new_page()
                             if draw:
                                 c.setFont(TEXT_FONT, TEXT_SIZE)
                                 c.setFillColorRGB(0, 0, 0)
                         if draw:
-                            c.drawString(MARGIN, y - TEXT_SIZE, line)
+                            _draw_colored(c, MARGIN, y - TEXT_SIZE, line, HexColor("#000000"), False, li == 0)
                         y -= TEXT_LEAD
                     y -= 10
                     continue
@@ -209,8 +221,7 @@ def build_checklist_pdf(meta, sections, out_path, progress_cb=None):
                             c.setFont(TEXT_FONT, TEXT_SIZE)
                             ty = y - pad - TEXT_SIZE
                             for j, line in enumerate(chunk):
-                                c.setFillColor(TERM_PROMPT if (i == 0 and j == 0 and prompt) else TERM_TEXT)
-                                c.drawString(MARGIN + pad, ty, line)
+                                _draw_colored(c, MARGIN + pad, ty, line, TERM_TEXT, True, i == 0 and j == 0)
                                 ty -= TEXT_LEAD
                         y -= h + 8
                         i += room
