@@ -194,6 +194,25 @@ def create_item(payload: schemas.PhotoItemCreate, db: Session = Depends(get_db))
     return item
 
 
+@router.post("/items/restore")
+def restore_base_items(tipo: str = "fibra", db: Session = Depends(get_db)):
+    """Vuelve a agregar las descripciones base que se hayan borrado (no toca las que ya existen ni las que agregó el usuario)."""
+    from app import seed_data as sd
+    base = sd.SEED_PHOTO_ITEMS if tipo == "fibra" else sd.SEED_PHOTO_ITEMS_BY_TIPO.get(tipo)
+    if not base:
+        raise HTTPException(400, "Esta ventana no tiene un diseño base.")
+    have = {(r.categoria, r.nombre) for r in db.query(models.PhotoItem).filter(models.PhotoItem.tipo == tipo).all()}
+    added = 0
+    for i, it in enumerate(base):
+        if (it["categoria"], it["nombre"]) in have:
+            continue
+        db.add(models.PhotoItem(tipo=tipo, categoria=it["categoria"], nombre=it["nombre"], orden=it.get("orden", (i + 1) * 10)))
+        added += 1
+    db.commit()
+    cache.delete_prefix("items:")
+    return {"added": added}
+
+
 @router.post("/items/reorder", response_model=list[schemas.PhotoItemOut])
 def reorder_items(payload: schemas.PhotoReorderRequest, db: Session = Depends(get_db)):
     """Guarda el orden de UNA categoría (ids en el orden deseado) en una sola operación."""

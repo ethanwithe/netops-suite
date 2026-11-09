@@ -396,41 +396,48 @@ function Inner({ type }: { type: CkType }) {
         />
       ) : (
         <>
-          <div className="card grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div className="sm:col-span-2 flex flex-wrap items-center justify-between gap-2">
+          <div className="card space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="text-xs text-slate-400">Tu avance se guarda solo en este navegador; los datos de la SOT, en «Datos de cliente».</p>
-              <ClientPicker onPick={pickClient} />
-              <button type="button" className="btn-secondary text-xs" onClick={newReport} disabled={!!busy}>Nuevo checklist</button>
+              <div className="flex flex-wrap items-center gap-2">
+                <ClientPicker onPick={pickClient} />
+                <button type="button" className="btn-secondary text-xs" onClick={newReport} disabled={!!busy}>Nuevo checklist</button>
+              </div>
             </div>
-            <Field label="SOT" value={s.sot} onChange={(v) => setF("sot", v)} />
-            <Field label="CID" value={s.cid} onChange={(v) => setF("cid", v)} />
-            <Field label="Cliente (para el nombre del archivo)" value={s.cliente} onChange={(v) => setF("cliente", v)} className="sm:col-span-2" />
-            <label className="block text-sm">
-              <span className="mb-1 block text-xs font-medium text-slate-500">Fecha del pie de página</span>
-              <input type="date" className="input w-full" value={s.fecha} onChange={(e) => setF("fecha", e.target.value)} />
-              <span className="text-[11px] text-slate-400">{fechaLarga(s.fecha)}</span>
-            </label>
-            <Field label="Modelo del equipo (se lee solo)" value={s.modelo} onChange={(v) => setF("modelo", v)} />
-            <Field label="Ancho de banda en Mbps (se lee solo)" value={s.ancho} onChange={(v) => setF("ancho", v)} />
-            <p className="sm:col-span-2 text-xs text-slate-500">
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <label className="block text-sm">
+                <span className="mb-1 block text-xs font-medium text-slate-500">Fecha del pie de página</span>
+                <input type="date" className="input w-full" value={s.fecha} onChange={(e) => setF("fecha", e.target.value)} />
+                <span className="text-[11px] text-slate-400">{fechaLarga(s.fecha)}</span>
+              </label>
+              <Field label="SOT" value={s.sot} onChange={(v) => setF("sot", v)} />
+              <Field label="CID" value={s.cid} onChange={(v) => setF("cid", v)} />
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <Field label="Cliente (para el nombre del archivo)" value={s.cliente} onChange={(v) => setF("cliente", v)} />
+              <Field label="Modelo del equipo (se lee solo)" value={s.modelo} onChange={(v) => setF("modelo", v)} />
+              <Field label="Ancho de banda en Mbps (se lee solo)" value={s.ancho} onChange={(v) => setF("ancho", v)} />
+            </div>
+
+            {data.params.length > 0 && (
+              <div className="space-y-2 border-t border-slate-100 pt-3">
+                <h3 className="text-sm font-semibold text-slate-700">Parámetros para los comandos</h3>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {data.params.map((p) => (
+                    <Field key={p.key} label={`${p.label}  {${p.key}}`} value={s.params[p.key] ?? ""} onChange={(v) => setParam(p.key, v)} />
+                  ))}
+                </div>
+                {wan.trim() === "" && <p className="text-xs text-amber-600">Escribe la interfaz WAN para que se lea el ancho de banda y se ejecuten sus comandos.</p>}
+              </div>
+            )}
+
+            <p className="text-xs text-slate-500">
               Cabecera del PDF: <span className="font-mono text-slate-700">{label}</span> · SOT: {s.sot} CID: {s.cid}
             </p>
-            <div className="sm:col-span-2">
-              <LogoPicker posicion="izq" label="Logo del CheckList (independiente del reporte fotográfico)" value={logo} onChange={setLogo} />
-            </div>
+            <LogoPicker posicion="izq" label="Logo del CheckList (independiente del reporte fotográfico)" value={logo} onChange={setLogo} />
           </div>
-
-          {data.params.length > 0 && (
-            <div className="card space-y-2">
-              <h3 className="text-sm font-semibold text-slate-700">Parámetros para los comandos</h3>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                {data.params.map((p) => (
-                  <Field key={p.key} label={`${p.label}  {${p.key}}`} value={s.params[p.key] ?? ""} onChange={(v) => setParam(p.key, v)} />
-                ))}
-              </div>
-              {wan.trim() === "" && <p className="text-xs text-amber-600">Escribe la interfaz WAN para que se lea el ancho de banda y se ejecuten sus comandos.</p>}
-            </div>
-          )}
 
           <div className="card space-y-2">
             <div className="flex flex-wrap items-center gap-2">
@@ -580,6 +587,7 @@ function Inner({ type }: { type: CkType }) {
                 </div>
               </div>
 
+              <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-2">
               {sec.items.map((it) => {
                 const r = row(it.id);
                 const filled = it.cmd ? fillCmd(it.cmd, s.params) : null;
@@ -658,6 +666,7 @@ function Inner({ type }: { type: CkType }) {
                   </div>
                 );
               })}
+              </div>
             </div>
           ))}
 
@@ -697,11 +706,19 @@ function Inner({ type }: { type: CkType }) {
   );
 }
 
+/** Casilla que se estira hacia abajo si el texto es largo (se puede arrastrar la esquina). */
 function Field({ label, value, onChange, className = "" }: { label: string; value: string; onChange: (v: string) => void; className?: string }) {
   return (
     <label className={`block text-sm ${className}`}>
       <span className="mb-1 block text-xs font-medium text-slate-500">{label}</span>
-      <input className="input w-full" value={value} onChange={(e) => onChange(e.target.value)} />
+      <textarea
+        rows={1}
+        className="input w-full resize-y overflow-hidden"
+        value={value}
+        ref={(el) => { if (el) { el.style.height = "auto"; el.style.height = `${el.scrollHeight + 2}px`; } }}
+        onChange={(e) => onChange(e.target.value.replace(/[\r\n]+/g, " "))}
+        onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }}
+      />
     </label>
   );
 }

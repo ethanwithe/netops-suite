@@ -38,12 +38,13 @@ import type { ImportedProject } from "../components/ImportPdfButton";
 import { savePjForm } from "../store/pjForm";
 import { useNavigate } from "react-router-dom";
 import type { FotoTipo } from "../store/photoReportStore";
-import { addExtra, removeExtra, resolveOpcion, updateExtra, useOpciones } from "../store/photoReportStore";
+import { resolveOpcion, updateExtra, useOpciones } from "../store/photoReportStore";
 import { useWorkspace } from "../store/workspaces";
 import WorkspaceBar from "../components/WorkspaceBar";
 import ClientPicker from "../components/ClientPicker";
 import { syncClient, toISODate, useSotSync } from "../store/clients";
 import OpcionesManager from "../components/OpcionesManager";
+import ExtraGallery, { nextStampPos, restampFromRaw } from "../components/ExtraGallery";
 
 
 const CATEGORIAS_GPON = [
@@ -101,7 +102,7 @@ export default function FotograficoPage({
   onConfigure?: () => void;
 }) {
   // La pestaña activa se recuerda al ir a otra página y volver.
-  const [tab, setTab] = usePersistentState<"run" | "items">(`fotografico.tab.${tipo}`, "run");
+  const [tab, setTab] = usePersistentState<"run" | "items" | "opc">(`fotografico.tab.${tipo}`, "run");
   const [items, setItems] = useState<PhotoItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -229,6 +230,20 @@ export default function FotograficoPage({
         >
           Descripciones (editar)
         </button>
+
+        <button
+          className={tab === "sec" ? "btn-primary" : "btn-secondary"}
+          onClick={() => setTab("sec")}
+        >
+          Títulos y secciones
+        </button>
+
+        <button
+          className={tab === "opc" ? "btn-primary" : "btn-secondary"}
+          onClick={() => setTab("opc")}
+        >
+          Opciones del título
+        </button>
       </div>
 
       {loadError && (
@@ -249,6 +264,10 @@ export default function FotograficoPage({
         </p>
       ) : tab === "run" ? (
         <RunTab tipo={tipo} nombre={nombre ?? FOTO_TIPOS[tipo] ?? tipo} items={items} onReorder={reorderCategory} />
+      ) : tab === "sec" ? (
+        <SeccionesTab tipo={tipo} items={items} />
+      ) : tab === "opc" ? (
+        <OpcionesTab />
       ) : (
         <ItemsTab tipo={tipo} items={items} onChange={reload} />
       )}
@@ -279,6 +298,88 @@ function TextField({
         value={value}
         onChange={(e) => onChange(e.target.value)}
       />
+    </div>
+  );
+}
+
+function OpcionesTab() {
+  const manager = useOpciones();
+  return <OpcionesManager manager={manager} />;
+}
+
+function SeccionesTab({ tipo, items }: { tipo: FotoTipo; items: PhotoItem[] }) {
+  const s = usePhotoReport(tipo);
+  const manager = useOpciones();
+  const ordered = useMemo(() => groupByCategory(items).flatMap((g) => g.items), [items]);
+  const sections = s.sections ?? [];
+  const usedLados = new Set(sections.map((x) => resolveOpcion(x.lado, manager.opciones).id));
+  const freeOpciones = manager.opciones.filter((o) => !usedLados.has(o.id));
+
+  /** Título: elegir otro de la lista, o «Otro título…» para escribir uno propio. */
+  function pickTitle(sid: string, value: string) {
+    if (value !== "__new__") { patchSection(tipo, sid, { lado: value }); return; }
+    const t = prompt("Escribe el título (por ejemplo: INSTALACION EN POP):");
+    if (!t || !t.trim()) return;
+    const id = manager.add(t);
+    if (id) patchSection(tipo, sid, { lado: id });
+  }
+
+  function renameTitle(lado: string, current: string) {
+    const t = prompt("Nuevo nombre para este título:", current);
+    if (t && t.trim()) manager.rename(lado, t.trim());
+  }
+
+  function onAddSection(value: string) {
+    if (!value) return;
+    let id = value;
+    if (value === "__new__") {
+      const t = prompt("Título de la nueva sección (por ejemplo: INSTALACION EN POP):");
+      if (!t || !t.trim()) return;
+      id = manager.add(t);
+      if (!id) return;
+    }
+    addSection(tipo, id, []);
+  }
+
+  function restoreBase() {
+    if (!confirm("¿Restaurar el diseño base? Se vuelven a poner las secciones, bloques y celdas originales que hayas quitado. Las fotos y celdas marcadas que ya tienes se conservan.")) return;
+    setSections(tipo, upgradeSections(tipo, sections, ordered, manager.opciones));
+  }
+
+  if (s.sections === null) return <p className="flex items-center gap-2 text-sm text-slate-500"><Spinner /> Preparando secciones…</p>;
+  return (
+    <div className="space-y-3">
+      <div className="card flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm text-slate-600">Cambia el título de cada sección, ordénalas, quítalas o agrega nuevas. El PDF lleva «REPORTE FOTOGRAFICO» + el título.</p>
+        <button className="btn-secondary text-xs" onClick={restoreBase}>Restaurar diseño base</button>
+      </div>
+      {sections.map((sec, si) => {
+        const op = resolveOpcion(sec.lado, manager.opciones);
+        return (
+          <div key={sec.id} className="card flex flex-wrap items-center gap-2">
+            <select className="input min-w-[220px] flex-1 font-semibold" aria-label="Título de la sección" value={op.id} onChange={(e) => pickTitle(sec.id, e.target.value)}>
+              {manager.opciones.map((o) => (
+                <option key={o.id} value={o.id} disabled={o.id !== op.id && usedLados.has(o.id)}>{o.label}</option>
+              ))}
+              <option value="__new__">Otro título…</option>
+            </select>
+            <span className="text-xs text-slate-500">{sec.cells.length} celdas</span>
+            <button className="btn-secondary text-xs" onClick={() => renameTitle(op.id, op.label)} title="Cambiar el texto de este título">Editar título</button>
+            <button className="btn-secondary text-xs" disabled={si === 0} onClick={() => moveSection(tipo, sec.id, -1)} aria-label="Subir sección">↑</button>
+            <button className="btn-secondary text-xs" disabled={si === sections.length - 1} onClick={() => moveSection(tipo, sec.id, 1)} aria-label="Bajar sección">↓</button>
+            <button className="btn-secondary text-xs" onClick={() => { if (confirm(`¿Quitar la sección «${op.label}» con sus ${sec.cells.length} celdas?`)) removeSection(tipo, sec.id); }}>Quitar sección</button>
+          </div>
+        );
+      })}
+      <div className="card flex flex-wrap items-center gap-2">
+        <span className="text-sm font-medium text-slate-700">Agregar sección (título):</span>
+        <select className="input w-auto" aria-label="Agregar sección" value="" onChange={(e) => onAddSection(e.target.value)}>
+          <option value="">Elegir…</option>
+          {freeOpciones.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+          <option value="__new__">Otro título nuevo…</option>
+        </select>
+        <span className="text-xs text-slate-500">Queda vacía: agrégale bloques y celdas en «Generar reporte».</span>
+      </div>
     </div>
   );
 }
@@ -366,34 +467,6 @@ function RunTab({
   }, [s.sections, tipo, ordered, s.rows, manager.opciones]);
 
   const sections = s.sections ?? [];
-  const usedLados = new Set(sections.map((x) => resolveOpcion(x.lado, manager.opciones).id));
-  const freeOpciones = manager.opciones.filter((o) => !usedLados.has(o.id));
-
-  /** Título: elegir otro de la lista, o «Otro título…» para escribir uno propio. */
-  function pickTitle(sid: string, value: string) {
-    if (value !== "__new__") { patchSection(tipo, sid, { lado: value }); return; }
-    const t = prompt("Escribe el título (por ejemplo: INSTALACION EN POP):");
-    if (!t || !t.trim()) return;
-    const id = manager.add(t);
-    if (id) patchSection(tipo, sid, { lado: id });
-  }
-
-  function renameTitle(lado: string, current: string) {
-    const t = prompt("Nuevo nombre para este título:", current);
-    if (t && t.trim()) manager.rename(lado, t.trim());
-  }
-
-  function onAddSection(value: string) {
-    if (!value) return;
-    let id = value;
-    if (value === "__new__") {
-      const t = prompt("Título de la nueva sección (por ejemplo: INSTALACION EN POP):");
-      if (!t || !t.trim()) return;
-      id = manager.add(t);
-      if (!id) return;
-    }
-    addSection(tipo, id, []);
-  }
 
   const navigate = useNavigate();
 
@@ -501,8 +574,6 @@ function RunTab({
         </div>
       </div>
 
-      <OpcionesManager manager={manager} />
-
       <div className="flex flex-wrap items-center gap-3">
         <label className="flex items-center gap-2 text-sm text-slate-600">
           <input type="checkbox" checked={onlyUsed} onChange={(e) => setOnlyUsed(e.target.checked)} />
@@ -519,28 +590,11 @@ function RunTab({
         return (
           <div key={sec.id} className="card space-y-4">
             <div className="flex flex-wrap items-center gap-2">
-              <select
-                className="input min-w-[220px] flex-1 font-semibold"
-                aria-label="Título de la sección"
-                value={op.id}
-                onChange={(e) => pickTitle(sec.id, e.target.value)}
-              >
-                {manager.opciones.map((o) => (
-                  <option key={o.id} value={o.id} disabled={o.id !== op.id && usedLados.has(o.id)}>{o.label}</option>
-                ))}
-                <option value="__new__">Otro título…</option>
-              </select>
-              <button className="btn-secondary text-xs" onClick={() => renameTitle(op.id, op.label)} title="Cambiar el texto de este título">Editar título</button>
+              <h3 className="min-w-[220px] flex-1 text-sm font-semibold text-slate-800">{op.label}</h3>
               <label className="flex items-center gap-2 text-xs text-slate-500">
                 <input type="checkbox" checked={allOn} onChange={(e) => sec.cells.forEach((c) => patchCell(tipo, sec.id, c.id, { incluir: e.target.checked }))} />
                 Marcar todas
               </label>
-              <button className="btn-secondary text-xs" disabled={si === 0} onClick={() => moveSection(tipo, sec.id, -1)} aria-label="Subir sección">↑</button>
-              <button className="btn-secondary text-xs" disabled={si === sections.length - 1} onClick={() => moveSection(tipo, sec.id, 1)} aria-label="Bajar sección">↓</button>
-              <button
-                className="btn-secondary text-xs"
-                onClick={() => { if (confirm(`¿Quitar la sección «${op.label}» con sus ${sec.cells.length} celdas?`)) removeSection(tipo, sec.id); }}
-              >Quitar sección</button>
             </div>
 
             {bloques.map((bl, bi) => {
@@ -580,8 +634,18 @@ function RunTab({
                               compact
                               cliente={s.cliente}
                               initialUrl={c.imageUrl}
-                              onUploaded={(p, u) => patchCell(tipo, sec.id, c.id, { imagePath: p, imageUrl: u, originalPath: "", originalUrl: "", incluir: p ? true : c.incluir })}
+                              onUploaded={(p, u) => patchCell(tipo, sec.id, c.id, { imagePath: p, imageUrl: u, originalPath: "", originalUrl: "", rawPath: "", rawUrl: "", stampLines: undefined, incluir: p ? true : c.incluir })}
+                              onStampRaw={(raw, lines) => patchCell(tipo, sec.id, c.id, { rawPath: raw.path, rawUrl: raw.url, stampLines: lines })}
                             />
+                            {c.rawUrl && c.stampLines && (
+                              <button className="btn-secondary text-xs" title="Pasa el sello a la siguiente esquina" onClick={async () => {
+                                if (c.originalPath && !confirm("Esta foto tiene dibujos o ediciones. Al mover el sello se vuelve a la foto original y esas ediciones se pierden. ¿Continuar?")) return;
+                                try {
+                                  const r = await restampFromRaw(c.rawUrl!, c.stampLines!, nextStampPos());
+                                  patchCell(tipo, sec.id, c.id, { imagePath: r.path, imageUrl: r.url, originalPath: "", originalUrl: "" });
+                                } catch (er) { alert(er instanceof Error ? er.message : "No se pudo mover el sello."); }
+                              }}>Mover sello</button>
+                            )}
                             {c.imagePath && (
                               <button className="btn-secondary text-xs" onClick={() => setEditing({ id: c.id, sid: sec.id, imageUrl: c.imageUrl })}>
                                 Editar foto
@@ -632,17 +696,7 @@ function RunTab({
         );
       })}
 
-      {s.sections !== null && (
-        <div className="card flex flex-wrap items-center gap-2">
-          <span className="text-sm font-medium text-slate-700">Agregar sección (título):</span>
-          <select className="input w-auto" aria-label="Agregar sección" value="" onChange={(e) => onAddSection(e.target.value)}>
-            <option value="">Elegir…</option>
-            {freeOpciones.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
-            <option value="__new__">Otro título nuevo…</option>
-          </select>
-          <span className="text-xs text-slate-500">Queda vacía: agrégale bloques (con las descripciones de siempre o nuevos) y celdas.</span>
-        </div>
-      )}
+      <p className="text-xs text-slate-500">Para cambiar títulos, agregar, ordenar o quitar secciones, o restaurar el diseño base, usa la pestaña «Títulos y secciones».</p>
 
       <div className="flex items-center gap-3">
         <button
@@ -726,30 +780,9 @@ function RunTab({
           </p>
         </div>
 
-        {s.extras.length > 0 && (
-          <ul className="space-y-2">
-            {s.extras.map((e) => (
-              <li key={e.id} className="flex flex-wrap items-center gap-2 rounded border border-slate-200 p-2">
-                <img src={e.url} alt="" className="h-14 w-20 rounded border object-cover" />
-                <input className="input min-w-[140px] flex-1" placeholder="Nombre de la foto" value={e.nombre} onChange={(ev) => updateExtra(tipo, e.id, { nombre: ev.target.value })} />
-                <select className="input w-full sm:w-56" value={resolveOpcion(e.lado, manager.opciones).id} onChange={(ev) => updateExtra(tipo, e.id, { lado: ev.target.value })}>
-                  {manager.opciones.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
-                </select>
-                <button className="btn-secondary text-xs" onClick={() => setEditing({ id: e.id, imageUrl: e.url, extra: true })}>Editar</button>
-                <button className="btn-secondary text-xs" onClick={() => removeExtra(tipo, e.id)}>Quitar</button>
-              </li>
-            ))}
-          </ul>
-        )}
+        <ExtraGallery tipo={tipo} extras={s.extras} opciones={manager.opciones} cliente={s.cliente} onEdit={(id, url) => setEditing({ id, imageUrl: url, extra: true })} />
 
         <div className="flex flex-wrap items-center gap-3">
-          <ImageUpload
-            key={s.extras.length}
-            compact
-            cliente={s.cliente}
-            label="Agregar foto a la carpeta..."
-            onUploaded={(p, u) => p && addExtra(tipo, { id: `e${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`, nombre: "", path: p, url: u, lado: manager.opciones[manager.opciones.length - 1].id })}
-          />
           <button className="btn-primary" onClick={makeZip} disabled={zip.busy}>
             {zip.busy ? "Preparando carpeta..." : "Descargar carpeta de evidencia"}
           </button>
@@ -867,6 +900,20 @@ function ItemsTab({
     }
   }
 
+  async function restoreBase() {
+    if (!confirm("¿Restaurar el diseño base? Se vuelven a agregar las descripciones originales que hayas borrado. No se tocan las que ya tienes ni las que creaste.")) return;
+    setBusy(true);
+    try {
+      const { data } = await api.post(`/photos/items/restore`, null, { params: { tipo } });
+      alert(data.added ? `Se restauraron ${data.added} descripciones.` : "Ya tienes todas las descripciones base.");
+      onChange();
+    } catch (e) {
+      alert(apiErrorMessage(e, "No se pudo restaurar."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function del(it: PhotoItem) {
     if (!confirm(`¿Eliminar '${it.nombre}'?`)) return;
 
@@ -905,6 +952,10 @@ function ItemsTab({
 
         <button className="btn-secondary w-full" onClick={clear}>
           + Nueva descripción
+        </button>
+
+        <button className="btn-secondary w-full" onClick={restoreBase} disabled={busy}>
+          Restaurar diseño base
         </button>
       </div>
 
