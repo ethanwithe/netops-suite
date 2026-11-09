@@ -56,6 +56,8 @@ last_error = ""
 
 GEMINI_NATIVE = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 WEB = os.getenv("MASCOT_WEB", "1").strip() != "0"
+TIMEOUT = float(os.getenv("LLM_TIMEOUT", "25") or 25)   # segundos por proveedor
+HEDGE = float(os.getenv("LLM_HEDGE", "5") or 5)         # si el proveedor tarda más, se lanza el siguiente en paralelo
 
 
 def _gemini_web(key: str, model: str, system: str, messages: list, max_tokens: int) -> str:
@@ -72,7 +74,7 @@ def _gemini_web(key: str, model: str, system: str, messages: list, max_tokens: i
     req = urllib.request.Request(
         GEMINI_NATIVE.format(model=model), data=json.dumps(body).encode(),
         headers={"Content-Type": "application/json", "x-goog-api-key": key}, method="POST")
-    with urllib.request.urlopen(req, timeout=60) as r:
+    with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
         data = json.loads(r.read())
     parts = (((data.get("candidates") or [{}])[0].get("content") or {}).get("parts")) or []
     return "".join(p_.get("text", "") for p_ in parts if not p_.get("thought")).strip()
@@ -127,13 +129,24 @@ def _one(name: str, key: str, system: str, messages: list, max_tokens: int, imag
     return _do(name, key, system, messages, max_tokens, image, think, model)
 
 
+_WEB_HINT = re.compile(r"busca|buscar|internet|\bweb\b|google|noticia|actual|hoy|ayer|[uú]ltim|reciente|precio|cu[aá]nto (cuesta|vale)|versi[oó]n|lanz|nuevo|20(2[4-9]|3\d)|qui[eé]n es|d[oó]nde (queda|est[aá])|clima|tipo de cambio|http", re.I)
+
+
+def _needs_web(messages: list) -> bool:
+    """La búsqueda de Google hace más lenta la respuesta: solo se usa si el mensaje parece pedirla."""
+    try:
+        return bool(_WEB_HINT.search(str(messages[-1].get("content", ""))))
+    except Exception:
+        return True
+
+
 def _do(name: str, key: str, system: str, messages: list, max_tokens: int, image: str | None, think: bool, model: str) -> str:
     p = PROVIDERS[name]
     msgs = [{"role": "system", "content": system}] + [dict(m) for m in messages]
     if image:
         last = msgs[-1]
         last["content"] = [{"type": "text", "text": last["content"]}, {"type": "image_url", "image_url": {"url": image}}]
-    if name == "gemini" and think and WEB and not image:
+    if name == "gemini" and think and WEB and not image and _needs_web(messages):
         try:
             out = _gemini_web(key, model, system, messages, max_tokens)
             if out:
@@ -161,19 +174,27 @@ def _do(name: str, key: str, system: str, messages: list, max_tokens: int, image
     return ((data.get("choices") or [{}])[0].get("message", {}).get("content", "") or "").strip()
 
 
+def _ordered(provs: list, think: bool) -> list:
+    """Sin búsqueda web (think=False) se prefiere el más rápido (Groq); con think, Gemini (razona y busca)."""
+    pref = ["gemini", "groq", "openrouter"] if think else ["groq", "gemini", "openrouter"]
+    return sorted(provs, key=lambda nk: pref.index(nk[0]) if nk[0] in pref else 9)
+
+
 def complete(system: str, messages: list, max_tokens: int = 700, image: str | None = None, think: bool = False) -> str:
     """messages: [{role, content}]. image: data URL opcional (se adjunta al último mensaje de usuario).
-    Prueba cada proveedor configurado en orden; si uno falla (cuota, error, respuesta vacía) pasa al siguiente."""
+    Prueba los proveedores configurados; si uno tarda más de LLM_HEDGE segundos se lanza el siguiente
+    en paralelo y gana la primera respuesta válida. Si uno falla (cuota, error, vacío) pasa al siguiente."""
     global last_error
-    provs = configured()
+    provs = _ordered(configured(), think)
     if not provs:
         raise RuntimeError("sin proveedor")
-    errs = []
-    for name, key in provs:
+    from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED
+    errs: list = []
+
+    def run(name, key):
         try:
             out = _one(name, key, system, messages, max_tokens, image, think)
             if out:
-                last_error = ""
                 return out
             errs.append(f"{name}: respuesta vacía")
         except urllib.error.HTTPError as e:
@@ -184,6 +205,24 @@ def complete(system: str, messages: list, max_tokens: int = 700, image: str | No
             errs.append(f"{name}: HTTP {e.code} {detail}")
         except Exception as e:
             errs.append(f"{name}: {e.__class__.__name__} {e}")
+        return ""
+
+    ex = ThreadPoolExecutor(max_workers=len(provs))
+    try:
+        pending, queue = set(), list(provs)
+        while queue or pending:
+            if queue and (not pending):
+                pending.add(ex.submit(run, *queue.pop(0)))
+            done, pending = wait(pending, timeout=HEDGE if queue else None, return_when=FIRST_COMPLETED)
+            for f in done:
+                out = f.result()
+                if out:
+                    last_error = ""
+                    return out
+            if not done and queue:          # el actual tarda: se lanza el siguiente sin cancelar el primero
+                pending.add(ex.submit(run, *queue.pop(0)))
+    finally:
+        ex.shutdown(wait=False, cancel_futures=True)
     last_error = " | ".join(errs)
     print("[IA] todos los proveedores fallaron:", last_error, flush=True)  # visible en los logs de Railway
     raise RuntimeError(last_error)
