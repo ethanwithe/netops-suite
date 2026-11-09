@@ -30,7 +30,11 @@ export abstract class ConsoleSession {
   protected abstract write(text: string): Promise<void>;
   abstract close(): Promise<void>;
 
+  /** Últimos caracteres recibidos: de ahí sale el nombre del equipo (prompt) antes de cada comando. */
+  private recent = "";
+
   protected feed(txt: string) {
+    this.recent = (this.recent + txt).slice(-400);
     this.buf += txt;
     this.onData?.(txt);
   }
@@ -38,6 +42,7 @@ export abstract class ConsoleSession {
   async run(cmd: string, opts: { maxMs?: number } = {}): Promise<string> {
     if (!this.connected) throw new Error("La consola no está conectada.");
     const maxMs = opts.maxMs ?? 90000;
+    const prompt = promptOf(this.recent);
     this.buf = "";
     await this.write(cmd + "\r");
 
@@ -66,7 +71,7 @@ export abstract class ConsoleSession {
       if (quiet > 600 && clean.length > cmd.length && PROMPT.test(clean.replace(/[ \t]+$/, " "))) break;
       if (quiet > 4000) break; // comandos largos sin prompt claro (p. ej. ping)
     }
-    return cleanOutput(this.buf);
+    return withPrompt(cleanOutput(this.buf), cmd, prompt);
   }
 
   /** Envía bytes tal cual (una tecla, Tab, Ctrl+C…): para el «teclado directo» del CLI. */
@@ -151,4 +156,20 @@ export function cleanOutput(raw: string): string {
     .replace(/\x08+/g, "")
     .replace(/\n{3,}/g, "\n\n")
     .trimEnd();
+}
+
+/** Prompt del equipo (p. ej. «Router#», «<Huawei>») según lo último que escribió la consola, o "". */
+export function promptOf(recent: string): string {
+  const lines = cleanOutput(recent).split("\n").map((l) => l.replace(/\s+$/, "")).filter((l) => l.trim());
+  const last = lines[lines.length - 1] ?? "";
+  return last.length <= 80 && /[>\]#$]$/.test(last) ? last.trimStart() : "";
+}
+
+/** Deja la salida empezando por «prompt + comando» (como se ve en la terminal), aunque el equipo no repita el eco. */
+export function withPrompt(out: string, cmd: string, prompt: string): string {
+  const c = cmd.trim();
+  if (!prompt || !c) return out;
+  const first = out.split("\n", 1)[0] ?? "";
+  if (first.includes(c)) return first.trimStart().startsWith(prompt) ? out : prompt + out.replace(/^\s+/, "");
+  return `${prompt}${c}\n${out}`;
 }

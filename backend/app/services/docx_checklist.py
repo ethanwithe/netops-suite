@@ -86,6 +86,14 @@ def _tight(par, before=0, after=0):
     par.paragraph_format.line_spacing = 1.0
 
 
+def _colored(par, line, dark, first=False):
+    """Una línea con colores tipo MobaXterm (IPs, interfaces, up/down, prompt)."""
+    from app.services.term_colors import line_segments
+    base = RGBColor(0xD4, 0xD4, 0xD4) if dark else RGBColor(0, 0, 0)
+    for txt, rgb in line_segments(line, dark, first):
+        _run(par, txt, 7, font=MONO, color=RGBColor(*rgb) if rgb else base)
+
+
 def build_checklist_docx(meta: dict, sections: List[tuple], out_path: str) -> str:
     doc = Document()
     sec = doc.sections[0]
@@ -166,10 +174,10 @@ def build_checklist_docx(meta: dict, sections: List[tuple], out_path: str) -> st
             images = it.get("images") or []
             cmd = (it.get("cmd") or "").strip()
             if it.get("modo") == "texto" and texto:
-                for ln in texto.replace("\r", "").split("\n"):
+                for k, ln in enumerate(texto.replace("\r", "").split("\n")):
                     lp = doc.add_paragraph()
                     _tight(lp)
-                    _run(lp, ln.replace("\t", "    "), 7, font=MONO)
+                    _colored(lp, ln.replace("\t", "    "), False, k == 0)
                 continue
             if images:
                 for path in images:
@@ -195,8 +203,7 @@ def build_checklist_docx(meta: dict, sections: List[tuple], out_path: str) -> st
                 for i, ln in enumerate(lines):
                     lp = cell.paragraphs[0] if i == 0 else cell.add_paragraph()
                     _tight(lp)
-                    _run(lp, ln.replace("\t", "    "), 7, font=MONO,
-                         color=RGBColor(0x59, 0xD8, 0x58) if (i == 0 and prompt) else RGBColor(0xD4, 0xD4, 0xD4))
+                    _colored(lp, ln.replace("\t", "    "), True, i == 0)
                 continue
             sp = doc.add_paragraph()
             _tight(sp, 0, 6)
