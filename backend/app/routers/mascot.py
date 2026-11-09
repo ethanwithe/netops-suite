@@ -283,7 +283,7 @@ def _key() -> str:
 def ia_estado(_: models.User = Depends(admin_user)):
     """Para el administrador: qué proveedores de IA ven las variables y cuál fue el último error."""
     return {"anthropic": bool(_key()), "proveedores": [n for n, _k in llm.configured()], "ultimo_error": llm.last_error,
-            "variables_esperadas": ["ANTHROPIC_API_KEY", "GEMINI_API_KEY", "GROQ_API_KEY"]}
+            "variables_esperadas": ["ANTHROPIC_API_KEY", "GEMINI_API_KEY", "GROQ_API_KEY", "OPENROUTER_API_KEY"]}
 
 
 @router.get("/status")
