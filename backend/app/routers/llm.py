@@ -2,8 +2,10 @@
 Proveedores de IA gratuitos (compatibles con la API de OpenAI) para Bit y el editor de imágenes.
 
 Orden de preferencia: Anthropic (de pago, mejor calidad) → Gemini (GEMINI_API_KEY, capa gratuita
-en aistudio.google.com) → Groq (GROQ_API_KEY, capa gratuita en console.groq.com).
-Modelos ajustables con GEMINI_MODEL / GROQ_MODEL / GROQ_VISION_MODEL.
+en aistudio.google.com) → Groq (GROQ_API_KEY, capa gratuita en console.groq.com) → OpenRouter
+(OPENROUTER_API_KEY, openrouter.ai: modelos gratuitos «:free»; por defecto «openrouter/free», que elige uno disponible).
+Modelos ajustables con GEMINI_MODEL / GROQ_MODEL / GROQ_VISION_MODEL / OPENROUTER_MODEL / OPENROUTER_VISION_MODEL
+(en OpenRouter se pueden poner varios separados por coma: si el primero falla o no hay cupo, prueba el siguiente).
 """
 import json
 import os
@@ -23,6 +25,12 @@ PROVIDERS = {
         "url": "https://api.groq.com/openai/v1/chat/completions",
         "model": ("GROQ_MODEL", "llama-3.3-70b-versatile"),
         "vision": ("GROQ_VISION_MODEL", "meta-llama/llama-4-scout-17b-16e-instruct"),
+    },
+    "openrouter": {
+        "env": "OPENROUTER_API_KEY",
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "model": ("OPENROUTER_MODEL", "openrouter/free"),
+        "vision": ("OPENROUTER_VISION_MODEL", "openrouter/free"),
     },
 }
 
@@ -138,9 +146,16 @@ def _do(name: str, key: str, system: str, messages: list, max_tokens: int, image
         # think=True (chat de Bit): razonamiento ligero; el «pensamiento» gasta tokens, por eso el margen grande.
         body["reasoning_effort"] = "low" if think else "none"
         body["max_tokens"] = max(max_tokens, 4000 if think else 1500)
-    req = urllib.request.Request(
-        p["url"], data=json.dumps(body).encode(),
-        headers={"Content-Type": "application/json", "Authorization": f"Bearer {key}"}, method="POST")
+    headers = {"Content-Type": "application/json", "Authorization": f"Bearer {key}"}
+    if name == "openrouter":
+        # Varios modelos separados por coma: OpenRouter prueba el siguiente si uno falla o no tiene cupo.
+        names = [m.strip() for m in model.split(",") if m.strip()]
+        body["model"] = names[0]
+        if len(names) > 1:
+            body["models"] = names
+        headers["HTTP-Referer"] = os.getenv("APP_URL", "https://netops-suite.up.railway.app")
+        headers["X-Title"] = "NetOps Suite"
+    req = urllib.request.Request(p["url"], data=json.dumps(body).encode(), headers=headers, method="POST")
     with urllib.request.urlopen(req, timeout=60) as r:
         data = json.loads(r.read())
     return ((data.get("choices") or [{}])[0].get("message", {}).get("content", "") or "").strip()
