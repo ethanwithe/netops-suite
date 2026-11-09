@@ -14,9 +14,13 @@ interface Props {
   cliente?: string;
   /** Muestra el botón «Tomar foto» (cámara con fecha, hora y ubicación). */
   camera?: boolean;
+  /** Permite elegir varias fotos a la vez (se suben una tras otra). */
+  multiple?: boolean;
+  /** Foto de cámara: llega además la foto sin sello y las líneas del sello (para poder moverlo después). */
+  onStampRaw?: (raw: { path: string; url: string }, lines: string[]) => void;
 }
 
-export default function ImageUpload({ onUploaded, label = "Subir imagen...", compact = false, initialUrl, cliente = "", camera = true }: Props) {
+export default function ImageUpload({ onUploaded, label = "Subir imagen...", compact = false, initialUrl, cliente = "", camera = true, multiple = false, onStampRaw }: Props) {
   const [preview, setPreview] = useState<string | null>(initialUrl || null);
   const [loading, setLoading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
@@ -79,9 +83,18 @@ export default function ImageUpload({ onUploaded, label = "Subir imagen...", com
     try {
       const when = new Date();
       const place = known !== undefined ? known : await getPlaceFast();
-      const stamped = await stampImage(file, stampLines(cliente, place, when), getStampPos());
+      const lines = stampLines(cliente, place, when);
+      const stamped = await stampImage(file, lines, getStampPos());
       setStamping(false);
       await handleFile(stamped);
+      if (onStampRaw) {
+        try {
+          const form = new FormData();
+          form.append("file", await compressForUpload(file));
+          const { data } = await api.post("/files/upload", form, { headers: { "Content-Type": "multipart/form-data" } });
+          onStampRaw({ path: data.path, url: data.url }, lines);
+        } catch { /* sin la foto limpia no se podrá mover el sello, pero la foto ya quedó */ }
+      }
     } catch {
       setStamping(false);
       await handleFile(file); // si falla el sello, se sube la foto tal cual
@@ -138,12 +151,13 @@ export default function ImageUpload({ onUploaded, label = "Subir imagen...", com
               ref={inputRef}
               type="file"
               accept="image/*"
+              multiple={multiple}
               className="hidden"
               onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) handleFile(f);
+                const list = Array.from(e.target.files ?? []);
                 // permite volver a elegir el mismo archivo después
                 e.target.value = "";
+                void (async () => { for (const f of multiple ? list : list.slice(0, 1)) await handleFile(f); })();
               }}
             />
           </label>

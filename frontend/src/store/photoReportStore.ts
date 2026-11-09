@@ -116,6 +116,10 @@ export interface Cell {
   imageUrl: string;
   originalPath?: string;
   originalUrl?: string;
+  /** Foto tal como salió de la cámara (sin sello) y las líneas del sello: permiten moverlo después. */
+  rawPath?: string;
+  rawUrl?: string;
+  stampLines?: string[];
   /** Va en el PDF (se marca sola al poner una foto). */
   incluir: boolean;
   /** Bloque dentro de la sección («EQUIPOS INSTALADOS ACCESO», «ETIQUETADO»…). Solo organiza la pantalla. */
@@ -138,6 +142,9 @@ export interface ExtraPhoto {
   url: string;
   originalPath?: string;
   originalUrl?: string;
+  rawPath?: string;
+  rawUrl?: string;
+  stampLines?: string[];
   lado: Lado;
 }
 
@@ -314,6 +321,10 @@ function loadSections(v: unknown): Section[] | null {
           imageUrl: str(c.imageUrl, ""),
           originalPath: str(c.originalPath, ""),
           originalUrl: str(c.originalUrl, ""),
+      rawPath: str(c.rawPath, ""),
+      rawUrl: str(c.rawUrl, ""),
+      stampLines: Array.isArray(c.stampLines) ? c.stampLines.filter((l): l is string => typeof l === "string") : undefined,
+
           incluir: c.incluir === true,
           bloque: typeof c.bloque === "string" ? c.bloque : undefined,   // sin bloque = reporte del formato anterior (se actualiza solo)
         });
@@ -341,6 +352,9 @@ function loadExtras(v: unknown): ExtraPhoto[] {
       url: str(x.url, ""),
       originalPath: str(x.originalPath, ""),
       originalUrl: str(x.originalUrl, ""),
+      rawPath: str(x.rawPath, ""),
+      rawUrl: str(x.rawUrl, ""),
+      stampLines: Array.isArray(x.stampLines) ? x.stampLines.filter((l): l is string => typeof l === "string") : undefined,
       lado: str(x.lado, "cliente") || "cliente",
     });
   }

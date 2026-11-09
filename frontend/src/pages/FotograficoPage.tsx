@@ -38,12 +38,13 @@ import type { ImportedProject } from "../components/ImportPdfButton";
 import { savePjForm } from "../store/pjForm";
 import { useNavigate } from "react-router-dom";
 import type { FotoTipo } from "../store/photoReportStore";
-import { addExtra, removeExtra, resolveOpcion, updateExtra, useOpciones } from "../store/photoReportStore";
+import { resolveOpcion, updateExtra, useOpciones } from "../store/photoReportStore";
 import { useWorkspace } from "../store/workspaces";
 import WorkspaceBar from "../components/WorkspaceBar";
 import ClientPicker from "../components/ClientPicker";
 import { syncClient, toISODate, useSotSync } from "../store/clients";
 import OpcionesManager from "../components/OpcionesManager";
+import ExtraGallery, { nextStampPos, restampFromRaw } from "../components/ExtraGallery";
 
 
 const CATEGORIAS_GPON = [
@@ -633,8 +634,18 @@ function RunTab({
                               compact
                               cliente={s.cliente}
                               initialUrl={c.imageUrl}
-                              onUploaded={(p, u) => patchCell(tipo, sec.id, c.id, { imagePath: p, imageUrl: u, originalPath: "", originalUrl: "", incluir: p ? true : c.incluir })}
+                              onUploaded={(p, u) => patchCell(tipo, sec.id, c.id, { imagePath: p, imageUrl: u, originalPath: "", originalUrl: "", rawPath: "", rawUrl: "", stampLines: undefined, incluir: p ? true : c.incluir })}
+                              onStampRaw={(raw, lines) => patchCell(tipo, sec.id, c.id, { rawPath: raw.path, rawUrl: raw.url, stampLines: lines })}
                             />
+                            {c.rawUrl && c.stampLines && (
+                              <button className="btn-secondary text-xs" title="Pasa el sello a la siguiente esquina" onClick={async () => {
+                                if (c.originalPath && !confirm("Esta foto tiene dibujos o ediciones. Al mover el sello se vuelve a la foto original y esas ediciones se pierden. ¿Continuar?")) return;
+                                try {
+                                  const r = await restampFromRaw(c.rawUrl!, c.stampLines!, nextStampPos());
+                                  patchCell(tipo, sec.id, c.id, { imagePath: r.path, imageUrl: r.url, originalPath: "", originalUrl: "" });
+                                } catch (er) { alert(er instanceof Error ? er.message : "No se pudo mover el sello."); }
+                              }}>Mover sello</button>
+                            )}
                             {c.imagePath && (
                               <button className="btn-secondary text-xs" onClick={() => setEditing({ id: c.id, sid: sec.id, imageUrl: c.imageUrl })}>
                                 Editar foto
@@ -769,30 +780,9 @@ function RunTab({
           </p>
         </div>
 
-        {s.extras.length > 0 && (
-          <ul className="space-y-2">
-            {s.extras.map((e) => (
-              <li key={e.id} className="flex flex-wrap items-center gap-2 rounded border border-slate-200 p-2">
-                <img src={e.url} alt="" className="h-14 w-20 rounded border object-cover" />
-                <input className="input min-w-[140px] flex-1" placeholder="Nombre de la foto" value={e.nombre} onChange={(ev) => updateExtra(tipo, e.id, { nombre: ev.target.value })} />
-                <select className="input w-full sm:w-56" value={resolveOpcion(e.lado, manager.opciones).id} onChange={(ev) => updateExtra(tipo, e.id, { lado: ev.target.value })}>
-                  {manager.opciones.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
-                </select>
-                <button className="btn-secondary text-xs" onClick={() => setEditing({ id: e.id, imageUrl: e.url, extra: true })}>Editar</button>
-                <button className="btn-secondary text-xs" onClick={() => removeExtra(tipo, e.id)}>Quitar</button>
-              </li>
-            ))}
-          </ul>
-        )}
+        <ExtraGallery tipo={tipo} extras={s.extras} opciones={manager.opciones} cliente={s.cliente} onEdit={(id, url) => setEditing({ id, imageUrl: url, extra: true })} />
 
         <div className="flex flex-wrap items-center gap-3">
-          <ImageUpload
-            key={s.extras.length}
-            compact
-            cliente={s.cliente}
-            label="Agregar foto a la carpeta..."
-            onUploaded={(p, u) => p && addExtra(tipo, { id: `e${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`, nombre: "", path: p, url: u, lado: manager.opciones[manager.opciones.length - 1].id })}
-          />
           <button className="btn-primary" onClick={makeZip} disabled={zip.busy}>
             {zip.busy ? "Preparando carpeta..." : "Descargar carpeta de evidencia"}
           </button>
