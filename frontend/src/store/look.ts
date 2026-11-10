@@ -19,8 +19,9 @@ export interface Look {
   accentHue: number | null;  // color de botones y acentos
   intensity: number;         // 0.3 – 1.5: fuerza del fondo
   glass: boolean;            // efecto cristal líquido al pasar el cursor
+  liquid: boolean;           // diseño Liquid Glass (iOS): vidrio translúcido, bordes de luz, cápsulas
 }
-export const LOOK_DEFAULTS: Look = { scene: "none", drops: true, bgHue: null, dropHue: null, accentHue: null, intensity: 1, glass: true };
+export const LOOK_DEFAULTS: Look = { scene: "none", drops: true, bgHue: null, dropHue: null, accentHue: null, intensity: 1, glass: true, liquid: true };
 
 const KEY = "netops.look";
 const listeners = new Set<() => void>();
@@ -71,6 +72,7 @@ export function applyLook() {
   set("--accent2", a == null ? null : hsl((a + 25) % 360, 95, 62));
   st.setProperty("--bgo", String(look.intensity));
   d.dataset.glass = look.glass ? "on" : "off";
+  d.dataset.liquid = look.liquid ? "on" : "off";
 }
 
 export function setLook(p: Partial<Look>) {
