@@ -17,6 +17,9 @@ from pptx.oxml.ns import qn
 from pptx.util import Emu, Pt
 
 EMU_PX = 9525
+# El editor y el PDF dibujan la letra a «tamaño × 1,2698» px; 1 px = 0,75 pt. Con Pt(tamaño) a secas el PowerPoint salía un 5 % más
+# grande que el editor y los textos se montaban o se salían de su caja.
+FONT_K = 1.2698 * 0.75
 A = "http://schemas.openxmlformats.org/drawingml/2006/main"
 
 
@@ -127,7 +130,7 @@ def _set_line(shape, color, width_px, dash="", head="", tail=""):
 def _style_run(run, font, size, bold, italic, color, bg=None):
     f = run.font
     f.name = family(font)
-    f.size = Pt(size)
+    f.size = Pt(round(float(size) * FONT_K, 2))
     f.bold = bool(bold)
     f.italic = bool(italic)
     c = rgb(color)
@@ -156,7 +159,7 @@ def _fill_paragraphs(tf, text, *, size, bold, italic, color, align, line_h=None,
             r.text = t
             _style_run(r, font, size, b, it, color)
         if not line:
-            etree.SubElement(p._p, qn("a:endParaRPr")).set("sz", str(int(size * 100)))
+            etree.SubElement(p._p, qn("a:endParaRPr")).set("sz", str(int(size * FONT_K * 100)))
 
 
 def _rotate(shape, rot):

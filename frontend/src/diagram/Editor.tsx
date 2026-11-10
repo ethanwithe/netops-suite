@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { iconSize, iconUrl, uploadIcon, useIcons } from "./icons";
 import PropsPanel from "./Props";
 import { fill, resolveDoc } from "./templates";
+import { PAD_X } from "./fit";
 import type { Fields } from "./templates";
 import type { Cell, Doc, El, ImgEl, LineEl, TableEl, TextEl } from "./types";
 import { bbox, isLine } from "./types";
@@ -70,7 +71,9 @@ function ElView({ e, shown, icons }: { e: El; shown: El; icons: unknown }) {
   const box = { ...common, left: e.x, top: e.y, width: e.w, height: e.h, ...rot };
   if (e.type === "text") {
     const t = shown as TextEl;
-    return <div data-id={e.id} style={{ ...box, background: t.fill ?? "transparent" }}><TextLines {...t} /></div>;
+    // Con color de fondo: la caja ya ajustada (fitText), con aire a los lados y el texto centrado en vertical, como en PPTX/PDF.
+    if (t.fill) return <div data-id={e.id} style={{ ...box, left: t.x, top: t.y, width: t.w, height: t.h, background: t.fill, boxSizing: "border-box", padding: `0 ${PAD_X}px`, display: "flex", alignItems: "center" }}><div style={{ width: "100%" }}><TextLines {...t} /></div></div>;
+    return <div data-id={e.id} style={{ ...box, background: "transparent" }}><TextLines {...t} /></div>;
   }
   if (e.type === "rect" && !e.fill && !e.text?.trim()) {
     // Marco sin relleno: solo se puede elegir por el borde (así no tapa lo que hay debajo), como en PowerPoint.
