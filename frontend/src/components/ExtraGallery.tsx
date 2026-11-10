@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import ImageUpload from "./ImageUpload";
 import { addExtra, patchCell, removeExtra, resolveOpcion, updateExtra } from "../store/photoReportStore";
 import type { ExtraPhoto, FotoTipo, Opcion, Section } from "../store/photoReportStore";
-import { usePersistentState } from "../store/persistentState";
 
 const newId = () => `e${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
 
@@ -31,7 +30,7 @@ interface Props {
 
 /**
  * Carpeta de evidencia: TODAS las fotos (las de las celdas del PDF, editadas y originales, y las extras) en desplegables.
- * Cada desplegable elige qué opción muestra (Cliente, Site, las que agregues…); clic en una miniatura = visor grande.
+ * Un desplegable por cada opción del reporte (Site, PDI, POP, Cliente y las que agregues); clic en una miniatura = visor grande.
  */
 export default function ExtraGallery({ tipo, extras, sections, opciones, cliente, onEdit }: Props) {
   const items = useMemo<GalleryItem[]>(() => {
@@ -49,12 +48,7 @@ export default function ExtraGallery({ tipo, extras, sections, opciones, cliente
     return out;
   }, [sections, extras, opciones]);
 
-  const [chosen, setChosen] = usePersistentState<string[]>(`fotografico.carpeta.${tipo}`, ["cliente", "site"]);
-  const ids = opciones.map((o) => o.id);
-  const groups = (chosen.filter((id) => ids.includes(id)).length ? chosen.filter((id) => ids.includes(id)) : ids.slice(0, 2));
-  const setGroup = (i: number, id: string) => setChosen(groups.map((g, j) => (j === i ? id : g)));
-  const canAdd = groups.length < opciones.length;
-  const addGroup = () => { const next = ids.find((id) => !groups.includes(id)); if (next) setChosen([...groups, next]); };
+  const groups = opciones.map((o) => o.id);
 
   const [viewer, setViewer] = useState<{ keys: string[]; key: string } | null>(null);
   const lastId = useRef("");
@@ -62,24 +56,13 @@ export default function ExtraGallery({ tipo, extras, sections, opciones, cliente
   return (
     <div className="space-y-2">
       {groups.map((gid, gi) => {
-        const g = opciones.find((o) => o.id === gid)!;
+        const g = opciones[gi];
         const list = items.filter((x) => x.lado === gid);
         return (
           <details key={`${gi}-${gid}`} className="rounded-lg border border-slate-200" open={list.length > 0 && list.length <= 12}>
-            <summary className="flex cursor-pointer select-none flex-wrap items-center gap-2 px-3 py-2 text-sm font-medium text-slate-700">
-              <select
-                className="input h-8 w-auto py-0 text-sm font-semibold"
-                value={gid}
-                aria-label="Opción de este desplegable"
-                onClick={(e) => e.stopPropagation()}
-                onChange={(e) => setGroup(gi, e.target.value)}
-              >
-                {opciones.map((o) => <option key={o.id} value={o.id} disabled={o.id !== gid && groups.includes(o.id)}>{o.label}</option>)}
-              </select>
+            <summary className="flex cursor-pointer select-none flex-wrap items-center gap-2 px-3 py-2 text-sm font-semibold text-slate-700">
+              {g.label}
               <span className="text-xs font-normal text-slate-400">({list.length} fotos)</span>
-              {groups.length > 1 && (
-                <button type="button" className="ml-auto text-xs font-normal text-slate-400 hover:text-red-600" onClick={(e) => { e.preventDefault(); setChosen(groups.filter((_, j) => j !== gi)); }} title="Quitar este desplegable (no borra fotos)">Ocultar</button>
-              )}
             </summary>
             <div className="space-y-2 border-t border-slate-100 p-3">
               <Grid list={list} onOpen={(key) => setViewer({ keys: list.map((x) => x.key), key })} onRemove={(it) => removeItem(tipo, it)} />
@@ -98,10 +81,6 @@ export default function ExtraGallery({ tipo, extras, sections, opciones, cliente
           </details>
         );
       })}
-
-      {canAdd && (
-        <button type="button" className="btn-secondary text-xs" onClick={addGroup}>+ Otro desplegable (otra opción)</button>
-      )}
 
       {viewer && (
         <Viewer tipo={tipo} items={items} keys={viewer.keys} startKey={viewer.key} opciones={opciones} onEdit={onEdit} onClose={() => setViewer(null)} />
