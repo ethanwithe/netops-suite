@@ -441,7 +441,7 @@ function RunTab({
   async function makeZip() {
     const rowsIn = (s.sections ?? []).flatMap((sec) => {
       const op = resolveOpcion(sec.lado, manager.opciones);
-      return sec.cells.flatMap((c) => (c.incluir && c.imagePath
+      return sec.cells.flatMap((c) => (c.imagePath
         ? [{ nombre: c.descripcion || "foto", path: c.imagePath, original_path: c.originalPath || "", lado_label: op.label }]
         : []));
     });
@@ -778,7 +778,10 @@ function RunTab({
           </p>
         </div>
 
-        <ExtraGallery tipo={tipo} extras={s.extras} opciones={manager.opciones} cliente={s.cliente} onEdit={(id, url) => setEditing({ id, imageUrl: url, extra: true, ...stampOf(s.extras.find((x) => x.id === id)) })} />
+        <ExtraGallery tipo={tipo} extras={s.extras} sections={sections} opciones={manager.opciones} cliente={s.cliente}
+          onEdit={(it) => setEditing(it.kind === "extra"
+            ? { id: it.id, imageUrl: it.url, extra: true, ...stampOf(s.extras.find((x) => x.id === it.id)) }
+            : { id: it.id, sid: it.sid, imageUrl: it.url, ...stampOf(sections.find((x) => x.id === it.sid)?.cells.find((x) => x.id === it.id)) })} />
 
         <div className="flex flex-wrap items-center gap-3">
           <button className="btn-primary" onClick={makeZip} disabled={zip.busy}>
