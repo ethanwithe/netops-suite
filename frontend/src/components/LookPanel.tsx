@@ -44,6 +44,10 @@ export default function LookPanel({ onBack }: { onBack: () => void }) {
       </div>
 
       <label className="flex items-center justify-between text-[12px]">
+        <span className="font-semibold">Liquid Glass (diseño de iOS)</span>
+        <input type="checkbox" checked={look.liquid} onChange={(e) => setLook({ liquid: e.target.checked })} />
+      </label>
+      <label className="flex items-center justify-between text-[12px]">
         <span className="font-semibold">Gotas de agua</span>
         <input type="checkbox" checked={look.drops} onChange={(e) => setLook({ drops: e.target.checked })} />
       </label>

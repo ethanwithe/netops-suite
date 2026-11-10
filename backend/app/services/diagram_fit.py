@@ -10,7 +10,7 @@ import re
 
 from reportlab.pdfbase.pdfmetrics import stringWidth
 
-PT = 4 / 3       # px por punto de fuente en PowerPoint (96 px por pulgada / 72 pt): se mide con la letra real más grande
+PT = 1.2698      # px por punto de fuente: el mismo que usa el editor, el PDF y (con FONT_K) el PPTX
 PAD_X = 8.0      # aire a los lados del texto dentro del color
 PAD_Y = 4.0      # aire arriba y abajo
 _MARK = re.compile(r"\*\*|~~")
