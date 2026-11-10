@@ -2,12 +2,23 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, apiErrorMessage } from "../api/client";
 import { NEUTRAL, adjustCanvas, isNeutral } from "../utils/imageAdjust";
 import type { Adjust } from "../utils/imageAdjust";
+import { getStampPos } from "../utils/photoStamp";
+
+/** Sello de la foto (fecha, dirección, coordenadas) como objeto libre: se mueve, se agranda y se edita. */
+export interface StampInit { lines: string[]; fx?: number; fy?: number; size?: number }
+export interface StampState { lines: string[]; fx: number; fy: number; size: number }
 
 interface Props {
   imageUrl: string;
+  /** Foto sin sello: si viene con `stamp`, se edita esta y el sello es un objeto que se puede mover. */
+  baseUrl?: string;
+  stamp?: StampInit;
   onClose: () => void;
-  onSaved: (path: string, url: string) => void;
+  /** `extra` solo llega si se abrió con `stamp`: la foto sin sello (para seguir editando el sello) y el estado del sello (null = lo quitaron). */
+  onSaved: (path: string, url: string, extra?: { cleanPath: string; cleanUrl: string; stamp: StampState | null }) => void;
 }
+
+const STAMP_FAMILY = '"Dancing Script", "Segoe Script", "Brush Script MT", cursive';
 
 // ============================================================
 // MODELO
@@ -23,7 +34,7 @@ type Poly = { id: number; k: "poly"; pts: Point[]; closed: boolean; smooth: bool
 type Obj =
   | Poly
   | { id: number; k: "blur"; a: Point; b: Point }
-  | { id: number; k: "text"; p: Point; text: string; size: number; color: string; bg: TextBg; bold: boolean };
+  | { id: number; k: "text"; p: Point; text: string; size: number; color: string; bg: TextBg; bold: boolean; stamp?: boolean };
 
 interface Doc {
   base: HTMLCanvasElement; // imagen de trabajo (nunca se modifica: cada recorte/giro crea otra)
@@ -104,10 +115,10 @@ function shapeFromDrag(kind: "arrow" | "rect" | "ellipse", a: Point, b: Point, s
 // ============================================================
 
 function textMetrics(ctx: CanvasRenderingContext2D, o: Extract<Obj, { k: "text" }>, px: number) {
-  ctx.font = `${o.bold ? "bold " : ""}${px}px Arial`;
+  ctx.font = o.stamp ? `600 ${px}px ${STAMP_FAMILY}` : `${o.bold ? "bold " : ""}${px}px Arial`;
   const lines = o.text.split("\n");
   const w = Math.max(...lines.map((l) => ctx.measureText(l).width));
-  const lead = px * 1.2;
+  const lead = px * (o.stamp ? 1.18 : 1.2);
   return { lines, w, lead, h: lead * lines.length };
 }
 
@@ -185,6 +196,16 @@ function renderObjects(ctx: CanvasRenderingContext2D, objects: Obj[], s: number,
       ctx.textBaseline = "top";
       const pad = px * 0.28;
       const x = o.p.x * s, y = o.p.y * s;
+      if (o.stamp) {
+        // mismo estilo que el sello de la cámara: letra cursiva blanca con sombra, sin franja
+        ctx.fillStyle = o.color;
+        ctx.shadowColor = "rgba(0,0,0,0.9)";
+        ctx.shadowBlur = Math.max(3, px * 0.14);
+        ctx.shadowOffsetX = ctx.shadowOffsetY = Math.max(1, px * 0.04);
+        m.lines.forEach((l, i) => ctx.fillText(l, x, y + i * m.lead));
+        ctx.restore();
+        continue;
+      }
       if (o.bg !== "none") {
         ctx.fillStyle = o.bg === "dark" ? "rgba(0,0,0,0.65)" : "rgba(255,255,255,0.8)";
         ctx.fillRect(x - pad, y - pad, m.w + pad * 2, m.h + pad * 2 - (m.lead - px));
@@ -419,7 +440,7 @@ function toDataUrl(c: HTMLCanvasElement, max = 1280, q = 0.86): string {
 const AI_CHIPS = ["Mejorar la calidad general", "Aclarar las sombras", "Más nitidez en los textos", "Corregir el color amarillento", "Difuminar caras y placas"];
 const EDIT_CHIPS = ["Mejorar nitidez y reducir ruido sin cambiar el contenido", "Aclarar la foto (está oscura)", "Quitar el objeto del fondo", "Limpiar y ordenar el fondo", "Mejorar iluminación como foto profesional"];
 
-export default function ImageAnnotator({ imageUrl, onClose, onSaved }: Props) {
+export default function ImageAnnotator({ imageUrl, baseUrl, stamp, onClose, onSaved }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const areaRef = useRef<HTMLDivElement>(null);
   const [area, setArea] = useState({ w: 0, h: 0 });
@@ -468,15 +489,41 @@ export default function ImageAnnotator({ imageUrl, onClose, onSaved }: Props) {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  const moving = useRef<{ id: number; kind: "obj" | "v"; idx: number; last: Point; origin: Doc; moved: boolean } | null>(null);
+  const moving = useRef<{ id: number; kind: "obj" | "v" | "scale"; idx: number; last: Point; origin: Doc; moved: boolean; size0?: number; d0?: number; anchor?: Point } | null>(null);
+  // Dos dedos (pellizcar) sobre un texto/sello: agrandar, achicar y mover a la vez.
+  const pointers = useRef(new Map<number, { x: number; y: number }>());
+  const pinch = useRef<{ id: number; d0: number; size0: number; mid0: { x: number; y: number }; p0: Point; origin: Doc } | null>(null);
+  const pinched = useRef(false);
+  const pendingDeselect = useRef(false);
+  const stampId = useRef<number | null>(null);
 
   // ---------- carga ----------
   useEffect(() => {
     let cancelled = false;
-    loadBase(imageUrl)
-      .then((base) => !cancelled && setDoc({ base, objects: [] }))
-      .catch((e) => !cancelled && setLoadError(e.message));
+    (async () => {
+      const base = await loadBase(stamp ? baseUrl || imageUrl : imageUrl);
+      const objects: Obj[] = [];
+      if (stamp && stamp.lines.length) {
+        try { await document.fonts.load(`600 40px "Dancing Script"`); } catch { /* se usa una cursiva del sistema */ }
+        const u0 = unitOf(base);
+        const size = stamp.size ?? (Math.max(16, Math.round(Math.min(base.width, base.height) * 0.05))) / u0;
+        const o: Extract<Obj, { k: "text" }> = { id: newId(), k: "text", p: { x: 0, y: 0 }, text: stamp.lines.join("\n"), size, color: "#ffffff", bg: "none", bold: false, stamp: true };
+        if (stamp.fx != null && stamp.fy != null) {
+          o.p = { x: stamp.fx * base.width, y: stamp.fy * base.height };
+        } else {
+          const m = textMetrics(document.createElement("canvas").getContext("2d")!, o, size * u0);
+          const pad = size * u0 * 0.3, pos = getStampPos();
+          o.p = { x: pos === "br" || pos === "tr" ? base.width - pad - m.w : pad, y: pos === "br" || pos === "bl" ? base.height - pad - m.h : pad };
+        }
+        stampId.current = o.id;
+        objects.push(o);
+      }
+      if (cancelled) return;
+      setDoc({ base, objects });
+      if (objects.length) { setTool("select"); setSelId(objects[0].id); setTextInput(objects[0].k === "text" ? objects[0].text : ""); }
+    })().catch((e) => !cancelled && setLoadError(e.message));
     return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [imageUrl]);
 
   useEffect(() => {
@@ -577,6 +624,16 @@ export default function ImageAnnotator({ imageUrl, onClose, onSaved }: Props) {
         ctx.strokeRect(bb.x * s - 4 * cs, bb.y * s - 4 * cs, bb.w * s + 8 * cs, bb.h * s + 8 * cs);
       }
       ctx.setLineDash([]);
+      if (selected.k === "text" && bb) {
+        // esquina para agrandar/achicar arrastrando
+        const hx = (bb.x + bb.w) * s + 4 * cs, hy = (bb.y + bb.h) * s + 4 * cs;
+        ctx.beginPath(); ctx.arc(hx, hy, 9 * cs, 0, Math.PI * 2);
+        ctx.fillStyle = "#2563eb"; ctx.strokeStyle = "#fff"; ctx.lineWidth = 2 * cs; ctx.fill(); ctx.stroke();
+        ctx.strokeStyle = "#fff"; ctx.lineWidth = 1.6 * cs; ctx.beginPath();
+        ctx.moveTo(hx - 3.5 * cs, hy + 3.5 * cs); ctx.lineTo(hx + 3.5 * cs, hy - 3.5 * cs);
+        ctx.moveTo(hx + 0.5 * cs, hy - 3.5 * cs); ctx.lineTo(hx + 3.5 * cs, hy - 3.5 * cs); ctx.lineTo(hx + 3.5 * cs, hy - 0.5 * cs);
+        ctx.stroke();
+      }
       if (selected.k === "poly") {
         const n = selected.pts.length, segs = selected.closed ? n : n - 1;
         if (selected.smooth) {
@@ -652,10 +709,31 @@ export default function ImageAnnotator({ imageUrl, onClose, onSaved }: Props) {
     const p = toImage(e);
     const ctx = canvasRef.current!.getContext("2d")!;
     setMenu(null);
+    if (e.pointerType === "mouse") pointers.current.clear(); // el mouse nunca es multitáctil: evita punteros viejos
+    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+    // Segundo dedo sobre un texto/sello seleccionado: pellizcar para cambiar el tamaño (y mover con los dos dedos).
+    if (tool === "select" && pointers.current.size === 2 && selected?.k === "text") {
+      e.currentTarget.setPointerCapture(e.pointerId);
+      const [a, b] = [...pointers.current.values()];
+      pinch.current = { id: selected.id, d0: Math.hypot(a.x - b.x, a.y - b.y) || 1, size0: selected.size, mid0: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, p0: selected.p, origin: moving.current?.origin ?? doc };
+      moving.current = null; pinched.current = true; pendingDeselect.current = false;
+      return;
+    }
+    if (pointers.current.size > 1) return;
+    pinched.current = false; pendingDeselect.current = false;
 
     if (tool === "select") {
       e.currentTarget.setPointerCapture(e.pointerId);
       const sel = selected;
+      if (sel?.k === "text") {
+        const m = textMetrics(ctx, sel, sel.size * u);
+        const hp = { x: sel.p.x + m.w + 4 * pxScale, y: sel.p.y + m.h + 4 * pxScale };
+        if (dist(hp, p) <= 16 * pxScale) {
+          moving.current = { id: sel.id, kind: "scale", idx: -1, last: p, origin: doc, moved: false, size0: sel.size, d0: dist(hp, sel.p) || 1, anchor: sel.p };
+          return;
+        }
+      }
       if (sel) {
         const tolH = 13 * pxScale;
         const hs = handlesOf(sel);
@@ -680,7 +758,7 @@ export default function ImageAnnotator({ imageUrl, onClose, onSaved }: Props) {
         }
       }
       const found = [...objects].reverse().find((o) => hit(ctx, o, p, 10 * pxScale, u)) ?? null;
-      setSelId(found ? found.id : null);
+      if (found) setSelId(found.id); else pendingDeselect.current = true; // se quita la selección al soltar, salvo que sea un pellizco
       setSelVertex(null);
       if (found) {
         moving.current = { id: found.id, kind: "obj", idx: -1, last: p, origin: doc, moved: false };
@@ -724,6 +802,17 @@ export default function ImageAnnotator({ imageUrl, onClose, onSaved }: Props) {
 
   function onPointerMove(e: React.PointerEvent<HTMLCanvasElement>) {
     if (!doc) return;
+    if (pointers.current.has(e.pointerId)) pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    const pc = pinch.current;
+    if (pc && pointers.current.size >= 2) {
+      const [a, b] = [...pointers.current.values()];
+      const k = (Math.hypot(a.x - b.x, a.y - b.y) || 1) / pc.d0;
+      const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+      const size = Math.max(6, Math.min(600, pc.size0 * k));
+      const np = { x: pc.p0.x + (mid.x - pc.mid0.x) * pxScale, y: pc.p0.y + (mid.y - pc.mid0.y) * pxScale };
+      setDoc((d) => d && { ...d, objects: d.objects.map((o) => (o.id === pc.id && o.k === "text" ? { ...o, size, p: np } : o)) });
+      return;
+    }
     const p = toImage(e);
 
     const m = moving.current;
@@ -732,7 +821,10 @@ export default function ImageAnnotator({ imageUrl, onClose, onSaved }: Props) {
       if (!m.moved && Math.hypot(dx, dy) < 2 * pxScale) return;
       m.moved = true;
       m.last = p;
-      if (m.kind === "v") {
+      if (m.kind === "scale" && m.anchor && m.d0 && m.size0) {
+        const size = Math.max(6, Math.min(600, m.size0 * (dist(p, m.anchor) / m.d0)));
+        setDoc((d) => d && { ...d, objects: d.objects.map((o) => (o.id === m.id && o.k === "text" ? { ...o, size } : o)) });
+      } else if (m.kind === "v") {
         const q = inBase(p);
         setDoc((d) => d && { ...d, objects: d.objects.map((o) => (o.id === m.id ? setHandle(o, m.idx, q) : o)) });
       } else {
@@ -755,7 +847,18 @@ export default function ImageAnnotator({ imageUrl, onClose, onSaved }: Props) {
     }
   }
 
-  function onPointerUp() {
+  function onPointerUp(e?: React.PointerEvent<HTMLCanvasElement>) {
+    if (e) pointers.current.delete(e.pointerId);
+    if (pinch.current) {
+      if (pointers.current.size < 2) {
+        const o = pinch.current.origin;
+        pinch.current = null;
+        setPast((pp) => [...pp.slice(-(MAX_HISTORY - 1)), o]); setFuture([]);
+      }
+      return;
+    }
+    if (pendingDeselect.current && !pinched.current && pointers.current.size === 0) { pendingDeselect.current = false; setSelId(null); }
+    if (pointers.current.size > 0 && pinched.current) return; // queda un dedo del pellizco: no se arrastra nada
     if (cropDrag.current) {
       cropDrag.current = null;
       setCropRect((r) => (r && (r.w < MIN_CROP || r.h < MIN_CROP) ? null : r));
@@ -968,12 +1071,47 @@ export default function ImageAnnotator({ imageUrl, onClose, onSaved }: Props) {
       const form = new FormData();
       form.append("file", blob, "editada.jpg");
       const { data } = await api.post("/files/upload", form, { headers: { "Content-Type": "multipart/form-data" } });
-      onSaved(data.path, data.url);
+      if (!stamp) { onSaved(data.path, data.url); onClose(); return; }
+
+      // Con sello libre: además se guarda la foto SIN sello (con el resto de marcas), para poder volver a moverlo.
+      const st = objs.find((o): o is Extract<Obj, { k: "text" }> => o.k === "text" && !!o.stamp);
+      let clean = { path: data.path, url: data.url };
+      if (st) {
+        const out2 = document.createElement("canvas");
+        out2.width = full.width; out2.height = full.height;
+        const c2 = out2.getContext("2d")!;
+        c2.drawImage(full, 0, 0);
+        renderObjects(c2, objs.filter((o) => !(o.k === "text" && o.stamp)), 1, unitOf(out2), full);
+        const b2: Blob | null = await new Promise((res) => out2.toBlob(res, "image/jpeg", 0.92));
+        if (!b2) throw new Error("No se pudo crear la imagen.");
+        const f2 = new FormData();
+        f2.append("file", b2, "sin-sello.jpg");
+        const r2 = await api.post("/files/upload", f2, { headers: { "Content-Type": "multipart/form-data" } });
+        clean = { path: r2.data.path, url: r2.data.url };
+      }
+      onSaved(data.path, data.url, {
+        cleanPath: clean.path, cleanUrl: clean.url,
+        stamp: st ? { lines: st.text.split("\n"), fx: st.p.x / full.width, fy: st.p.y / full.height, size: st.size } : null,
+      });
       onClose();
     } catch (e) {
       setSaveError(apiErrorMessage(e, "No se pudo guardar la imagen editada."));
     } finally { setSaving(false); }
   }
+
+  // Rueda del mouse (o touchpad): agranda/achica el texto o sello seleccionado.
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || tool !== "select" || selected?.k !== "text") return;
+    const id = selected.id;
+    const onWheel = (ev: WheelEvent) => {
+      ev.preventDefault();
+      const k = Math.exp(-ev.deltaY * 0.0015);
+      setDoc((d) => d && { ...d, objects: d.objects.map((o) => (o.id === id && o.k === "text" ? { ...o, size: Math.max(6, Math.min(600, o.size * k)) } : o)) });
+    };
+    canvas.addEventListener("wheel", onWheel, { passive: false });
+    return () => canvas.removeEventListener("wheel", onWheel);
+  }, [tool, selected?.id, selected?.k, doc?.base]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ---------- atajos de teclado ----------
   useEffect(() => {
@@ -1100,12 +1238,13 @@ export default function ImageAnnotator({ imageUrl, onClose, onSaved }: Props) {
           )}
           {textMode && (
             <>
-              <input type="text" className={`${sel} w-36 shrink-0`} placeholder="Escribe el texto..." value={textInput}
+              <textarea rows={selected?.k === "text" && selected.text.includes("\n") ? Math.min(4, selected.text.split("\n").length) : 1}
+                className={`${sel} h-auto min-h-[28px] w-44 shrink-0 resize-y py-1 leading-tight`} placeholder="Escribe el texto..." value={textInput}
                 onChange={(e) => { setTextInput(e.target.value); if (selected?.k === "text" && e.target.value.trim()) patchSelected({ text: e.target.value }); }} />
-              <select className={sel} value={selected?.k === "text" ? selected.size : textSize} aria-label="Tamaño del texto"
-                onChange={(e) => { const v = Number(e.target.value); setTextSize(v); if (selected?.k === "text") patchSelected({ size: v }); }}>
-                {[18, 24, 28, 36, 44, 56, 72].map((v) => <option key={v} value={v}>{v} px</option>)}
-              </select>
+              <input type="range" min={8} max={200} step={1} className="w-24 shrink-0" aria-label="Tamaño del texto"
+                value={Math.round(selected?.k === "text" ? selected.size : textSize)}
+                onChange={(e) => { const v = Number(e.target.value); setTextSize(v); if (selected?.k === "text") patchSelected({ size: v }); }} />
+              <span className="shrink-0 text-[10px] text-slate-400">Tamaño libre: pellizca con dos dedos, rueda del mouse o arrastra la esquina azul</span>
               <select className={sel} value={selected?.k === "text" ? selected.bg : textBg} aria-label="Fondo del texto"
                 onChange={(e) => { const v = e.target.value as TextBg; setTextBg(v); if (selected?.k === "text") patchSelected({ bg: v }); }}>
                 <option value="dark">Fondo oscuro</option><option value="light">Fondo claro</option><option value="none">Sin fondo</option>

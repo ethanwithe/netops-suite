@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, apiErrorMessage } from "../api/client";
 import ImageUpload from "../components/ImageUpload";
 import ImageAnnotator from "../components/ImageAnnotator";
+import type { StampInit } from "../components/ImageAnnotator";
 import LogoPicker from "../components/LogoPicker";
 import Spinner from "../components/Spinner";
 import type { PhotoItem } from "../types";
@@ -44,7 +45,7 @@ import WorkspaceBar from "../components/WorkspaceBar";
 import ClientPicker from "../components/ClientPicker";
 import { syncClient, toISODate, useSotSync } from "../store/clients";
 import OpcionesManager from "../components/OpcionesManager";
-import ExtraGallery, { nextStampPos, restampFromRaw } from "../components/ExtraGallery";
+import ExtraGallery from "../components/ExtraGallery";
 
 
 const CATEGORIAS_GPON = [
@@ -384,6 +385,12 @@ function SeccionesTab({ tipo, items }: { tipo: FotoTipo; items: PhotoItem[] }) {
   );
 }
 
+/** Datos para abrir el editor con el sello como objeto libre (solo fotos tomadas con la cámara). */
+function stampOf(x?: { rawUrl?: string; stampLines?: string[]; stampPos?: { fx: number; fy: number; size: number } }): { baseUrl?: string; stamp?: StampInit } {
+  if (!x?.rawUrl || !x.stampLines?.length) return {};
+  return { baseUrl: x.rawUrl, stamp: { lines: x.stampLines, fx: x.stampPos?.fx, fy: x.stampPos?.fy, size: x.stampPos?.size } };
+}
+
 function RunTab({
   tipo,
   nombre,
@@ -398,7 +405,7 @@ function RunTab({
   const s = usePhotoReport(tipo);
 
   const manager = useOpciones();
-  const [editing, setEditing] = useState<{ id: string; imageUrl: string; extra?: boolean; sid?: string } | null>(null);
+  const [editing, setEditing] = useState<{ id: string; imageUrl: string; extra?: boolean; sid?: string; baseUrl?: string; stamp?: StampInit } | null>(null);
   const [zip, setZip] = useState<{ busy: boolean; url?: string; filename?: string; total?: number; missing?: number; error?: string }>({ busy: false });
 
   // Los datos de la SOT se guardan solos en "Datos de cliente" (año y mes según la fecha).
@@ -637,17 +644,8 @@ function RunTab({
                               onUploaded={(p, u) => patchCell(tipo, sec.id, c.id, { imagePath: p, imageUrl: u, originalPath: "", originalUrl: "", rawPath: "", rawUrl: "", stampLines: undefined, incluir: p ? true : c.incluir })}
                               onStampRaw={(raw, lines) => patchCell(tipo, sec.id, c.id, { rawPath: raw.path, rawUrl: raw.url, stampLines: lines })}
                             />
-                            {c.rawUrl && c.stampLines && (
-                              <button className="btn-secondary text-xs" title="Pasa el sello a la siguiente esquina" onClick={async () => {
-                                if (c.originalPath && !confirm("Esta foto tiene dibujos o ediciones. Al mover el sello se vuelve a la foto original y esas ediciones se pierden. ¿Continuar?")) return;
-                                try {
-                                  const r = await restampFromRaw(c.rawUrl!, c.stampLines!, nextStampPos());
-                                  patchCell(tipo, sec.id, c.id, { imagePath: r.path, imageUrl: r.url, originalPath: "", originalUrl: "" });
-                                } catch (er) { alert(er instanceof Error ? er.message : "No se pudo mover el sello."); }
-                              }}>Mover sello</button>
-                            )}
                             {c.imagePath && (
-                              <button className="btn-secondary text-xs" onClick={() => setEditing({ id: c.id, sid: sec.id, imageUrl: c.imageUrl })}>
+                              <button className="btn-secondary text-xs" onClick={() => setEditing({ id: c.id, sid: sec.id, imageUrl: c.imageUrl, ...stampOf(c) })}>
                                 Editar foto
                               </button>
                             )}
@@ -780,7 +778,7 @@ function RunTab({
           </p>
         </div>
 
-        <ExtraGallery tipo={tipo} extras={s.extras} opciones={manager.opciones} cliente={s.cliente} onEdit={(id, url) => setEditing({ id, imageUrl: url, extra: true })} />
+        <ExtraGallery tipo={tipo} extras={s.extras} opciones={manager.opciones} cliente={s.cliente} onEdit={(id, url) => setEditing({ id, imageUrl: url, extra: true, ...stampOf(s.extras.find((x) => x.id === id)) })} />
 
         <div className="flex flex-wrap items-center gap-3">
           <button className="btn-primary" onClick={makeZip} disabled={zip.busy}>
@@ -800,13 +798,21 @@ function RunTab({
         <ImageAnnotator
           imageUrl={editing.imageUrl}
           onClose={() => setEditing(null)}
-          onSaved={(p, u) => {
+          baseUrl={editing.baseUrl}
+          stamp={editing.stamp}
+          onSaved={(p, u, extra) => {
+            // Con sello libre se guarda también la foto sin sello y dónde quedó el sello.
+            const st = extra ? {
+              rawPath: extra.cleanPath, rawUrl: extra.cleanUrl,
+              stampLines: extra.stamp ? extra.stamp.lines : undefined,
+              stampPos: extra.stamp ? { fx: extra.stamp.fx, fy: extra.stamp.fy, size: extra.stamp.size } : undefined,
+            } : {};
             if (editing.extra) {
               const e = s.extras.find((x) => x.id === editing.id);
-              updateExtra(tipo, editing.id, { path: p, url: u, originalPath: e?.originalPath || e?.path, originalUrl: e?.originalUrl || e?.url });
+              updateExtra(tipo, editing.id, { path: p, url: u, originalPath: e?.originalPath || e?.path, originalUrl: e?.originalUrl || e?.url, ...st });
             } else {
               const cell = sections.find((x) => x.id === editing.sid)?.cells.find((x) => x.id === editing.id);
-              if (editing.sid) patchCell(tipo, editing.sid, editing.id, { imagePath: p, imageUrl: u, originalPath: cell?.originalPath || cell?.imagePath, originalUrl: cell?.originalUrl || cell?.imageUrl });
+              if (editing.sid) patchCell(tipo, editing.sid, editing.id, { imagePath: p, imageUrl: u, originalPath: cell?.originalPath || cell?.imagePath, originalUrl: cell?.originalUrl || cell?.imageUrl, ...st });
             }
           }}
         />

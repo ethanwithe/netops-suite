@@ -1,31 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { api } from "../api/client";
 import ImageUpload from "./ImageUpload";
 import { addExtra, removeExtra, resolveOpcion, updateExtra } from "../store/photoReportStore";
 import type { ExtraPhoto, FotoTipo, Opcion } from "../store/photoReportStore";
-import { STAMP_ARROW, STAMP_ORDER, getStampPos, setStampPos, stampImage } from "../utils/photoStamp";
-import type { StampPos } from "../utils/photoStamp";
-import { compressForUpload } from "../utils/imageCompress";
-
-/** Vuelve a poner el sello en otra esquina a partir de la foto sin sello. Devuelve la nueva foto ya subida. */
-export async function restampFromRaw(rawUrl: string, lines: string[], pos: StampPos): Promise<{ path: string; url: string }> {
-  const r = await fetch(rawUrl, { credentials: "same-origin" });
-  if (!r.ok) throw new Error("No se pudo leer la foto original.");
-  const blob = await r.blob();
-  const stamped = await stampImage(new File([blob], "foto.jpg", { type: blob.type || "image/jpeg" }), lines, pos);
-  const form = new FormData();
-  form.append("file", await compressForUpload(stamped));
-  const { data } = await api.post("/files/upload", form, { headers: { "Content-Type": "multipart/form-data" } });
-  return { path: data.path, url: data.url };
-}
-
-/** Esquina siguiente a la que está guardada (se recuerda para las próximas fotos). */
-export function nextStampPos(): StampPos {
-  const cur = getStampPos();
-  const next = STAMP_ORDER[(STAMP_ORDER.indexOf(cur) + 1) % STAMP_ORDER.length];
-  setStampPos(next);
-  return next;
-}
 
 const newId = () => `e${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
 
@@ -118,8 +94,7 @@ function Viewer({ tipo, extras, ids, startId, opciones, onEdit, onClose }: {
   onEdit: (id: string, url: string) => void; onClose: () => void;
 }) {
   const [cur, setCur] = useState(startId);
-  const [busy, setBusy] = useState(false);
-  const list = ids.map((id) => extras.find((e) => e.id === id)).filter((e): e is ExtraPhoto => !!e);
+    const list = ids.map((id) => extras.find((e) => e.id === id)).filter((e): e is ExtraPhoto => !!e);
   const idx = Math.max(0, list.findIndex((e) => e.id === cur));
   const e = list[idx];
 
@@ -138,20 +113,6 @@ function Viewer({ tipo, extras, ids, startId, opciones, onEdit, onClose }: {
 
   if (!e) return null;
 
-  async function moveStamp() {
-    if (!e?.rawUrl || !e.stampLines) return;
-    if (e.originalPath && !confirm("Esta foto tiene dibujos o ediciones. Al mover el sello se vuelve a la foto original y esas ediciones se pierden. ¿Continuar?")) return;
-    setBusy(true);
-    try {
-      const r = await restampFromRaw(e.rawUrl, e.stampLines, nextStampPos());
-      updateExtra(tipo, e.id, { path: r.path, url: r.url, originalPath: "", originalUrl: "" });
-    } catch (er) {
-      alert(er instanceof Error ? er.message : "No se pudo mover el sello.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
   function remove() {
     if (!e || !confirm("¿Quitar esta foto?")) return;
     const next = list[idx + 1] ?? list[idx - 1];
@@ -167,12 +128,7 @@ function Viewer({ tipo, extras, ids, startId, opciones, onEdit, onClose }: {
         <select className="input h-8 w-44 text-slate-800" value={resolveOpcion(e.lado, opciones).id} onChange={(ev) => updateExtra(tipo, e.id, { lado: ev.target.value })}>
           {opciones.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
         </select>
-        <button className="btn-secondary text-xs" onClick={() => onEdit(e.id, e.url)}>Editar</button>
-        {e.rawUrl && e.stampLines && (
-          <button className="btn-secondary text-xs" disabled={busy} onClick={moveStamp} title="Pasa el sello a la siguiente esquina">
-            {busy ? "Moviendo..." : `Mover sello ${STAMP_ARROW[getStampPos()]}`}
-          </button>
-        )}
+        <button className="btn-secondary text-xs" onClick={() => onEdit(e.id, e.url)} title="Editar la foto y mover o agrandar el sello">Editar</button>
         <button className="btn-secondary text-xs text-red-600" onClick={remove}>Quitar</button>
         <button className="btn-primary text-xs" onClick={onClose}>Cerrar</button>
       </div>
