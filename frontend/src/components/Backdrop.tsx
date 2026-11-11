@@ -95,7 +95,7 @@ export default function Backdrop() {
   const look = useLook();
   const root = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    if (look.scene === "none" || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     let raf = 0;
     const move = (e: PointerEvent) => {
       cancelAnimationFrame(raf);
@@ -107,7 +107,7 @@ export default function Backdrop() {
     };
     window.addEventListener("pointermove", move, { passive: true });
     return () => { window.removeEventListener("pointermove", move); cancelAnimationFrame(raf); };
-  }, []);
+  }, [look.scene]);
 
   return (
     <>

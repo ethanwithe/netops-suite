@@ -9,6 +9,7 @@ const WAVE = ".btn-primary,.btn-secondary,.btn-danger,.side-item,.lg";
 export function initLiquid(): () => void {
   let raf = 0;
   const move = (e: PointerEvent) => {
+    if (document.documentElement.dataset.glass !== "on") return; // sin el efecto activado no se hace nada al mover el cursor
     const t = e.target as Element | null;
     if (!t || !t.closest) return;
     cancelAnimationFrame(raf);

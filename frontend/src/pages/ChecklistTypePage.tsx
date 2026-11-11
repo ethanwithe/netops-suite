@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Navigate, useNavigate, useParams } from "react-router-dom";
 import { api, apiErrorMessage } from "../api/client";
 import ImageUpload from "../components/ImageUpload";
@@ -592,7 +592,7 @@ function Inner({ type }: { type: CkType }) {
                 const r = row(it.id);
                 const filled = it.cmd ? fillCmd(it.cmd, s.params) : null;
                 return (
-                  <div key={it.id} className="rounded-lg border border-slate-200 p-3 space-y-2">
+                  <div key={it.id} className="rounded-lg border border-slate-200 p-3 space-y-2" style={{ contentVisibility: "auto", containIntrinsicSize: "auto 150px" }}>
                     <div className="flex flex-wrap items-center gap-2">
                       <input type="checkbox" checked={r.incluir} onChange={(e) => setRow(it.id, { incluir: e.target.checked })} />
                       <span className="font-medium text-sm text-slate-800 flex-1 min-w-[180px]">{it.nombre}</span>
@@ -706,16 +706,21 @@ function Inner({ type }: { type: CkType }) {
   );
 }
 
-/** Casilla que se estira hacia abajo si el texto es largo (se puede arrastrar la esquina). */
+/** Casilla que se estira hacia abajo si el texto es largo (se puede arrastrar la esquina). Solo mide cuando cambia el texto. */
 function Field({ label, value, onChange, className = "" }: { label: string; value: string; onChange: (v: string) => void; className?: string }) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (el) { el.style.height = "auto"; el.style.height = `${el.scrollHeight + 2}px`; }
+  }, [value]);
   return (
     <label className={`block text-sm ${className}`}>
       <span className="mb-1 block text-xs font-medium text-slate-500">{label}</span>
       <textarea
+        ref={ref}
         rows={1}
         className="input w-full resize-y overflow-hidden"
         value={value}
-        ref={(el) => { if (el) { el.style.height = "auto"; el.style.height = `${el.scrollHeight + 2}px`; } }}
         onChange={(e) => onChange(e.target.value.replace(/[\r\n]+/g, " "))}
         onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }}
       />

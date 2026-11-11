@@ -21,7 +21,7 @@ export interface Look {
   glass: boolean;            // efecto cristal líquido al pasar el cursor
   liquid: boolean;           // diseño Liquid Glass (iOS): vidrio translúcido, bordes de luz, cápsulas
 }
-export const LOOK_DEFAULTS: Look = { scene: "none", drops: true, bgHue: null, dropHue: null, accentHue: null, intensity: 1, glass: true, liquid: true };
+export const LOOK_DEFAULTS: Look = { scene: "none", drops: false, bgHue: null, dropHue: null, accentHue: null, intensity: 1, glass: false, liquid: true };
 
 const KEY = "netops.look";
 const listeners = new Set<() => void>();
@@ -35,9 +35,11 @@ function modest(): boolean {
 }
 
 function read(): Look {
-  const base: Look = modest() ? { ...LOOK_DEFAULTS, drops: false, glass: false } : { ...LOOK_DEFAULTS };
+  const base: Look = { ...LOOK_DEFAULTS };
   try {
     const v = JSON.parse(localStorage.getItem(KEY) || "{}");
+    // Versión 2 (rendimiento): las gotas animadas y el brillo al pasar el cursor arrancan apagados; se pueden volver a prender en «Personalizar».
+    if (v && v.v !== 2) { v.drops = false; v.glass = false; v.v = 2; try { localStorage.setItem(KEY, JSON.stringify(v)); } catch { /* ignorar */ } }
     return { ...base, ...v };
   } catch { return base; }
 }
@@ -77,7 +79,7 @@ export function applyLook() {
 
 export function setLook(p: Partial<Look>) {
   look = { ...look, ...p };
-  try { localStorage.setItem(KEY, JSON.stringify(look)); } catch { /* ignorar */ }
+  try { localStorage.setItem(KEY, JSON.stringify({ ...look, v: 2 })); } catch { /* ignorar */ }
   applyLook();
   listeners.forEach((l) => l());
 }
