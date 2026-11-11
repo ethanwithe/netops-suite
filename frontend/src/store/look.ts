@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 
-/** Personalización visual: escena de fondo 3D, gotas y colores. Se guarda en este navegador. */
+/** Personalización visual: escena de fondo 3D y colores. Se guarda en este navegador. */
 export type Scene = "none" | "bubbles" | "orbs" | "waves" | "crystals" | "stars";
 export const SCENES: { id: Scene; label: string }[] = [
   { id: "none", label: "Ninguno" },
@@ -13,15 +13,13 @@ export const SCENES: { id: Scene; label: string }[] = [
 
 export interface Look {
   scene: Scene;
-  drops: boolean;
   bgHue: number | null;      // color del fondo (null = el del tema)
-  dropHue: number | null;    // color de las gotas
   accentHue: number | null;  // color de botones y acentos
   intensity: number;         // 0.3 – 1.5: fuerza del fondo
   glass: boolean;            // efecto cristal líquido al pasar el cursor
   liquid: boolean;           // diseño Liquid Glass (iOS): vidrio translúcido, bordes de luz, cápsulas
 }
-export const LOOK_DEFAULTS: Look = { scene: "none", drops: false, bgHue: null, dropHue: null, accentHue: null, intensity: 1, glass: false, liquid: true };
+export const LOOK_DEFAULTS: Look = { scene: "none", bgHue: null, accentHue: null, intensity: 1, glass: false, liquid: true };
 
 const KEY = "netops.look";
 const listeners = new Set<() => void>();
@@ -39,7 +37,7 @@ function read(): Look {
   try {
     const v = JSON.parse(localStorage.getItem(KEY) || "{}");
     // Versión 2 (rendimiento): las gotas animadas y el brillo al pasar el cursor arrancan apagados; se pueden volver a prender en «Personalizar».
-    if (v && v.v !== 2) { v.drops = false; v.glass = false; v.v = 2; try { localStorage.setItem(KEY, JSON.stringify(v)); } catch { /* ignorar */ } }
+    if (v && v.v !== 2) { delete v.drops; delete v.dropHue; v.glass = false; v.v = 2; try { localStorage.setItem(KEY, JSON.stringify(v)); } catch { /* ignorar */ } }
     return { ...base, ...v };
   } catch { return base; }
 }
@@ -57,16 +55,10 @@ export function hsl(h: number, s: number, l: number): string {
 export function applyLook() {
   const d = document.documentElement, st = d.style;
   const set = (k: string, v: string | null) => (v == null ? st.removeProperty(k) : st.setProperty(k, v));
-  const b = look.bgHue, g = look.dropHue, a = look.accentHue;
+  const b = look.bgHue, a = look.accentHue;
   set("--bg1", b == null ? null : hsl(b, 92, 58));
   set("--bg2", b == null ? null : hsl((b + 40) % 360, 82, 52));
   set("--bg3", b == null ? null : hsl((b + 330) % 360, 88, 66));
-  set("--drop1", g == null ? null : hsl(g, 90, 74));
-  set("--drop2", g == null ? null : hsl(g, 72, 24));
-  set("--drop3", g == null ? null : hsl(g, 82, 8));
-  set("--sdrop1", g == null ? null : hsl(g, 90, 78));
-  set("--sdrop2", g == null ? null : hsl(g, 70, 38));
-  set("--sdrop3", g == null ? null : hsl(g, 80, 14));
   set("--btn1", a == null ? null : hsl(a, 100, 63));
   set("--btn2", a == null ? null : hsl(a, 76, 46));
   set("--btn3", a == null ? null : hsl(a, 76, 35));

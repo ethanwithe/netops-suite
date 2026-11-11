@@ -13,7 +13,6 @@
   --page: 234 240 249;
   --bg1: 56 208 247; --bg2: 43 114 230; --bg3: 125 211 252;   /* manchas de color del fondo */
   --side-from: 8 29 66; --side-to: 14 43 94;
-  --drop1: 120 160 230; --drop2: 16 38 88; --drop3: 3 9 28;   /* gotas: negro azulado */
   --accent: 29 95 208; --accent2: 56 208 247;
   --btn1: 59 139 255; --btn2: 29 95 208; --btn3: 22 74 166;   /* botón principal */
   --bga: 1;
@@ -39,7 +38,6 @@
   --bg1: 56 130 247; --bg2: 70 90 200; --bg3: 40 160 220;
   --side-from: 1 2 5; --side-to: 5 8 15;
   --edge: 160 190 255;
-  --drop1: 150 190 255; --drop2: 24 52 118; --drop3: 4 12 36;
   color-scheme: dark;
 }
 :root[data-theme="ocean"] {
@@ -51,7 +49,6 @@
   --bg1: 20 190 240; --bg2: 30 100 230; --bg3: 10 150 200;
   --side-from: 3 10 28; --side-to: 8 30 70;
   --edge: 130 210 255;
-  --drop1: 150 215 255; --drop2: 20 70 150; --drop3: 3 14 46;
   color-scheme: dark;
 }
 :root[data-theme="aurora"] {
@@ -64,7 +61,6 @@
   --side-from: 8 6 22; --side-to: 24 16 58;
   --accent: 124 92 255; --accent2: 60 225 215;
   --edge: 190 160 255;
-  --drop1: 170 170 255; --drop2: 34 40 120; --drop3: 6 8 34;
   color-scheme: dark;
 }
 
@@ -255,40 +251,6 @@ h1, h2, h3 { font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', I
 .fab-on { color: #fff !important; background: radial-gradient(120% 140% at 28% 12%, rgb(255 255 255 / .5), transparent 45%), linear-gradient(180deg, #3b8bff, #1d5fd0); border-color: transparent; }
 .dark .fab-on, .fab-on { color: #fff !important; background: radial-gradient(120% 140% at 28% 12%, rgb(255 255 255 / .5), transparent 45%), linear-gradient(180deg, #3b8bff, #1d5fd0); border-color: transparent; }
 .fab-up { animation: pop .2s ease both; }
-
-/* ============ Gotas de agua 3D ============ */
-.drops { position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; }
-.drop-wrap { position: absolute; transform: translate3d(calc(var(--px, 0) * var(--depth) * 1px), calc(var(--py, 0) * var(--depth) * 1px), 0); transition: transform .25s ease-out; will-change: transform; }
-.drop-in { animation: drop-float var(--dur, 12s) ease-in-out var(--delay, 0s) infinite; filter: drop-shadow(0 18px 22px rgb(var(--drop3) / .38)); }
-@keyframes drop-float {
-  0%, 100% { transform: translate(0, 0) rotate(0deg) scale(1); }
-  33% { transform: translate(8px, -16px) rotate(4deg) scale(1.03, .98); }
-  66% { transform: translate(-6px, -6px) rotate(-3deg) scale(.98, 1.03); }
-}
-/* Splash leve: la gota se achata un instante y suelta un anillo y salpicaduras diminutas */
-.drop-sq { animation: drop-squash var(--cyc, 22s) ease-in-out var(--cdelay, 0s) infinite; transform-origin: 50% 90%; }
-@keyframes drop-squash { 0%, 9%, 100% { transform: scale(1, 1); } 2% { transform: scale(1.14, .84); } 4.5% { transform: scale(.93, 1.09); } 7% { transform: scale(1.03, .98); } }
-.splash { position: absolute; inset: 0; pointer-events: none; }
-.splash-ring {
-  position: absolute; left: 10%; right: 10%; bottom: -4%; height: 26%; border-radius: 50%;
-  border: 2px solid rgb(var(--drop2) / .7); opacity: 0;
-  animation: splash-ring var(--cyc, 22s) ease-out var(--cdelay, 0s) infinite;
-}
-@keyframes splash-ring { 0%, 1.5% { opacity: 0; transform: scale(.5); } 2.5% { opacity: .6; } 9% { opacity: 0; transform: scale(1.9); } 100% { opacity: 0; } }
-.splash-dot {
-  position: absolute; left: 48%; bottom: 8%; width: 7%; height: 7%; min-width: 4px; min-height: 4px; border-radius: 50%;
-  background: radial-gradient(circle at 30% 30%, rgb(var(--drop1) / .9), rgb(var(--drop2) / .95) 60%, rgb(var(--drop3)));
-  opacity: 0; animation: splash-dot var(--cyc, 22s) ease-out var(--cdelay, 0s) infinite;
-}
-@keyframes splash-dot { 0%, 1.5% { opacity: 0; transform: translate(0, 0) scale(.3); } 2.5% { opacity: .85; } 10% { opacity: 0; transform: translate(var(--dx), var(--dy)) scale(1); } 100% { opacity: 0; } }
-.ripple {
-  position: fixed; z-index: 60; width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%; pointer-events: none;
-  border: 2px solid rgb(var(--accent2) / .75); box-shadow: 0 0 14px rgb(var(--accent2) / .5), inset 0 0 8px rgb(var(--accent2) / .35);
-  animation: ripple .75s ease-out forwards;
-}
-@keyframes ripple { to { transform: scale(7); opacity: 0; border-width: 1px; } }
-.side { --drop1: var(--sdrop1, 160 205 255); --drop2: var(--sdrop2, 36 84 180); --drop3: var(--sdrop3, 6 20 64); }
-.side-drop { position: absolute; pointer-events: none; animation: drop-float var(--dur, 10s) ease-in-out var(--delay, 0s) infinite; filter: drop-shadow(0 10px 12px rgb(0 0 0 / .35)); opacity: .9; }
 
 /* ============ Mascota ============ */
 @keyframes bob { 0%,100% { transform: translateY(0) } 50% { transform: translateY(-3px) } }
@@ -574,8 +536,6 @@ input[type="checkbox"].ios:disabled { opacity: .45; cursor: not-allowed; }
 .page-title { font-size: clamp(1.6rem, 1.3rem + 1vw, 2.1rem); line-height: 1.12; margin-bottom: .35rem; }
 .page-title + p { margin-top: .25rem; margin-bottom: 1rem; line-height: 1.5; max-width: 62rem; }
 
-/* las gotas del menú lateral quedan al pie, sin tapar los textos */
-.side-drop { z-index: 0; opacity: .55; }
 
 
 /* ============ Liquid Glass (nuevo diseño de iOS) ============

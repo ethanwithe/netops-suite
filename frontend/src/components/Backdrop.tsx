@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useLook } from "../store/look";
-import WaterDrops from "./WaterDrops";
 
 /** Números pseudoaleatorios repetibles (para que las escenas no cambien en cada render). */
 function rng(seed: number) {
@@ -120,7 +119,6 @@ export default function Backdrop() {
           {look.scene === "stars" && <Stars />}
         </div>
       )}
-      {look.drops && <WaterDrops />}
     </>
   );
 }
