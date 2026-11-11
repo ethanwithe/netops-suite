@@ -48,16 +48,11 @@ export default function LookPanel({ onBack }: { onBack: () => void }) {
         <input type="checkbox" checked={look.liquid} onChange={(e) => setLook({ liquid: e.target.checked })} />
       </label>
       <label className="flex items-center justify-between text-[12px]">
-        <span className="font-semibold">Gotas de agua</span>
-        <input type="checkbox" checked={look.drops} onChange={(e) => setLook({ drops: e.target.checked })} />
-      </label>
-      <label className="flex items-center justify-between text-[12px]">
         <span className="font-semibold">Efecto cristal líquido al pasar el cursor</span>
         <input type="checkbox" checked={look.glass} onChange={(e) => setLook({ glass: e.target.checked })} />
       </label>
 
       <HueRow label="Color del fondo" value={look.bgHue} onChange={(v) => setLook({ bgHue: v })} />
-      <HueRow label="Color de las gotas" value={look.dropHue} onChange={(v) => setLook({ dropHue: v })} />
       <HueRow label="Color de botones y acentos" value={look.accentHue} onChange={(v) => setLook({ accentHue: v })} />
 
       <div>

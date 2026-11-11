@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useLook } from "../store/look";
-import WaterDrops from "./WaterDrops";
 
 /** Números pseudoaleatorios repetibles (para que las escenas no cambien en cada render). */
 function rng(seed: number) {
@@ -95,7 +94,7 @@ export default function Backdrop() {
   const look = useLook();
   const root = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    if (look.scene === "none" || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     let raf = 0;
     const move = (e: PointerEvent) => {
       cancelAnimationFrame(raf);
@@ -107,7 +106,7 @@ export default function Backdrop() {
     };
     window.addEventListener("pointermove", move, { passive: true });
     return () => { window.removeEventListener("pointermove", move); cancelAnimationFrame(raf); };
-  }, []);
+  }, [look.scene]);
 
   return (
     <>
@@ -120,7 +119,6 @@ export default function Backdrop() {
           {look.scene === "stars" && <Stars />}
         </div>
       )}
-      {look.drops && <WaterDrops />}
     </>
   );
 }
