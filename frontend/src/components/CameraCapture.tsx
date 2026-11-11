@@ -22,6 +22,7 @@ import type { Place, StampPos } from "../utils/photoStamp";
 type FocusCaps = MediaTrackCapabilities & {
   focusMode?: string[];
   torch?: boolean;
+  zoom?: { min: number; max: number; step?: number };
 };
 
 interface Props {
@@ -54,8 +55,24 @@ export default function CameraCapture({ cliente = "", onCapture, onClose, onNati
   const placeRef = useRef<Place | null>(null);
   const [now, setNow] = useState(() => new Date());
   const [pos, setPos] = useState<StampPos>(() => getStampPos());
-  const [box, setBox] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+  const [box, setBox] = useState<{ x: number; y: number; w: number; h: number; aw: number; ah: number } | null>(null);
   const areaRef = useRef<HTMLDivElement>(null);
+
+  // Acercar / alejar la cámara: pellizco con dos dedos o rueda del mouse (zoom real si el teléfono lo tiene; si no, digital).
+  const [zoom, setZoom] = useState(1);
+  const zoomRef = useRef(1);
+  const [hwZoom, setHwZoom] = useState(false);
+  const pointers = useRef(new Map<number, { x: number; y: number }>());
+  const pinch = useRef<{ d0: number; z0: number } | null>(null);
+  const lastPinch = useRef(0);
+  const setZ = useCallback((next: number) => {
+    const hw = capsRef.current.zoom;
+    const lo = hw ? hw.min : 1, hi = hw ? Math.min(hw.max, 10) : 5;
+    const z = Math.max(lo, Math.min(hi, next));
+    zoomRef.current = z;
+    setZoom(z);
+    if (hw) trackRef.current?.applyConstraints({ advanced: [{ zoom: z } as MediaTrackConstraintSet] }).catch(() => undefined);
+  }, []);
 
   const stop = useCallback(() => {
     streamRef.current?.getTracks().forEach((t) => t.stop());
@@ -92,6 +109,8 @@ export default function CameraCapture({ cliente = "", onCapture, onClose, onNati
         const caps = (track.getCapabilities?.() ?? {}) as FocusCaps;
         capsRef.current = caps;
         setHasTorch(!!caps.torch);
+        setHwZoom(!!caps.zoom);
+        if (caps.zoom) { zoomRef.current = caps.zoom.min <= 1 ? 1 : caps.zoom.min; setZoom(zoomRef.current); }
 
         // Enfoque continuo: la cámara sigue enfocando mientras apuntas.
         if (caps.focusMode?.includes("continuous")) {
@@ -149,20 +168,59 @@ export default function CameraCapture({ cliente = "", onCapture, onClose, onNati
       if (!cw || !ch) return;
       const k = Math.min(cw / vw, ch / vh);
       const w = vw * k, h = vh * k;
-      setBox({ x: video.offsetLeft + (cw - w) / 2, y: video.offsetTop + (ch - h) / 2, w, h });
+      setBox({ x: video.offsetLeft + (cw - w) / 2, y: video.offsetTop + (ch - h) / 2, w, h, aw: area.clientWidth, ah: area.clientHeight });
     };
+    // Al girar el teléfono el video cambia de tamaño un poco después: se vuelve a medir varias veces.
+    const later = () => { measure(); window.setTimeout(measure, 150); window.setTimeout(measure, 500); };
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(area);
     ro.observe(video);
     video.addEventListener("loadedmetadata", measure);
     video.addEventListener("resize", measure);
+    window.addEventListener("resize", later);
+    window.addEventListener("orientationchange", later);
+    screen.orientation?.addEventListener?.("change", later);
     return () => {
       ro.disconnect();
       video.removeEventListener("loadedmetadata", measure);
       video.removeEventListener("resize", measure);
+      window.removeEventListener("resize", later);
+      window.removeEventListener("orientationchange", later);
+      screen.orientation?.removeEventListener?.("change", later);
     };
   }, [ready]);
+
+  // Rueda del mouse / touchpad: acerca o aleja la cámara.
+  useEffect(() => {
+    const area = areaRef.current;
+    if (!area) return;
+    const onWheel = (e: WheelEvent) => { e.preventDefault(); setZ(zoomRef.current * Math.exp(-e.deltaY * 0.002)); };
+    area.addEventListener("wheel", onWheel, { passive: false });
+    return () => area.removeEventListener("wheel", onWheel);
+  }, [setZ]);
+
+  function onPtrDown(e: React.PointerEvent<HTMLDivElement>) {
+    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pointers.current.size === 2) {
+      const [a, b] = [...pointers.current.values()];
+      pinch.current = { d0: Math.hypot(a.x - b.x, a.y - b.y) || 1, z0: zoomRef.current };
+      lastPinch.current = Date.now();
+    }
+  }
+  function onPtrMove(e: React.PointerEvent<HTMLDivElement>) {
+    if (!pointers.current.has(e.pointerId)) return;
+    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pinch.current && pointers.current.size >= 2) {
+      const [a, b] = [...pointers.current.values()];
+      setZ(pinch.current.z0 * ((Math.hypot(a.x - b.x, a.y - b.y) || 1) / pinch.current.d0));
+      lastPinch.current = Date.now();
+    }
+  }
+  function onPtrUp(e: React.PointerEvent<HTMLDivElement>) {
+    pointers.current.delete(e.pointerId);
+    if (pointers.current.size < 2) pinch.current = null;
+  }
 
   function cyclePos() {
     const next = STAMP_ORDER[(STAMP_ORDER.indexOf(pos) + 1) % STAMP_ORDER.length];
@@ -184,6 +242,7 @@ export default function CameraCapture({ cliente = "", onCapture, onClose, onNati
 
   /** Toque en pantalla: fuerza un nuevo enfoque y vuelve al continuo. */
   async function refocus(e: React.MouseEvent<HTMLDivElement>) {
+    if (Date.now() - lastPinch.current < 400) return; // el pellizco no es un toque para enfocar
     const rect = e.currentTarget.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
@@ -231,7 +290,8 @@ export default function CameraCapture({ cliente = "", onCapture, onClose, onNati
     try {
       let blob: Blob | null = null;
 
-      if (hq) {
+      const digital = !hwZoom && zoomRef.current > 1.01 ? zoomRef.current : 1;
+      if (hq && digital === 1) {
         const IC = (window as unknown as { ImageCapture?: new (t: MediaStreamTrack) => { takePhoto: (o?: object) => Promise<Blob> } }).ImageCapture;
         if (IC) {
           try { blob = await new IC(track).takePhoto(); } catch { blob = null; }
@@ -240,11 +300,14 @@ export default function CameraCapture({ cliente = "", onCapture, onClose, onNati
 
       if (!blob) {
         const MAX = 1600; // el sello también se hace a este tamaño
-        const k = Math.min(1, MAX / Math.max(video.videoWidth, video.videoHeight));
+        // Con zoom digital se recorta el centro del cuadro, igual que se ve en pantalla.
+        const sw = video.videoWidth / digital, sh = video.videoHeight / digital;
+        const sx = (video.videoWidth - sw) / 2, sy = (video.videoHeight - sh) / 2;
+        const k = Math.min(1, MAX / Math.max(sw, sh));
         const canvas = document.createElement("canvas");
-        canvas.width = Math.round(video.videoWidth * k);
-        canvas.height = Math.round(video.videoHeight * k);
-        canvas.getContext("2d")?.drawImage(video, 0, 0, canvas.width, canvas.height);
+        canvas.width = Math.round(sw * k);
+        canvas.height = Math.round(sh * k);
+        canvas.getContext("2d")?.drawImage(video, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
         blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, "image/jpeg", 0.92));
       }
 
@@ -272,7 +335,7 @@ export default function CameraCapture({ cliente = "", onCapture, onClose, onNati
   });
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-black" role="dialog" aria-label="Cámara">
+    <div className="fixed inset-0 z-50 flex flex-col bg-black" role="dialog" aria-label="Cámara" style={{ touchAction: "none", overscrollBehavior: "contain" }}>
       <div className="flex items-center justify-between px-3 py-2 text-white">
         <button className="rounded-lg px-3 py-2 text-sm hover:bg-white/10" onClick={onClose}>Cerrar</button>
         <button
@@ -289,9 +352,20 @@ export default function CameraCapture({ cliente = "", onCapture, onClose, onNati
         )}
       </div>
 
-      <div ref={areaRef} className="relative flex-1 overflow-hidden" onClick={refocus}>
+      <div ref={areaRef} className="relative flex-1 overflow-hidden" style={{ touchAction: "none" }} onClick={refocus}
+        onPointerDown={onPtrDown} onPointerMove={onPtrMove} onPointerUp={onPtrUp} onPointerCancel={onPtrUp}>
         <div className={`pointer-events-none absolute inset-0 z-10 bg-white transition-opacity ${flash ? "opacity-80 duration-75" : "opacity-0 duration-200"}`} aria-hidden="true" />
-        <video ref={videoRef} playsInline muted className="h-full w-full object-contain" />
+        {/* Con zoom digital el video se agranda dentro del cuadro de la imagen (sin invadir las franjas negras) */}
+        <div className="absolute inset-0" style={box ? { clipPath: `inset(${box.y}px ${Math.max(0, box.aw - box.x - box.w)}px ${Math.max(0, box.ah - box.y - box.h)}px ${box.x}px)` } : undefined}>
+          <video ref={videoRef} playsInline muted className="h-full w-full object-contain"
+            style={!hwZoom && zoom > 1 ? { transform: `scale(${zoom})`, transformOrigin: "center" } : undefined} />
+        </div>
+        {(zoom > 1.02 || hwZoom) && ready && (
+          <button type="button" onClick={(e) => { e.stopPropagation(); setZ(hwZoom ? (capsRef.current.zoom?.min ?? 1) : 1); }}
+            className="absolute left-1/2 top-2 z-20 -translate-x-1/2 rounded-full bg-black/55 px-3 py-1 text-xs font-semibold text-white">
+            {zoom.toFixed(1)}× {zoom > 1.02 ? "· toca para volver a 1×" : ""}
+          </button>
+        )}
         {box && ready && (
           <div
             className="pointer-events-none absolute overflow-hidden"
@@ -337,7 +411,7 @@ export default function CameraCapture({ cliente = "", onCapture, onClose, onNati
       </div>
 
       <div className="flex flex-col items-center gap-2 px-4 pt-3" style={{ paddingBottom: "max(1.5rem, env(safe-area-inset-bottom))" }}>
-        <p className="text-[11px] text-white/60">El texto blanco es el sello tal como saldrá. Toca la pantalla para enfocar · Espacio o Enter disparan.</p>
+        <p className="text-[11px] text-white/60">El texto blanco es el sello tal como saldrá. Pellizca o usa la rueda del mouse para acercar · toca para enfocar · Espacio o Enter disparan.</p>
         <div className="flex w-full items-center justify-between">
           <button className="w-28 text-left text-xs text-white/70 underline" onClick={onNative}>Cámara del teléfono</button>
           <button
