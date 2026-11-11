@@ -38,9 +38,11 @@ interface Props {
   onClose: () => void;
   /** Abre la cámara nativa del teléfono (plan B). */
   onNative: () => void;
+  /** Varias fotos seguidas, como la cámara del teléfono: no se cierra al disparar y muestra la miniatura de lo tomado. */
+  multi?: boolean;
 }
 
-export default function CameraCapture({ cliente = "", onCapture, onClose, onNative }: Props) {
+export default function CameraCapture({ cliente = "", onCapture, onClose, onNative, multi = false }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const trackRef = useRef<MediaStreamTrack | null>(null);
@@ -61,6 +63,10 @@ export default function CameraCapture({ cliente = "", onCapture, onClose, onNati
   const [now, setNow] = useState(() => new Date());
   const [sty, setSty] = useState<StampStyle>(() => getStampStyle());
   const [panel, setPanel] = useState(false);
+  const [shots, setShots] = useState<{ url: string }[]>([]);
+  const [view, setView] = useState<number | null>(null);
+  const shotsRef = useRef<{ url: string }[]>([]);
+  useEffect(() => () => { shotsRef.current.forEach((x) => URL.revokeObjectURL(x.url)); }, []);
   const [custom, setCustom] = useState<string | null>(null);   // texto escrito a mano (null = automático)
   useEffect(() => { setStampText(null); }, []);
   const [box, setBox] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
@@ -264,8 +270,14 @@ export default function CameraCapture({ cliente = "", onCapture, onClose, onNati
       if (blob) {
         const file = new File([blob], `foto-${Date.now()}.jpg`, { type: blob.type || "image/jpeg" });
         const where = placeRef.current;
-        onCapture(file, where);   // se cierra la cámara ya; el sello y la subida siguen por detrás
-        stop();
+        onCapture(file, where);   // el sello y la subida siguen por detrás
+        if (multi) {
+          const sh = { url: URL.createObjectURL(file) };
+          shotsRef.current = [...shotsRef.current, sh];
+          setShots(shotsRef.current);
+        } else {
+          stop();   // una sola foto: se cierra la cámara ya
+        }
       } else {
         setError("No se pudo tomar la foto. Inténtalo otra vez.");
       }
@@ -287,7 +299,7 @@ export default function CameraCapture({ cliente = "", onCapture, onClose, onNati
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-black" role="dialog" aria-label="Cámara">
       <div className="flex items-center justify-between px-3 py-2 text-white">
-        <button className="rounded-lg px-3 py-2 text-sm hover:bg-white/10" onClick={onClose}>Cerrar</button>
+        <button className={`rounded-lg px-3 py-2 text-sm ${shots.length ? "bg-white font-semibold text-black" : "hover:bg-white/10"}`} onClick={onClose}>{shots.length ? `Listo (${shots.length})` : "Cerrar"}</button>
         <button
           className="rounded-lg px-3 py-2 text-sm hover:bg-white/10"
           onClick={() => setPanel((v) => !v)}
@@ -395,7 +407,14 @@ export default function CameraCapture({ cliente = "", onCapture, onClose, onNati
         )}
         <p className="text-[11px] text-white/60">Así saldrá el sello. Toca la pantalla para enfocar · Espacio o Enter disparan.</p>
         <div className="flex w-full items-center justify-between">
-          <button className="w-28 text-left text-xs text-white/70 underline" onClick={onNative}>Cámara del teléfono</button>
+          {shots.length ? (
+            <button type="button" aria-label="Ver las fotos tomadas" onClick={() => setView(shots.length - 1)} className="relative h-14 w-14 shrink-0 overflow-hidden rounded-lg border-2 border-white/80 bg-black">
+              <img src={shots[shots.length - 1].url} alt="" className="h-full w-full object-cover" />
+              <span className="absolute bottom-0 right-0 rounded-tl bg-black/70 px-1 text-[10px] font-semibold text-white">{shots.length}</span>
+            </button>
+          ) : (
+            <button className="w-28 text-left text-xs text-white/70 underline" onClick={onNative}>Cámara del teléfono</button>
+          )}
           <button
             aria-label="Tomar foto"
             disabled={!ready || busy}
@@ -407,6 +426,27 @@ export default function CameraCapture({ cliente = "", onCapture, onClose, onNati
           </button>
         </div>
       </div>
+      {view != null && shots[view] && (
+        <div className="fixed inset-0 z-[60] flex flex-col bg-black" role="dialog" aria-label="Fotos tomadas">
+          <div className="flex items-center justify-between px-3 py-2 text-white">
+            <button className="rounded-lg px-3 py-2 text-sm hover:bg-white/10" onClick={() => setView(null)}>← Cámara</button>
+            <span className="text-xs text-white/70">{view + 1} de {shots.length}</span>
+            <button className="rounded-lg bg-white px-3 py-2 text-sm font-semibold text-black" onClick={onClose}>Listo</button>
+          </div>
+          <div className="flex min-h-0 flex-1 items-center justify-center">
+            <img src={shots[view].url} alt="" className="max-h-full max-w-full object-contain" />
+          </div>
+          <div className="flex gap-2 overflow-x-auto px-3 py-3" style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}>
+            {shots.map((x, i) => (
+              <button key={x.url} type="button" onClick={() => setView(i)} aria-label={`Foto ${i + 1}`}
+                ref={(el) => { if (el && i === view) el.scrollIntoView({ inline: "center", block: "nearest" }); }}
+                className={`h-16 w-16 shrink-0 overflow-hidden rounded-lg border-2 ${i === view ? "border-yellow-300" : "border-white/30"}`}>
+                <img src={x.url} alt="" className="h-full w-full object-cover" />
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
