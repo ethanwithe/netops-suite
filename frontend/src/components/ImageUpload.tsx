@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
 import { compressForUpload } from "../utils/imageCompress";
 import CameraCapture from "./CameraCapture";
-import { getPlaceFast, getStampPos, stampImage, stampLines } from "../utils/photoStamp";
+import { getPlaceFast, stampImage, stampLines } from "../utils/photoStamp";
 import type { Place } from "../utils/photoStamp";
 
 interface Props {
@@ -84,7 +84,7 @@ export default function ImageUpload({ onUploaded, label = "Subir imagen...", com
       const when = new Date();
       const place = known !== undefined ? known : await getPlaceFast();
       const lines = stampLines(cliente, place, when);
-      const stamped = await stampImage(file, lines, getStampPos());
+      const stamped = await stampImage(file, lines);
       setStamping(false);
       await handleFile(stamped);
       if (onStampRaw) {

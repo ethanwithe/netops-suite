@@ -386,9 +386,9 @@ function SeccionesTab({ tipo, items }: { tipo: FotoTipo; items: PhotoItem[] }) {
 }
 
 /** Datos para abrir el editor con el sello como objeto libre (solo fotos tomadas con la cámara). */
-function stampOf(x?: { rawUrl?: string; stampLines?: string[]; stampPos?: { fx: number; fy: number; size: number } }): { baseUrl?: string; stamp?: StampInit } {
+function stampOf(x?: { rawUrl?: string; stampLines?: string[]; stampPos?: { fx: number; fy: number; size: number; font?: string; color?: string; align?: "left" | "center" | "right" } }): { baseUrl?: string; stamp?: StampInit } {
   if (!x?.rawUrl || !x.stampLines?.length) return {};
-  return { baseUrl: x.rawUrl, stamp: { lines: x.stampLines, fx: x.stampPos?.fx, fy: x.stampPos?.fy, size: x.stampPos?.size } };
+  return { baseUrl: x.rawUrl, stamp: { lines: x.stampLines, fx: x.stampPos?.fx, fy: x.stampPos?.fy, size: x.stampPos?.size, font: x.stampPos?.font, color: x.stampPos?.color, align: x.stampPos?.align } };
 }
 
 function RunTab({
@@ -808,7 +808,7 @@ function RunTab({
             const st = extra ? {
               rawPath: extra.cleanPath, rawUrl: extra.cleanUrl,
               stampLines: extra.stamp ? extra.stamp.lines : undefined,
-              stampPos: extra.stamp ? { fx: extra.stamp.fx, fy: extra.stamp.fy, size: extra.stamp.size } : undefined,
+              stampPos: extra.stamp ? { fx: extra.stamp.fx, fy: extra.stamp.fy, size: extra.stamp.size, font: extra.stamp.font, color: extra.stamp.color, align: extra.stamp.align } : undefined,
             } : {};
             if (editing.extra) {
               const e = s.extras.find((x) => x.id === editing.id);
