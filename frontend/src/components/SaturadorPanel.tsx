@@ -24,6 +24,7 @@ export default function SaturadorPanel({
   const [code, setCode] = usePersistentState("saturador.codigo", "");
   const [via, setVia] = usePersistentState<"agente" | "navegador">("saturador.via", "agente");
   const [bt, setBt] = useState<SatTick | null>(null);
+  const [navDest, setNavDest] = usePersistentState("saturador.navDest", "");
   const [btRun, setBtRun] = useState(false);
   const btRef = useRef<BrowserSat | null>(null);
   const [res, setRes] = useState<AgentResult | null>(null);
@@ -52,6 +53,7 @@ export default function SaturadorPanel({
     setError(null); setBt(null); setBtRun(true);
     btRef.current = startBrowserSat({
       seconds: Number(seg) || 0,
+      target: navDest,
       onTick: setBt,
       onEnd: (err) => { setBtRun(false); if (err) setError(err); },
     });
@@ -95,6 +97,19 @@ export default function SaturadorPanel({
           Satura el enlace de Internet de esta PC descargando y subiendo datos en paralelo desde el navegador: no necesita instalar nada ni código.
           Para saturar una RPV o por ICMP usa el agente.
         </p>
+        <label className="block text-sm">
+          <span className="mb-1 block text-xs font-medium text-slate-500">Destino (vacío = servidor de pruebas de Cloudflare)</span>
+          <div className="flex flex-wrap gap-2">
+            <input className="input min-w-[200px] flex-1" value={navDest} onChange={(e) => setNavDest(e.target.value)} placeholder="IP, dominio o URL (ej. 10.31.242.25 o https://host/archivo)" disabled={btRun} />
+            {navDest && <button type="button" className="btn-secondary text-xs" onClick={() => setNavDest("")} disabled={btRun}>Usar Cloudflare</button>}
+          </div>
+          {navDest.trim() && (
+            <span className="mt-1 block text-[11px] text-amber-700">
+              Un navegador solo manda HTTP(S) (no ping ni paquetes crudos) y desde esta página (https) no puede llamar a destinos http://. El destino debe responder
+              por https (se prueba https://{navDest.trim().replace(/^https?:\/\//i, "")}). Si no permite CORS, se genera el tráfico pero la bajada no se puede medir. Para ICMP o una IP de RPV usa el agente.
+            </span>
+          )}
+        </label>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <label className="block text-sm">
             <span className="mb-1 block text-xs font-medium text-slate-500">Objetivo de referencia (Mbps)</span>
@@ -112,7 +127,7 @@ export default function SaturadorPanel({
         {error && <p className="text-sm text-red-600">{error}</p>}
         {bt && (
           <div className="space-y-2 rounded-lg border border-slate-200 p-3">
-            <p className="text-xs text-slate-500">{btRun ? `Saturando · ${bt.sec}s` : "Última saturación (detenida)"}</p>
+            <p className="text-xs text-slate-500">{btRun ? `Saturando${navDest.trim() ? ` ${navDest.trim()}` : ""} · ${bt.sec}s${Number(seg) ? ` de ${Number(seg)}s` : ""}` : "Última saturación (detenida)"}{bt.errors > 0 ? ` · ${bt.errors} reintento(s)` : ""}</p>
             {[["Subida", bt.up, "bg-blue-500"], ["Bajada", bt.down, "bg-emerald-500"]].map(([l, v, c]) => {
               const val = v as number, pc = tgt > 0 ? Math.min(100, Math.round((val / tgt) * 100)) : 0;
               return (
@@ -122,7 +137,7 @@ export default function SaturadorPanel({
                 </div>
               );
             })}
-            <p className="text-xs text-slate-500">Picos: subida {bt.peakUp.toFixed(1)} / bajada {bt.peakDown.toFixed(1)} Mbps</p>
+            <p className="text-xs text-slate-500">Picos: subida {bt.peakUp.toFixed(1)} / bajada {bt.peakDown.toFixed(1)} Mbps{!bt.downMeasured ? " · la bajada no se puede medir en este destino (sin CORS), pero sí se está generando" : ""}</p>
           </div>
         )}
       </div>
