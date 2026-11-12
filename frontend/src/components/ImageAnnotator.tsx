@@ -2,11 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, apiErrorMessage } from "../api/client";
 import { NEUTRAL, adjustCanvas, isNeutral } from "../utils/imageAdjust";
 import type { Adjust } from "../utils/imageAdjust";
-import { getStampPos } from "../utils/photoStamp";
+import { fontOf, getStampStyle, posH, posV, shadowFor, STAMP_COLORS, STAMP_FONTS, STAMP_ORDER } from "../utils/photoStamp";
+import type { StampPos } from "../utils/photoStamp";
 
 /** Sello de la foto (fecha, dirección, coordenadas) como objeto libre: se mueve, se agranda y se edita. */
-export interface StampInit { lines: string[]; fx?: number; fy?: number; size?: number }
-export interface StampState { lines: string[]; fx: number; fy: number; size: number }
+type Align = "left" | "center" | "right";
+export interface StampInit { lines: string[]; fx?: number; fy?: number; size?: number; font?: string; color?: string; align?: Align }
+export interface StampState { lines: string[]; fx: number; fy: number; size: number; font?: string; color?: string; align?: Align }
 
 interface Props {
   imageUrl: string;
@@ -18,7 +20,6 @@ interface Props {
   onSaved: (path: string, url: string, extra?: { cleanPath: string; cleanUrl: string; stamp: StampState | null }) => void;
 }
 
-const STAMP_FAMILY = '"Dancing Script", "Segoe Script", "Brush Script MT", cursive';
 
 // ============================================================
 // MODELO
@@ -34,7 +35,7 @@ type Poly = { id: number; k: "poly"; pts: Point[]; closed: boolean; smooth: bool
 type Obj =
   | Poly
   | { id: number; k: "blur"; a: Point; b: Point }
-  | { id: number; k: "text"; p: Point; text: string; size: number; color: string; bg: TextBg; bold: boolean; stamp?: boolean };
+  | { id: number; k: "text"; p: Point; text: string; size: number; color: string; bg: TextBg; bold: boolean; stamp?: boolean; font?: string; align?: Align };
 
 interface Doc {
   base: HTMLCanvasElement; // imagen de trabajo (nunca se modifica: cada recorte/giro crea otra)
@@ -115,7 +116,7 @@ function shapeFromDrag(kind: "arrow" | "rect" | "ellipse", a: Point, b: Point, s
 // ============================================================
 
 function textMetrics(ctx: CanvasRenderingContext2D, o: Extract<Obj, { k: "text" }>, px: number) {
-  ctx.font = o.stamp ? `600 ${px}px ${STAMP_FAMILY}` : `${o.bold ? "bold " : ""}${px}px Arial`;
+  ctx.font = o.stamp ? `${fontOf(o.font).weight} ${px}px ${fontOf(o.font).family}` : `${o.bold ? "bold " : ""}${px}px Arial`;
   const lines = o.text.split("\n");
   const w = Math.max(...lines.map((l) => ctx.measureText(l).width));
   const lead = px * (o.stamp ? 1.18 : 1.2);
@@ -199,10 +200,14 @@ function renderObjects(ctx: CanvasRenderingContext2D, objects: Obj[], s: number,
       if (o.stamp) {
         // mismo estilo que el sello de la cámara: letra cursiva blanca con sombra, sin franja
         ctx.fillStyle = o.color;
-        ctx.shadowColor = "rgba(0,0,0,0.9)";
+        ctx.shadowColor = shadowFor(o.color);
         ctx.shadowBlur = Math.max(3, px * 0.14);
         ctx.shadowOffsetX = ctx.shadowOffsetY = Math.max(1, px * 0.04);
-        m.lines.forEach((l, i) => ctx.fillText(l, x, y + i * m.lead));
+        m.lines.forEach((l, i) => {
+          const lw = ctx.measureText(l).width;
+          const dx = o.align === "right" ? m.w - lw : o.align === "center" ? (m.w - lw) / 2 : 0;
+          ctx.fillText(l, x + dx, y + i * m.lead);
+        });
         ctx.restore();
         continue;
       }
@@ -440,6 +445,17 @@ function toDataUrl(c: HTMLCanvasElement, max = 1280, q = 0.86): string {
 const AI_CHIPS = ["Mejorar la calidad general", "Aclarar las sombras", "Más nitidez en los textos", "Corregir el color amarillento", "Difuminar caras y placas"];
 const EDIT_CHIPS = ["Mejorar nitidez y reducir ruido sin cambiar el contenido", "Aclarar la foto (está oscura)", "Quitar el objeto del fondo", "Limpiar y ordenar el fondo", "Mejorar iluminación como foto profesional"];
 
+/** Esquina de la foto donde cae el sello según los 9 puntos (arriba/centro/abajo × izquierda/centro/derecha). */
+function stampSpot(base: { width: number; height: number }, o: Extract<Obj, { k: "text" }>, pos: StampPos): Point {
+  const px = o.size * unitOf(base);
+  const m = textMetrics(document.createElement("canvas").getContext("2d")!, o, px);
+  const pad = px * 0.3, H = posH(pos), V = posV(pos);
+  return {
+    x: H === "r" ? base.width - pad - m.w : H === "c" ? (base.width - m.w) / 2 : pad,
+    y: V === "b" ? base.height - pad - m.h : V === "m" ? (base.height - m.h) / 2 : pad,
+  };
+}
+
 export default function ImageAnnotator({ imageUrl, baseUrl, stamp, onClose, onSaved }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const areaRef = useRef<HTMLDivElement>(null);
@@ -504,16 +520,17 @@ export default function ImageAnnotator({ imageUrl, baseUrl, stamp, onClose, onSa
       const base = await loadBase(stamp ? baseUrl || imageUrl : imageUrl);
       const objects: Obj[] = [];
       if (stamp && stamp.lines.length) {
-        try { await document.fonts.load(`600 40px "Dancing Script"`); } catch { /* se usa una cursiva del sistema */ }
+        const ss = getStampStyle();
+        const font = stamp.font ?? ss.font, color = stamp.color ?? ss.color;
+        try { await document.fonts.load(`${fontOf(font).weight} 40px ${fontOf(font).family}`); } catch { /* se usa una letra del sistema */ }
         const u0 = unitOf(base);
-        const size = stamp.size ?? (Math.max(16, Math.round(Math.min(base.width, base.height) * 0.05))) / u0;
-        const o: Extract<Obj, { k: "text" }> = { id: newId(), k: "text", p: { x: 0, y: 0 }, text: stamp.lines.join("\n"), size, color: "#ffffff", bg: "none", bold: false, stamp: true };
+        const size = stamp.size ?? (Math.max(14, Math.round(Math.min(base.width, base.height) * 0.05 * ss.scale))) / u0;
+        const H0 = posH(ss.pos);
+        const o: Extract<Obj, { k: "text" }> = { id: newId(), k: "text", p: { x: 0, y: 0 }, text: stamp.lines.join("\n"), size, color, bg: "none", bold: false, stamp: true, font, align: stamp.align ?? (H0 === "r" ? "right" : H0 === "c" ? "center" : "left") };
         if (stamp.fx != null && stamp.fy != null) {
           o.p = { x: stamp.fx * base.width, y: stamp.fy * base.height };
         } else {
-          const m = textMetrics(document.createElement("canvas").getContext("2d")!, o, size * u0);
-          const pad = size * u0 * 0.3, pos = getStampPos();
-          o.p = { x: pos === "br" || pos === "tr" ? base.width - pad - m.w : pad, y: pos === "br" || pos === "bl" ? base.height - pad - m.h : pad };
+          o.p = stampSpot(base, o, ss.pos);
         }
         stampId.current = o.id;
         objects.push(o);
@@ -1091,7 +1108,7 @@ export default function ImageAnnotator({ imageUrl, baseUrl, stamp, onClose, onSa
       }
       onSaved(data.path, data.url, {
         cleanPath: clean.path, cleanUrl: clean.url,
-        stamp: st ? { lines: st.text.split("\n"), fx: st.p.x / full.width, fy: st.p.y / full.height, size: st.size } : null,
+        stamp: st ? { lines: st.text.split("\n"), fx: st.p.x / full.width, fy: st.p.y / full.height, size: st.size, font: st.font, color: st.color, align: st.align } : null,
       });
       onClose();
     } catch (e) {
@@ -1244,6 +1261,31 @@ export default function ImageAnnotator({ imageUrl, baseUrl, stamp, onClose, onSa
               <input type="range" min={8} max={200} step={1} className="w-24 shrink-0" aria-label="Tamaño del texto"
                 value={Math.round(selected?.k === "text" ? selected.size : textSize)}
                 onChange={(e) => { const v = Number(e.target.value); setTextSize(v); if (selected?.k === "text") patchSelected({ size: v }); }} />
+              {selected?.k === "text" && selected.stamp && doc && (
+                <>
+                  <select className={sel} value={selected.font ?? "script"} aria-label="Tipo de letra del sello"
+                    onChange={(e) => patchSelected({ font: e.target.value })}>
+                    {STAMP_FONTS.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
+                  </select>
+                  <span className="flex shrink-0 items-center gap-1" aria-label="Color del sello">
+                    {STAMP_COLORS.map((c) => (
+                      <button key={c} type="button" aria-label={`Color ${c}`} onClick={() => patchSelected({ color: c })}
+                        className={`h-5 w-5 rounded-full border-2 ${selected.color.toLowerCase() === c ? "border-blue-500" : "border-slate-300"}`} style={{ background: c }} />
+                    ))}
+                  </span>
+                  <span className="grid shrink-0 grid-cols-3 gap-0.5" aria-label="Colocar el sello">
+                    {STAMP_ORDER.map((p) => (
+                      <button key={p} type="button" title="Colocar el sello aquí" aria-label={`Colocar ${p}`}
+                        className="h-4 w-4 rounded-sm border border-slate-400 bg-white text-[8px] leading-none hover:bg-blue-100"
+                        onClick={() => {
+                          const H = posH(p), al: Align = H === "r" ? "right" : H === "c" ? "center" : "left";
+                          const o2 = { ...selected, align: al };
+                          setObjects(objects.map((o) => (o.id === selected.id ? { ...o2, p: stampSpot(doc.base, o2, p) } : o)));
+                        }}>▫</button>
+                    ))}
+                  </span>
+                </>
+              )}
               <span className="shrink-0 text-[10px] text-slate-400">Tamaño libre: pellizca con dos dedos, rueda del mouse o arrastra la esquina azul</span>
               <select className={sel} value={selected?.k === "text" ? selected.bg : textBg} aria-label="Fondo del texto"
                 onChange={(e) => { const v = e.target.value as TextBg; setTextBg(v); if (selected?.k === "text") patchSelected({ bg: v }); }}>

@@ -30,7 +30,7 @@ interface Props {
 
 /**
  * Carpeta de evidencia: TODAS las fotos (las de las celdas del PDF, editadas y originales, y las extras) en desplegables.
- * Un desplegable por cada opción del reporte (Site, PDI, POP, Cliente y las que agregues); clic en una miniatura = visor grande.
+ * Dos carpetas, cada una con su desplegable para elegir la opción (Cliente, Site, POP, PDI y las que agregues); clic en una miniatura = visor grande.
  */
 export default function ExtraGallery({ tipo, extras, sections, opciones, cliente, onEdit }: Props) {
   const items = useMemo<GalleryItem[]>(() => {
@@ -48,26 +48,43 @@ export default function ExtraGallery({ tipo, extras, sections, opciones, cliente
     return out;
   }, [sections, extras, opciones]);
 
-  const groups = opciones.map((o) => o.id);
+  // Dos carpetas con su desplegable para elegir la opción (Cliente, Site, POP, PDI...). Se recuerda lo elegido.
+  const [pick, setPick] = useState<[string, string]>(() => {
+    try {
+      const j = JSON.parse(localStorage.getItem("netops.carpeta.sel") || "null") as string[] | null;
+      if (Array.isArray(j) && j.length === 2) return [j[0], j[1]];
+    } catch { /* ignorar */ }
+    return ["cliente", "site"];
+  });
+  const ids = opciones.map((o) => o.id);
+  const fix = (id: string, other: string) => (ids.includes(id) ? id : ids.find((x) => x !== other) ?? ids[0]);
+  const sel: [string, string] = [fix(pick[0], pick[1]), fix(pick[1], pick[0])];
+  const choose = (i: 0 | 1, id: string) => {
+    const n: [string, string] = i === 0 ? [id, sel[1]] : [sel[0], id];
+    setPick(n);
+    try { localStorage.setItem("netops.carpeta.sel", JSON.stringify(n)); } catch { /* ignorar */ }
+  };
 
   const [viewer, setViewer] = useState<{ keys: string[]; key: string } | null>(null);
   const lastId = useRef("");
 
   return (
     <div className="space-y-2">
-      {groups.map((gid, gi) => {
-        const g = opciones[gi];
+      {([0, 1] as const).map((i) => {
+        const gid = sel[i];
+        const g = opciones.find((o) => o.id === gid) ?? opciones[0];
         const list = items.filter((x) => x.lado === gid);
         return (
-          <details key={`${gi}-${gid}`} className="rounded-lg border border-slate-200" open={list.length > 0 && list.length <= 12}>
-            <summary className="flex cursor-pointer select-none flex-wrap items-center gap-2 px-3 py-2 text-sm font-semibold text-slate-700">
-              {g.label}
-              <span className="text-xs font-normal text-slate-400">({list.length} fotos)</span>
-            </summary>
-            <div className="space-y-2 border-t border-slate-100 p-3">
+          <Panel key={i} title={
+            <select value={gid} onChange={(e) => choose(i, e.target.value)} aria-label={`Carpeta ${i + 1}`}
+              className="h-8 rounded-md border border-slate-300 bg-white px-2 text-sm font-semibold text-slate-700">
+              {opciones.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+            </select>
+          } count={list.length}>
+            <div className="space-y-2 p-3">
               <Grid list={list} onOpen={(key) => setViewer({ keys: list.map((x) => x.key), key })} onRemove={(it) => removeItem(tipo, it)} />
               <ImageUpload
-                key={`${gid}-${list.length}`}
+                key={gid}
                 compact
                 multiple
                 cliente={cliente}
@@ -78,13 +95,28 @@ export default function ExtraGallery({ tipo, extras, sections, opciones, cliente
                 }}
               />
             </div>
-          </details>
+          </Panel>
         );
       })}
 
       {viewer && (
         <Viewer tipo={tipo} items={items} keys={viewer.keys} startKey={viewer.key} opciones={opciones} onEdit={onEdit} onClose={() => setViewer(null)} />
       )}
+    </div>
+  );
+}
+
+function Panel({ title, count, children }: { title: React.ReactNode; count: number; children: React.ReactNode }) {
+  const [open, setOpen] = useState(true);
+  return (
+    <div className="rounded-lg border border-slate-200">
+      <div className="flex items-center gap-2 px-3 py-2">
+        {title}
+        <span className="text-xs text-slate-400">({count} fotos)</span>
+        <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open} aria-label={open ? "Plegar" : "Desplegar"}
+          className="ml-auto rounded-md px-2 py-1 text-xs text-slate-500 hover:bg-slate-100">{open ? "▲" : "▼"}</button>
+      </div>
+      {open && <div className="border-t border-slate-100">{children}</div>}
     </div>
   );
 }
@@ -103,7 +135,7 @@ function Grid({ list, onOpen, onRemove }: { list: GalleryItem[]; onOpen: (key: s
       {list.map((e, i) => (
         <div key={e.key} className="group relative aspect-square overflow-hidden rounded-md border border-slate-200 bg-slate-100">
           <button type="button" onClick={() => onOpen(e.key)} className="h-full w-full" title={e.nombre || "Ver foto"}>
-            <img src={e.url} alt="" loading="lazy" className="h-full w-full object-cover transition group-hover:scale-105" />
+            <img src={e.url} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover transition group-hover:scale-105" />
           </button>
           <span className="pointer-events-none absolute left-1 top-1 rounded bg-black/55 px-1 text-[10px] font-semibold text-white">{i + 1}</span>
           {e.edited && <span className="pointer-events-none absolute bottom-1 left-1 rounded bg-brand-600/90 px-1 text-[9px] font-semibold text-white">editada</span>}

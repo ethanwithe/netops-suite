@@ -13,28 +13,54 @@ export interface Place {
   approx?: boolean;
 }
 
-/** Esquina donde se imprime el sello: abajo-derecha (como el modelo), abajo-izquierda, arriba... */
-export type StampPos = "br" | "bl" | "tr" | "tl";
-export const STAMP_ORDER: StampPos[] = ["br", "bl", "tl", "tr"];
-export const STAMP_ARROW: Record<StampPos, string> = { br: "↘", bl: "↙", tl: "↖", tr: "↗" };
+/** Posición del sello: 9 puntos (arriba/centro/abajo × izquierda/centro/derecha). Por defecto abajo-derecha. */
+export type StampPos = "tl" | "tc" | "tr" | "ml" | "mc" | "mr" | "bl" | "bc" | "br";
+export const STAMP_ORDER: StampPos[] = ["tl", "tc", "tr", "ml", "mc", "mr", "bl", "bc", "br"];
+export const posH = (p: StampPos): "l" | "c" | "r" => (p[1] as "l" | "c" | "r");
+export const posV = (p: StampPos): "t" | "m" | "b" => (p[0] as "t" | "m" | "b");
+
+export const STAMP_FONTS: { id: string; label: string; family: string; weight: number }[] = [
+  { id: "script", label: "Cursiva", family: '"Dancing Script", "Segoe Script", "Brush Script MT", cursive', weight: 600 },
+  { id: "sans", label: "Sans", family: 'Arial, Helvetica, sans-serif', weight: 700 },
+  { id: "serif", label: "Serif", family: 'Georgia, "Times New Roman", serif', weight: 700 },
+  { id: "mono", label: "Mono", family: '"Courier New", monospace', weight: 700 },
+  { id: "impact", label: "Grueso", family: 'Impact, "Arial Black", sans-serif', weight: 400 },
+];
+export const fontOf = (id?: string) => STAMP_FONTS.find((f) => f.id === id) ?? STAMP_FONTS[0];
+export const STAMP_COLORS = ["#ffffff", "#fde047", "#67e8f9", "#86efac", "#fb7185", "#000000"];
+/** Sombra que contrasta con el color de la letra. */
+export const shadowFor = (c: string) => (c.toLowerCase() === "#000000" ? "rgba(255,255,255,0.9)" : "rgba(0,0,0,0.9)");
+
+export interface StampStyle { pos: StampPos; font: string; color: string; scale: number }
+export const STAMP_STYLE_DEFAULT: StampStyle = { pos: "br", font: "script", color: "#ffffff", scale: 1 };
+const STYLE_KEY = "netops.stampStyle";
 const POS_KEY = "netops.stampPos";
 
-export function getStampPos(): StampPos {
+export function getStampStyle(): StampStyle {
   try {
-    const v = localStorage.getItem(POS_KEY) as StampPos | null;
-    return v && STAMP_ORDER.includes(v) ? v : "br";
+    const j = JSON.parse(localStorage.getItem(STYLE_KEY) || "null") as Partial<StampStyle> | null;
+    const legacy = localStorage.getItem(POS_KEY) as StampPos | null;
+    const pos = j?.pos && STAMP_ORDER.includes(j.pos) ? j.pos : legacy && STAMP_ORDER.includes(legacy) ? legacy : "br";
+    return {
+      pos,
+      font: j?.font && STAMP_FONTS.some((f) => f.id === j.font) ? j.font : "script",
+      color: typeof j?.color === "string" ? j.color : "#ffffff",
+      scale: typeof j?.scale === "number" ? Math.min(2.5, Math.max(0.5, j.scale)) : 1,
+    };
   } catch {
-    return "br";
+    return { ...STAMP_STYLE_DEFAULT };
   }
 }
+export function setStampStyle(s: StampStyle): void {
+  try { localStorage.setItem(STYLE_KEY, JSON.stringify(s)); } catch { /* sin almacenamiento */ }
+}
+export const getStampPos = (): StampPos => getStampStyle().pos;
+export const setStampPos = (p: StampPos): void => setStampStyle({ ...getStampStyle(), pos: p });
 
-export function setStampPos(p: StampPos): void {
-  try {
-    localStorage.setItem(POS_KEY, p);
-  } catch {
-    /* sin almacenamiento: no se recuerda */
-  }
-}
+/** Texto escrito a mano en la cámara (reemplaza al automático). null = automático. */
+let customText: string[] | null = null;
+export const getStampText = () => customText;
+export const setStampText = (t: string[] | null) => { customText = t && t.length ? t : null; };
 
 interface Addr {
   road?: string; pedestrian?: string; footway?: string;
@@ -262,6 +288,7 @@ const two = (n: number) => String(n).padStart(2, "0");
  *   19 oct 2026 16:25:49 / calle / ciudad / provincia / región / lat lng / CLIENTE
  */
 export function stampLines(cliente: string, place: Place | null, when = new Date()): string[] {
+  if (customText) return customText;
   const fecha = `${when.getDate()} ${MESES[when.getMonth()]} ${when.getFullYear()}`;
   const hora = `${two(when.getHours())}:${two(when.getMinutes())}:${two(when.getSeconds())}`;
 
@@ -313,7 +340,7 @@ function loadImage(file: File): Promise<HTMLImageElement> {
 }
 
 /** Devuelve una copia JPEG de la foto con la franja de datos al pie. */
-export async function stampImage(file: File, lines: string[], pos: StampPos = "br"): Promise<File> {
+export async function stampImage(file: File, lines: string[], style: StampStyle = getStampStyle()): Promise<File> {
   const img = await loadImage(file);
 
   const MAX = 1600;
@@ -328,37 +355,33 @@ export async function stampImage(file: File, lines: string[], pos: StampPos = "b
   if (!ctx) return file;
   ctx.drawImage(img, 0, 0, w, h);
 
-  // Estilo del sello: letra cursiva blanca con sombra, pegada abajo a la derecha, sin franja.
-  const size = Math.max(16, Math.round(Math.min(w, h) * 0.05));
+  // Estilo del sello: letra, color, tamaño y posición elegidos (por defecto cursiva blanca abajo a la derecha, sin franja).
+  const f = fontOf(style.font);
+  const size = Math.max(14, Math.round(Math.min(w, h) * 0.05 * style.scale));
   const lead = Math.round(size * 1.18);
   const pad = Math.round(size * 0.3);
-  const family = '"Dancing Script", "Segoe Script", "Brush Script MT", cursive';
   try {
-    await document.fonts.load(`600 ${size}px "Dancing Script"`);
+    await document.fonts.load(`${f.weight} ${size}px ${f.family}`);
   } catch {
-    /* sin la letra descargada se usa una cursiva del sistema */
+    /* sin la letra descargada se usa una del sistema */
   }
-  ctx.font = `600 ${size}px ${family}`;
+  ctx.font = `${f.weight} ${size}px ${f.family}`;
   ctx.textBaseline = "alphabetic";
-  const right = pos === "br" || pos === "tr";
-  const bottom = pos === "br" || pos === "bl";
-  ctx.textAlign = right ? "right" : "left";
+  const H = posH(style.pos), V = posV(style.pos);
+  ctx.textAlign = H === "r" ? "right" : H === "c" ? "center" : "left";
 
   // Cada dato se parte en las líneas que necesite (un cliente largo ocupa 2 o más).
   const rows = lines.flatMap((l) => wrap(ctx, l, w - 2 * pad));
 
-  ctx.fillStyle = "#fff";
-  ctx.shadowColor = "rgba(0,0,0,0.9)";
+  ctx.fillStyle = style.color;
+  ctx.shadowColor = shadowFor(style.color);
   ctx.shadowBlur = Math.max(3, Math.round(size * 0.14));
   ctx.shadowOffsetX = Math.max(1, Math.round(size * 0.04));
   ctx.shadowOffsetY = Math.max(1, Math.round(size * 0.04));
-  const x = right ? w - pad : pad;
-  rows.forEach((r, i) => {
-    const y = bottom
-      ? h - pad - Math.round(size * 0.2) - (rows.length - 1 - i) * lead
-      : pad + Math.round(size * 0.85) + i * lead;
-    ctx.fillText(r, x, y);
-  });
+  const x = H === "r" ? w - pad : H === "c" ? w / 2 : pad;
+  const blockH = rows.length * lead;
+  const top = V === "t" ? pad : V === "m" ? (h - blockH) / 2 : h - pad - blockH;
+  rows.forEach((r, i) => ctx.fillText(r, x, Math.round(top + size * 0.85 + i * lead)));
 
   const blob: Blob | null = await new Promise((res) => canvas.toBlob(res, "image/jpeg", 0.88));
   if (!blob) return file;

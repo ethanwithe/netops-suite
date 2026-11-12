@@ -121,7 +121,7 @@ export interface Cell {
   rawUrl?: string;
   stampLines?: string[];
   /** Dónde quedó el sello al editar: fracciones de la foto y tamaño. */
-  stampPos?: { fx: number; fy: number; size: number };
+  stampPos?: { fx: number; fy: number; size: number; font?: string; color?: string; align?: "left" | "center" | "right" };
   /** Va en el PDF (se marca sola al poner una foto). */
   incluir: boolean;
   /** Bloque dentro de la sección («EQUIPOS INSTALADOS ACCESO», «ETIQUETADO»…). Solo organiza la pantalla. */
@@ -147,7 +147,7 @@ export interface ExtraPhoto {
   rawPath?: string;
   rawUrl?: string;
   stampLines?: string[];
-  stampPos?: { fx: number; fy: number; size: number };
+  stampPos?: { fx: number; fy: number; size: number; font?: string; color?: string; align?: "left" | "center" | "right" };
   lado: Lado;
 }
 
@@ -341,9 +341,14 @@ function loadSections(v: unknown): Section[] | null {
 
 const uid = () => `c${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
 
-function loadStampPos(v: unknown): { fx: number; fy: number; size: number } | undefined {
-  const o = v as { fx?: unknown; fy?: unknown; size?: unknown } | null;
-  return o && typeof o.fx === "number" && typeof o.fy === "number" && typeof o.size === "number" ? { fx: o.fx, fy: o.fy, size: o.size } : undefined;
+function loadStampPos(v: unknown): { fx: number; fy: number; size: number; font?: string; color?: string; align?: "left" | "center" | "right" } | undefined {
+  const o = v as { fx?: unknown; fy?: unknown; size?: unknown; font?: unknown; color?: unknown; align?: unknown } | null;
+  return o && typeof o.fx === "number" && typeof o.fy === "number" && typeof o.size === "number" ? {
+    fx: o.fx, fy: o.fy, size: o.size,
+    font: typeof o.font === "string" ? o.font : undefined,
+    color: typeof o.color === "string" ? o.color : undefined,
+    align: o.align === "left" || o.align === "center" || o.align === "right" ? o.align : undefined,
+  } : undefined;
 }
 
 function loadExtras(v: unknown): ExtraPhoto[] {

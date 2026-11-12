@@ -184,7 +184,8 @@ export default function Mascot() {
         const dx = e.clientX - (r.left + r.width / 2), dy = e.clientY - (r.top + r.height / 2);
         const d = Math.max(1, Math.hypot(dx, dy));
         const k = Math.min(1, d / 220);
-        setLook({ x: (dx / d) * 4 * k, y: (dy / d) * 3 * k });
+        const nx = Math.round((dx / d) * 4 * k * 4) / 4, ny = Math.round((dy / d) * 3 * k * 4) / 4;   // en pasos: no redibuja la mascota por cada pixel
+        setLook((o) => (o.x === nx && o.y === ny ? o : { x: nx, y: ny }));
       });
     };
     window.addEventListener("pointermove", onMove);

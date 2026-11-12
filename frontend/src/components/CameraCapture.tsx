@@ -1,14 +1,20 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  STAMP_ARROW,
   STAMP_ORDER,
-  getStampPos,
+  getStampStyle,
+  setStampStyle,
+  setStampText,
+  posH,
+  posV,
+  fontOf,
+  shadowFor,
+  STAMP_FONTS,
+  STAMP_COLORS,
   prefetchPlace,
-  setStampPos,
   stampLines,
   watchPlace,
 } from "../utils/photoStamp";
-import type { Place, StampPos } from "../utils/photoStamp";
+import type { Place, StampStyle } from "../utils/photoStamp";
 
 /**
  * Cámara propia (pantalla completa) pensada para fotos de equipos:
@@ -33,9 +39,11 @@ interface Props {
   onClose: () => void;
   /** Abre la cámara nativa del teléfono (plan B). */
   onNative: () => void;
+  /** Varias fotos seguidas, como la cámara del teléfono: no se cierra al disparar y muestra la miniatura de lo tomado. */
+  multi?: boolean;
 }
 
-export default function CameraCapture({ cliente = "", onCapture, onClose, onNative }: Props) {
+export default function CameraCapture({ cliente = "", onCapture, onClose, onNative, multi = false }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const trackRef = useRef<MediaStreamTrack | null>(null);
@@ -54,7 +62,14 @@ export default function CameraCapture({ cliente = "", onCapture, onClose, onNati
   const [place, setPlace] = useState<Place | null>(null);
   const placeRef = useRef<Place | null>(null);
   const [now, setNow] = useState(() => new Date());
-  const [pos, setPos] = useState<StampPos>(() => getStampPos());
+  const [sty, setSty] = useState<StampStyle>(() => getStampStyle());
+  const [panel, setPanel] = useState(false);
+  const [shots, setShots] = useState<{ url: string }[]>([]);
+  const [view, setView] = useState<number | null>(null);
+  const shotsRef = useRef<{ url: string }[]>([]);
+  useEffect(() => () => { shotsRef.current.forEach((x) => URL.revokeObjectURL(x.url)); }, []);
+  const [custom, setCustom] = useState<string | null>(null);   // texto escrito a mano (null = automático)
+  useEffect(() => { setStampText(null); }, []);
   const [box, setBox] = useState<{ x: number; y: number; w: number; h: number; aw: number; ah: number } | null>(null);
   const areaRef = useRef<HTMLDivElement>(null);
 
@@ -191,6 +206,16 @@ export default function CameraCapture({ cliente = "", onCapture, onClose, onNati
     };
   }, [ready]);
 
+  function patchSty(p: Partial<StampStyle>) {
+    const n = { ...sty, ...p };
+    setSty(n);
+    setStampStyle(n);
+  }
+  function editText(v: string | null) {
+    setCustom(v);
+    setStampText(v == null ? null : v.split("\n").filter((l) => l.trim()));
+  }
+
   // Rueda del mouse / touchpad: acerca o aleja la cámara.
   useEffect(() => {
     const area = areaRef.current;
@@ -220,12 +245,6 @@ export default function CameraCapture({ cliente = "", onCapture, onClose, onNati
   function onPtrUp(e: React.PointerEvent<HTMLDivElement>) {
     pointers.current.delete(e.pointerId);
     if (pointers.current.size < 2) pinch.current = null;
-  }
-
-  function cyclePos() {
-    const next = STAMP_ORDER[(STAMP_ORDER.indexOf(pos) + 1) % STAMP_ORDER.length];
-    setPos(next);
-    setStampPos(next);
   }
 
   async function toggleTorch() {
@@ -314,8 +333,14 @@ export default function CameraCapture({ cliente = "", onCapture, onClose, onNati
       if (blob) {
         const file = new File([blob], `foto-${Date.now()}.jpg`, { type: blob.type || "image/jpeg" });
         const where = placeRef.current;
-        onCapture(file, where);   // se cierra la cámara ya; el sello y la subida siguen por detrás
-        stop();
+        onCapture(file, where);   // el sello y la subida siguen por detrás
+        if (multi) {
+          const sh = { url: URL.createObjectURL(file) };
+          shotsRef.current = [...shotsRef.current, sh];
+          setShots(shotsRef.current);
+        } else {
+          stop();   // una sola foto: se cierra la cámara ya
+        }
       } else {
         setError("No se pudo tomar la foto. Inténtalo otra vez.");
       }
@@ -337,13 +362,13 @@ export default function CameraCapture({ cliente = "", onCapture, onClose, onNati
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-black" role="dialog" aria-label="Cámara" style={{ touchAction: "none", overscrollBehavior: "contain" }}>
       <div className="flex items-center justify-between px-3 py-2 text-white">
-        <button className="rounded-lg px-3 py-2 text-sm hover:bg-white/10" onClick={onClose}>Cerrar</button>
+        <button className={`rounded-lg px-3 py-2 text-sm ${shots.length ? "bg-white font-semibold text-black" : "hover:bg-white/10"}`} onClick={onClose}>{shots.length ? `Listo (${shots.length})` : "Cerrar"}</button>
         <button
           className="rounded-lg px-3 py-2 text-sm hover:bg-white/10"
-          onClick={cyclePos}
-          title="Cambiar la esquina del sello para que no tape la serie del equipo"
+          onClick={() => setPanel((v) => !v)}
+          title="Posición, letra, color, tamaño y texto del sello"
         >
-          {STAMP_ARROW[pos]} Mover sello
+          {panel ? "Cerrar sello" : "✎ Sello"}
         </button>
         {hasTorch && (
           <button className="rounded-lg px-3 py-2 text-sm hover:bg-white/10" onClick={toggleTorch}>
@@ -373,23 +398,30 @@ export default function CameraCapture({ cliente = "", onCapture, onClose, onNati
             aria-hidden="true"
           >
             <div
-              className="absolute flex max-w-full flex-col"
+              className="absolute inset-0 flex"
               style={{
-                [pos === "br" || pos === "bl" ? "bottom" : "top"]: Math.max(4, Math.min(box.w, box.h) * 0.015),
-                [pos === "br" || pos === "tr" ? "right" : "left"]: Math.max(4, Math.min(box.w, box.h) * 0.015),
-                alignItems: pos === "br" || pos === "tr" ? "flex-end" : "flex-start",
-                textAlign: pos === "br" || pos === "tr" ? "right" : "left",
-                fontFamily: '"Dancing Script", "Segoe Script", "Brush Script MT", cursive',
-                fontWeight: 600,
-                fontSize: Math.max(11, Math.min(box.w, box.h) * 0.05),
-                lineHeight: 1.18,
-                color: "#fff",
-                textShadow: "1px 1px 3px rgba(0,0,0,0.95)",
+                padding: Math.max(4, Math.min(box.w, box.h) * 0.015),
+                justifyContent: posH(sty.pos) === "r" ? "flex-end" : posH(sty.pos) === "c" ? "center" : "flex-start",
+                alignItems: posV(sty.pos) === "b" ? "flex-end" : posV(sty.pos) === "m" ? "center" : "flex-start",
               }}
             >
-              {stampLines(cliente, place, now).map((l, i) => (
-                <span key={i}>{l}</span>
-              ))}
+              <div
+                className="flex max-w-full flex-col"
+                style={{
+                  alignItems: posH(sty.pos) === "r" ? "flex-end" : posH(sty.pos) === "c" ? "center" : "flex-start",
+                  textAlign: posH(sty.pos) === "r" ? "right" : posH(sty.pos) === "c" ? "center" : "left",
+                  fontFamily: fontOf(sty.font).family,
+                  fontWeight: fontOf(sty.font).weight,
+                  fontSize: Math.max(10, Math.min(box.w, box.h) * 0.05 * sty.scale),
+                  lineHeight: 1.18,
+                  color: sty.color,
+                  textShadow: `1px 1px 3px ${shadowFor(sty.color)}`,
+                }}
+              >
+                {(custom != null ? custom.split("\n").filter((l) => l.trim()) : stampLines(cliente, place, now)).map((l, i) => (
+                  <span key={i}>{l}</span>
+                ))}
+              </div>
             </div>
           </div>
         )}
@@ -411,9 +443,52 @@ export default function CameraCapture({ cliente = "", onCapture, onClose, onNati
       </div>
 
       <div className="flex flex-col items-center gap-2 px-4 pt-3" style={{ paddingBottom: "max(1.5rem, env(safe-area-inset-bottom))" }}>
-        <p className="text-[11px] text-white/60">El texto blanco es el sello tal como saldrá. Pellizca o usa la rueda del mouse para acercar · toca para enfocar · Espacio o Enter disparan.</p>
+        {panel && (
+          <div className="w-full max-w-md space-y-2 rounded-xl bg-white/10 p-3 text-white">
+            <div className="flex items-start gap-3">
+              <div className="grid shrink-0 grid-cols-3 gap-1" aria-label="Posición del sello">
+                {STAMP_ORDER.map((p) => (
+                  <button key={p} type="button" aria-label={`Posición ${p}`} onClick={() => patchSty({ pos: p })}
+                    className={`h-7 w-7 rounded border text-[10px] ${sty.pos === p ? "border-yellow-300 bg-yellow-300/80 text-black" : "border-white/40 bg-white/10"}`}>
+                    {sty.pos === p ? "■" : "□"}
+                  </button>
+                ))}
+              </div>
+              <div className="min-w-0 flex-1 space-y-2">
+                <div className="flex flex-wrap gap-1">
+                  {STAMP_FONTS.map((f) => (
+                    <button key={f.id} type="button" onClick={() => patchSty({ font: f.id })}
+                      className={`rounded-full border px-2 py-0.5 text-[11px] ${sty.font === f.id ? "border-yellow-300 bg-yellow-300/80 text-black" : "border-white/40"}`}
+                      style={{ fontFamily: f.family }}>{f.label}</button>
+                  ))}
+                </div>
+                <div className="flex items-center gap-1.5">
+                  {STAMP_COLORS.map((c) => (
+                    <button key={c} type="button" aria-label={`Color ${c}`} onClick={() => patchSty({ color: c })}
+                      className={`h-6 w-6 rounded-full border-2 ${sty.color === c ? "border-yellow-300" : "border-white/40"}`} style={{ background: c }} />
+                  ))}
+                </div>
+              </div>
+            </div>
+            <label className="flex items-center gap-2 text-[11px]">Tamaño
+              <input type="range" min={0.5} max={2.5} step={0.05} value={sty.scale} className="flex-1" onChange={(e) => patchSty({ scale: Number(e.target.value) })} />
+            </label>
+            <textarea rows={3} className="w-full rounded-lg border border-white/30 bg-black/40 p-2 text-[12px] text-white" aria-label="Texto del sello"
+              value={custom ?? stampLines(cliente, place, now).join("\n")}
+              onChange={(e) => editText(e.target.value)} />
+            {custom != null && <button type="button" className="text-[11px] underline" onClick={() => editText(null)}>Volver al texto automático (fecha, lugar y cliente)</button>}
+          </div>
+        )}
+        <p className="text-[11px] text-white/60">Así saldrá el sello. Pellizca o usa la rueda del mouse para acercar · toca para enfocar · Espacio o Enter disparan.</p>
         <div className="flex w-full items-center justify-between">
-          <button className="w-28 text-left text-xs text-white/70 underline" onClick={onNative}>Cámara del teléfono</button>
+          {shots.length ? (
+            <button type="button" aria-label="Ver las fotos tomadas" onClick={() => setView(shots.length - 1)} className="relative h-14 w-14 shrink-0 overflow-hidden rounded-lg border-2 border-white/80 bg-black">
+              <img src={shots[shots.length - 1].url} alt="" className="h-full w-full object-cover" />
+              <span className="absolute bottom-0 right-0 rounded-tl bg-black/70 px-1 text-[10px] font-semibold text-white">{shots.length}</span>
+            </button>
+          ) : (
+            <button className="w-28 text-left text-xs text-white/70 underline" onClick={onNative}>Cámara del teléfono</button>
+          )}
           <button
             aria-label="Tomar foto"
             disabled={!ready || busy}
@@ -425,6 +500,27 @@ export default function CameraCapture({ cliente = "", onCapture, onClose, onNati
           </button>
         </div>
       </div>
+      {view != null && shots[view] && (
+        <div className="fixed inset-0 z-[60] flex flex-col bg-black" role="dialog" aria-label="Fotos tomadas">
+          <div className="flex items-center justify-between px-3 py-2 text-white">
+            <button className="rounded-lg px-3 py-2 text-sm hover:bg-white/10" onClick={() => setView(null)}>← Cámara</button>
+            <span className="text-xs text-white/70">{view + 1} de {shots.length}</span>
+            <button className="rounded-lg bg-white px-3 py-2 text-sm font-semibold text-black" onClick={onClose}>Listo</button>
+          </div>
+          <div className="flex min-h-0 flex-1 items-center justify-center">
+            <img src={shots[view].url} alt="" className="max-h-full max-w-full object-contain" />
+          </div>
+          <div className="flex gap-2 overflow-x-auto px-3 py-3" style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}>
+            {shots.map((x, i) => (
+              <button key={x.url} type="button" onClick={() => setView(i)} aria-label={`Foto ${i + 1}`}
+                ref={(el) => { if (el && i === view) el.scrollIntoView({ inline: "center", block: "nearest" }); }}
+                className={`h-16 w-16 shrink-0 overflow-hidden rounded-lg border-2 ${i === view ? "border-yellow-300" : "border-white/30"}`}>
+                <img src={x.url} alt="" className="h-full w-full object-cover" />
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

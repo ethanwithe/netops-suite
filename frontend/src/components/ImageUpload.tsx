@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
 import { compressForUpload } from "../utils/imageCompress";
 import CameraCapture from "./CameraCapture";
-import { getPlaceFast, getStampPos, stampImage, stampLines } from "../utils/photoStamp";
+import { getPlaceFast, stampImage, stampLines } from "../utils/photoStamp";
 import type { Place } from "../utils/photoStamp";
 
 interface Props {
@@ -72,7 +72,15 @@ export default function ImageUpload({ onUploaded, label = "Subir imagen...", com
   }
 
   /** Foto de la cámara: se le imprime cliente, fecha/hora, dirección y coordenadas. */
-  async function handleCamera(file: File, known?: Place | null) {
+  // Las fotos de la cámara se procesan una por una (sello + subida) para que no se mezclen entre sí.
+  const queue = useRef<Promise<void>>(Promise.resolve());
+  function handleCamera(file: File, known?: Place | null) {
+    const when = new Date();
+    const lines0 = known !== undefined ? stampLines(cliente, known, when) : null;   // el texto se fija al disparar
+    queue.current = queue.current.then(() => processCamera(file, known, when, lines0)).catch(() => undefined);
+    return queue.current;
+  }
+  async function processCamera(file: File, known: Place | null | undefined, when: Date, lines0: string[] | null) {
     if (!file.type.startsWith("image/")) return;
     setStamping(true);
     // Vista previa inmediata con la foto recién tomada; el sello y la subida siguen por detrás.
@@ -81,19 +89,23 @@ export default function ImageUpload({ onUploaded, label = "Subir imagen...", com
     blobRef.current = quick;
     setPreview(quick);
     try {
-      const when = new Date();
       const place = known !== undefined ? known : await getPlaceFast();
-      const lines = stampLines(cliente, place, when);
-      const stamped = await stampImage(file, lines, getStampPos());
+      const lines = lines0 ?? stampLines(cliente, place, when);
+      const stamped = await stampImage(file, lines);
       setStamping(false);
+      // la foto limpia (sin sello) sube a la vez que la sellada
+      const rawUp = onStampRaw
+        ? (async () => {
+            const form = new FormData();
+            form.append("file", await compressForUpload(file));
+            const { data } = await api.post("/files/upload", form, { headers: { "Content-Type": "multipart/form-data" } });
+            return { path: data.path as string, url: data.url as string };
+          })().catch(() => null)
+        : null;
       await handleFile(stamped);
-      if (onStampRaw) {
-        try {
-          const form = new FormData();
-          form.append("file", await compressForUpload(file));
-          const { data } = await api.post("/files/upload", form, { headers: { "Content-Type": "multipart/form-data" } });
-          onStampRaw({ path: data.path, url: data.url }, lines);
-        } catch { /* sin la foto limpia no se podrá mover el sello, pero la foto ya quedó */ }
+      if (rawUp && onStampRaw) {
+        const raw = await rawUp;   // sin la foto limpia no se podrá mover el sello, pero la foto ya quedó
+        if (raw) onStampRaw(raw, lines);
       }
     } catch {
       setStamping(false);
@@ -199,8 +211,9 @@ export default function ImageUpload({ onUploaded, label = "Subir imagen...", com
         <CameraCapture
           onClose={() => setCameraOpen(false)}
           cliente={cliente}
+          multi={multiple}
           onCapture={(f, place) => {
-            setCameraOpen(false);
+            if (!multiple) setCameraOpen(false);
             void handleCamera(f, place);
           }}
           onNative={() => {
