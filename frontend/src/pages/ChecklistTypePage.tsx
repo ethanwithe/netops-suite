@@ -474,8 +474,10 @@ function Inner({ type }: { type: CkType }) {
                         <li>Copia el código que muestra y pégalo aquí (se recuerda).</li>
                       </ol>
                       <div className="flex flex-wrap items-center gap-2">
-                        <input className="input w-40 font-mono text-xs uppercase" placeholder="Código del puente" value={code} onChange={(e) => setCode(e.target.value.trim())} />
-                        {pst?.kind === "codigo" && <span className="text-amber-700">El código no coincide con el que muestra el puente.</span>}
+                        <input className="input w-40 font-mono text-xs uppercase" placeholder="Código del puente" value={code} onChange={(e) => setCode(e.target.value.trim().toUpperCase())} />
+                        {pst?.kind === "codigo" && <span className="font-semibold text-red-600">El puente está abierto pero el código cambió: copia el nuevo que muestra su ventana{code ? " (el guardado aquí es de otra vez)" : ""}.</span>}
+                        {pst?.kind === "ausente" && <span className="text-slate-500">No se detecta el puente: ábrelo en tu laptop y déjalo abierto.</span>}
+                        {code && <button type="button" className="text-brand-600 underline" onClick={() => setCode("")}>Borrar código</button>}
                       </div>
                     </div>
                   )}

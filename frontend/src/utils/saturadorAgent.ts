@@ -27,7 +27,7 @@ async function call(path: string, code: string, body?: unknown): Promise<AgentRe
   try {
     const r = await fetch(AGENT_URL + path, {
       method: body === undefined ? "GET" : "POST",
-      headers: { "X-Token": code, ...(body === undefined ? {} : { "Content-Type": "application/json" }) },
+      headers: { "X-Token": code.trim().toUpperCase(), ...(body === undefined ? {} : { "Content-Type": "application/json" }) },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
     const data = await r.json().catch(() => ({}));

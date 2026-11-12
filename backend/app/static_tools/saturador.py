@@ -404,7 +404,27 @@ def main():
 
     if a.agente:
         import secrets
-        run_agent(a.puerto, a.codigo or secrets.token_hex(3).upper())
+
+        def _stored_code():
+            """El código se recuerda entre ejecuciones (así la página no pierde la conexión al reabrir el agente)."""
+            path = os.path.join(os.path.expanduser("~"), ".netops_saturador")
+            try:
+                with open(path) as f:
+                    c = f.read().strip()
+                    if len(c) >= 6:
+                        return c
+            except OSError:
+                pass
+            c = secrets.token_hex(3).upper()
+            try:
+                with open(path, "w") as f:
+                    f.write(c)
+                os.chmod(path, 0o600)
+            except OSError:
+                pass
+            return c
+
+        run_agent(a.puerto, a.codigo or _stored_code())
         return
     if not a.destino or not a.mbps or a.mbps <= 0:
         ap.error("indica el destino y --mbps (o usa --agente)")
