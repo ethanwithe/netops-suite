@@ -18,9 +18,11 @@ interface Props {
   multiple?: boolean;
   /** Foto de cámara: llega además la foto sin sello y las líneas del sello (para poder moverlo después). */
   onStampRaw?: (raw: { path: string; url: string }, lines: string[]) => void;
+  /** Una foto de la cámara (ya subida) se quitó desde el visor de la cámara. */
+  onDiscard?: (path: string, mode: "trash" | "delete") => void;
 }
 
-export default function ImageUpload({ onUploaded, label = "Subir imagen...", compact = false, initialUrl, cliente = "", camera = true, multiple = false, onStampRaw }: Props) {
+export default function ImageUpload({ onUploaded, label = "Subir imagen...", compact = false, initialUrl, cliente = "", camera = true, multiple = false, onStampRaw, onDiscard }: Props) {
   const [preview, setPreview] = useState<string | null>(initialUrl || null);
   const [loading, setLoading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
@@ -43,7 +45,7 @@ export default function ImageUpload({ onUploaded, label = "Subir imagen...", com
     };
   }, []);
 
-  async function handleFile(file: File) {
+  async function handleFile(file: File): Promise<string | undefined> {
     if (!file.type.startsWith("image/")) return;
 
     const previous = preview;
@@ -61,6 +63,7 @@ export default function ImageUpload({ onUploaded, label = "Subir imagen...", com
         headers: { "Content-Type": "multipart/form-data" },
       });
       onUploaded(data.path, data.url);
+      return data.path as string;
     } catch {
       // No se subió: se vuelve a la imagen anterior para no mostrar una foto
       // que en realidad no está en el servidor (y no saldría en el PDF).
@@ -74,6 +77,12 @@ export default function ImageUpload({ onUploaded, label = "Subir imagen...", com
   /** Foto de la cámara: se le imprime cliente, fecha/hora, dirección y coordenadas. */
   // Las fotos de la cámara se procesan una por una (sello + subida) para que no se mezclen entre sí.
   const queue = useRef<Promise<void>>(Promise.resolve());
+  const paths = useRef(new Map<File, string>());
+  const pending = useRef(new Map<File, "trash" | "delete">());
+  function discardShot(file: File, mode: "trash" | "delete") {
+    const p = paths.current.get(file);
+    if (p) { paths.current.delete(file); onDiscard?.(p, mode); } else pending.current.set(file, mode);
+  }
   function handleCamera(file: File, known?: Place | null) {
     const when = new Date();
     const lines0 = known !== undefined ? stampLines(cliente, known, when) : null;   // el texto se fija al disparar
@@ -102,10 +111,15 @@ export default function ImageUpload({ onUploaded, label = "Subir imagen...", com
             return { path: data.path as string, url: data.url as string };
           })().catch(() => null)
         : null;
-      await handleFile(stamped);
+      const up = await handleFile(stamped);
       if (rawUp && onStampRaw) {
         const raw = await rawUp;   // sin la foto limpia no se podrá mover el sello, pero la foto ya quedó
         if (raw) onStampRaw(raw, lines);
+      }
+      if (up) {
+        paths.current.set(file, up);
+        const mode = pending.current.get(file);   // la quitaron desde el visor de la cámara antes de que terminara de subir
+        if (mode) { pending.current.delete(file); onDiscard?.(up, mode); }
       }
     } catch {
       setStamping(false);
@@ -212,6 +226,7 @@ export default function ImageUpload({ onUploaded, label = "Subir imagen...", com
           onClose={() => setCameraOpen(false)}
           cliente={cliente}
           multi={multiple}
+          onDiscard={discardShot}
           onCapture={(f, place) => {
             if (!multiple) setCameraOpen(false);
             void handleCamera(f, place);

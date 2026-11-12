@@ -41,7 +41,7 @@ const dashArray = (d: string | undefined, w: number) => {
 function TextLines({ text, size, lineH, spcBef, bold, italic, color, align, nowrap, family }: { family?: string; text: string; size: number; lineH?: number | null; spcBef?: number; bold?: boolean; italic?: boolean; color?: string; align?: string; nowrap?: boolean }) {
   const f = size * PT;
   return (
-    <div style={{ fontFamily: family ?? "Arial, Helvetica, sans-serif", fontSize: f, fontWeight: bold ? 700 : 400, fontStyle: italic ? "italic" : "normal", color, textAlign: align === "c" ? "center" : align === "r" ? "right" : "left", whiteSpace: nowrap ? "pre" : "pre-wrap", wordBreak: "break-word", lineHeight: lineH ? `${lineH}px` : `${f * 1.17}px` }}>
+    <div style={{ fontFamily: family ?? "Arial, Helvetica, sans-serif", fontSize: f, fontWeight: bold ? 700 : 400, fontStyle: italic ? "italic" : "normal", color, textAlign: align === "c" ? "center" : align === "r" ? "right" : align === "j" ? "justify" : "left", whiteSpace: nowrap ? "pre" : "pre-wrap", wordBreak: "break-word", lineHeight: lineH ? `${lineH}px` : `${f * 1.17}px` }}>
       {text.split("\n").map((ln, i) => <div key={i} style={{ marginTop: i > 0 ? spcBef || 0 : 0, minHeight: lineH || f * 1.17 }}>{ln || " "}</div>)}
     </div>
   );
@@ -72,8 +72,9 @@ function ElView({ e, shown, icons }: { e: El; shown: El; icons: unknown }) {
   if (e.type === "text") {
     const t = shown as TextEl;
     // Con color de fondo: la caja ya ajustada (fitText), con aire a los lados y el texto centrado en vertical, como en PPTX/PDF.
-    if (t.fill) return <div data-id={e.id} style={{ ...box, left: t.x, top: t.y, width: t.w, height: t.h, background: t.fill, boxSizing: "border-box", padding: `0 ${PAD_X}px`, display: "flex", alignItems: "center" }}><div style={{ width: "100%" }}><TextLines {...t} /></div></div>;
-    return <div data-id={e.id} style={{ ...box, background: "transparent" }}><TextLines {...t} /></div>;
+    const vAl = (v: string | undefined, dflt: string) => ((v ?? dflt) === "b" ? "flex-end" : (v ?? dflt) === "m" ? "center" : "flex-start");
+    if (t.fill) return <div data-id={e.id} style={{ ...box, left: t.x, top: t.y, width: t.w, height: t.h, background: t.fill, boxSizing: "border-box", padding: `0 ${PAD_X}px`, display: "flex", alignItems: vAl(t.valign, "m") }}><div style={{ width: "100%" }}><TextLines {...t} /></div></div>;
+    return <div data-id={e.id} style={{ ...box, background: "transparent", display: "flex", alignItems: vAl(t.valign, "t") }}><div style={{ width: "100%" }}><TextLines {...t} /></div></div>;
   }
   if (e.type === "rect" && !e.fill && !e.text?.trim()) {
     // Marco sin relleno: solo se puede elegir por el borde (así no tapa lo que hay debajo), como en PowerPoint.
@@ -88,7 +89,7 @@ function ElView({ e, shown, icons }: { e: El; shown: El; icons: unknown }) {
   if (e.type === "rect") {
     const r = shown as typeof e;
     return (
-      <div data-id={e.id} style={{ ...box, boxSizing: "border-box", background: r.fill ?? "transparent", border: r.stroke && r.strokeW ? `${r.strokeW}px ${dashCss(r.dash)} ${r.stroke}` : "none", display: "flex", alignItems: "center" }}>
+      <div data-id={e.id} style={{ ...box, boxSizing: "border-box", background: r.fill ?? "transparent", border: r.stroke && r.strokeW ? `${r.strokeW}px ${dashCss(r.dash)} ${r.stroke}` : "none", display: "flex", alignItems: r.valign === "b" ? "flex-end" : r.valign === "t" ? "flex-start" : "center" }}>
         {r.text?.trim() ? <div style={{ width: "100%" }}><TextLines text={r.text} size={r.size ?? 16} bold={r.bold} italic={r.italic} color={r.color ?? "#000"} align={r.align ?? "c"} /></div> : null}
       </div>
     );
@@ -104,7 +105,7 @@ function ElView({ e, shown, icons }: { e: El; shown: El; icons: unknown }) {
         {t.rows.map((row, r) => (
           <tr key={r} style={{ height: row.h }}>
             {row.cells.map((c: Cell, ci) => c.merged ? null : (
-              <td key={ci} data-r={r} data-c={ci} colSpan={c.span || 1} style={{ border: "1px solid #fff", padding: 0, verticalAlign: "middle", overflow: "hidden", background: c.grad?.colors?.length ? `linear-gradient(${(c.grad.ang ?? 90) + 90}deg, ${c.grad.colors.join(",")})` : c.fill ?? "transparent" }}>
+              <td key={ci} data-r={r} data-c={ci} colSpan={c.span || 1} style={{ border: "1px solid #fff", padding: 0, verticalAlign: c.valign === "t" ? "top" : c.valign === "b" ? "bottom" : "middle", overflow: "hidden", background: c.grad?.colors?.length ? `linear-gradient(${(c.grad.ang ?? 90) + 90}deg, ${c.grad.colors.join(",")})` : c.fill ?? "transparent" }}>
                 <TextLines family={'Calibri, Carlito, "Liberation Sans", Arial, sans-serif'} text={c.text} size={c.size} bold={c.bold} italic={c.italic} color={c.color} align={c.align} />
               </td>
             ))}
@@ -367,7 +368,7 @@ export default function Editor({ doc, fields, hist }: { doc: Doc; fields: Fields
       <textarea autoFocus defaultValue={value} onFocus={(ev) => ev.currentTarget.select()} onBlur={(ev) => commitEdit(ev.currentTarget.value)}
         onKeyDown={(ev) => { if (ev.key === "Escape") { ev.preventDefault(); setEditing(null); } if (ev.key === "Enter" && (ev.ctrlKey || ev.metaKey)) ev.currentTarget.blur(); }}
         onPointerDown={(ev) => ev.stopPropagation()}
-        style={{ position: "absolute", left: x - 2, top: y - 2, width: w + 4, minHeight: h + 4, padding: 2, boxSizing: "border-box", resize: "none", fontFamily: "Arial, Helvetica, sans-serif", fontSize: size * PT, lineHeight: 1.17, fontWeight: bold ? 700 : 400, fontStyle: italic ? "italic" : "normal", color, textAlign: align === "c" ? "center" : align === "r" ? "right" : "left", background: "rgba(255,255,255,.92)", outline: `${2 / scale}px solid #0a84ff`, border: 0, transform: `rotate(${rot}deg)`, zIndex: 50 }} />
+        style={{ position: "absolute", left: x - 2, top: y - 2, width: w + 4, minHeight: h + 4, padding: 2, boxSizing: "border-box", resize: "none", fontFamily: "Arial, Helvetica, sans-serif", fontSize: size * PT, lineHeight: 1.17, fontWeight: bold ? 700 : 400, fontStyle: italic ? "italic" : "normal", color, textAlign: align === "c" ? "center" : align === "r" ? "right" : align === "j" ? "justify" : "left", background: "rgba(255,255,255,.92)", outline: `${2 / scale}px solid #0a84ff`, border: 0, transform: `rotate(${rot}deg)`, zIndex: 50 }} />
     );
   };
 

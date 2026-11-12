@@ -121,7 +121,7 @@ export interface Cell {
   rawUrl?: string;
   stampLines?: string[];
   /** Dónde quedó el sello al editar: fracciones de la foto y tamaño. */
-  stampPos?: { fx: number; fy: number; size: number; font?: string; color?: string; align?: "left" | "center" | "right" };
+  stampPos?: { fx: number; fy: number; size: number; font?: string; color?: string; align?: "left" | "center" | "right" | "justify" };
   /** Va en el PDF (se marca sola al poner una foto). */
   incluir: boolean;
   /** Bloque dentro de la sección («EQUIPOS INSTALADOS ACCESO», «ETIQUETADO»…). Solo organiza la pantalla. */
@@ -147,8 +147,13 @@ export interface ExtraPhoto {
   rawPath?: string;
   rawUrl?: string;
   stampLines?: string[];
-  stampPos?: { fx: number; fy: number; size: number; font?: string; color?: string; align?: "left" | "center" | "right" };
+  stampPos?: { fx: number; fy: number; size: number; font?: string; color?: string; align?: "left" | "center" | "right" | "justify" };
   lado: Lado;
+  /** En la papelera de la carpeta: no sale en la galería ni en el ZIP hasta que se restaure. */
+  trashed?: boolean;
+  /** Si venía de una celda del reporte, de cuál (para devolverla al restaurar). */
+  fromSid?: string;
+  fromCid?: string;
 }
 
 export const DEFAULT_ROW: RowState = {
@@ -341,13 +346,13 @@ function loadSections(v: unknown): Section[] | null {
 
 const uid = () => `c${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
 
-function loadStampPos(v: unknown): { fx: number; fy: number; size: number; font?: string; color?: string; align?: "left" | "center" | "right" } | undefined {
+function loadStampPos(v: unknown): { fx: number; fy: number; size: number; font?: string; color?: string; align?: "left" | "center" | "right" | "justify" } | undefined {
   const o = v as { fx?: unknown; fy?: unknown; size?: unknown; font?: unknown; color?: unknown; align?: unknown } | null;
   return o && typeof o.fx === "number" && typeof o.fy === "number" && typeof o.size === "number" ? {
     fx: o.fx, fy: o.fy, size: o.size,
     font: typeof o.font === "string" ? o.font : undefined,
     color: typeof o.color === "string" ? o.color : undefined,
-    align: o.align === "left" || o.align === "center" || o.align === "right" ? o.align : undefined,
+    align: o.align === "left" || o.align === "center" || o.align === "right" || o.align === "justify" ? o.align : undefined,
   } : undefined;
 }
 
@@ -371,6 +376,9 @@ function loadExtras(v: unknown): ExtraPhoto[] {
       stampLines: Array.isArray(x.stampLines) ? x.stampLines.filter((l): l is string => typeof l === "string") : undefined,
       stampPos: loadStampPos(x.stampPos),
       lado: str(x.lado, "cliente") || "cliente",
+      trashed: x.trashed === true ? true : undefined,
+      fromSid: typeof x.fromSid === "string" ? x.fromSid : undefined,
+      fromCid: typeof x.fromCid === "string" ? x.fromCid : undefined,
     });
   }
   return out;
@@ -381,6 +389,10 @@ export function addExtra(tipo: FotoTipo, extra: ExtraPhoto): void {
 }
 export function updateExtra(tipo: FotoTipo, id: string, patch: Partial<ExtraPhoto>): void {
   setState(tipo, { extras: storeOf(tipo).state.extras.map((e) => (e.id === id ? { ...e, ...patch } : e)) });
+}
+/** Aplica varios cambios a las extras de una sola vez (una sola escritura). */
+export function mapExtras(tipo: FotoTipo, fn: (l: ExtraPhoto[]) => ExtraPhoto[]): void {
+  setState(tipo, { extras: fn(storeOf(tipo).state.extras) });
 }
 export function removeExtra(tipo: FotoTipo, id: string): void {
   setState(tipo, { extras: storeOf(tipo).state.extras.filter((e) => e.id !== id) });

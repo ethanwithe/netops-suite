@@ -386,7 +386,7 @@ function SeccionesTab({ tipo, items }: { tipo: FotoTipo; items: PhotoItem[] }) {
 }
 
 /** Datos para abrir el editor con el sello como objeto libre (solo fotos tomadas con la cámara). */
-function stampOf(x?: { rawUrl?: string; stampLines?: string[]; stampPos?: { fx: number; fy: number; size: number; font?: string; color?: string; align?: "left" | "center" | "right" } }): { baseUrl?: string; stamp?: StampInit } {
+function stampOf(x?: { rawUrl?: string; stampLines?: string[]; stampPos?: { fx: number; fy: number; size: number; font?: string; color?: string; align?: "left" | "center" | "right" | "justify" } }): { baseUrl?: string; stamp?: StampInit } {
   if (!x?.rawUrl || !x.stampLines?.length) return {};
   return { baseUrl: x.rawUrl, stamp: { lines: x.stampLines, fx: x.stampPos?.fx, fy: x.stampPos?.fy, size: x.stampPos?.size, font: x.stampPos?.font, color: x.stampPos?.color, align: x.stampPos?.align } };
 }
@@ -445,7 +445,7 @@ function RunTab({
         ? [{ nombre: c.descripcion || "foto", path: c.imagePath, original_path: c.originalPath || "", lado_label: op.label }]
         : []));
     });
-    const extrasIn = s.extras.map((e) => ({
+    const extrasIn = s.extras.filter((e) => !e.trashed).map((e) => ({
       nombre: e.nombre || "foto extra", path: e.path, original_path: e.originalPath || "",
       lado_label: resolveOpcion(e.lado, manager.opciones).label,
     }));
@@ -778,7 +778,7 @@ function RunTab({
           </p>
         </div>
 
-        <ExtraGallery tipo={tipo} extras={s.extras} sections={sections} opciones={manager.opciones} cliente={s.cliente}
+        <ExtraGallery tipo={tipo} sot={s.sot} extras={s.extras} sections={sections} opciones={manager.opciones} cliente={s.cliente}
           onEdit={(it) => setEditing(it.kind === "extra"
             ? { id: it.id, imageUrl: it.url, extra: true, ...stampOf(s.extras.find((x) => x.id === it.id)) }
             : { id: it.id, sid: it.sid, imageUrl: it.url, ...stampOf(sections.find((x) => x.id === it.sid)?.cells.find((x) => x.id === it.id)) })} />

@@ -2,7 +2,8 @@
 
 export type Dash = "" | "dash" | "lgDash" | "sysDash" | "dot" | "sysDot" | "dashDot";
 export type Head = "none" | "triangle" | "arrow" | "stealth" | "oval" | "diamond";
-export type HAlign = "l" | "c" | "r";
+export type HAlign = "l" | "c" | "r" | "j";
+export type VAlign = "t" | "m" | "b";
 
 interface Base { id: string; name?: string; locked?: boolean }
 
@@ -12,7 +13,7 @@ export interface TextEl extends Base {
   text: string;                    // admite {{campo}}
   size: number;                    // puntos
   bold?: boolean; italic?: boolean;
-  color: string; align: HAlign;
+  color: string; align: HAlign; valign?: VAlign;
   fill: string | null;             // fondo del cuadro
   lineH?: number | null;           // interlineado en px
   spcBef?: number;                 // espacio antes de cada párrafo (px)
@@ -22,7 +23,7 @@ export interface RectEl extends Base {
   type: "rect";
   x: number; y: number; w: number; h: number; rot?: number;
   fill: string | null; stroke: string | null; strokeW: number; dash?: Dash;
-  text?: string; size?: number; bold?: boolean; italic?: boolean; color?: string; align?: HAlign;
+  text?: string; size?: number; bold?: boolean; italic?: boolean; color?: string; align?: HAlign; valign?: VAlign;
 }
 export interface LineEl extends Base {
   type: "line";
@@ -35,7 +36,7 @@ export interface ImgEl extends Base {
   icon: string;                    // id de la pestaña Iconos
 }
 export interface Cell {
-  text: string; align: HAlign; size: number; bold: boolean; italic: boolean; color: string;
+  text: string; align: HAlign; valign?: VAlign; size: number; bold: boolean; italic: boolean; color: string;
   fill: string | null;
   grad?: { colors: string[]; ang: number } | null;
   span: number; merged: boolean;

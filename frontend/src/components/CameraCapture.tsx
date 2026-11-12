@@ -41,11 +41,13 @@ interface Props {
   onNative: () => void;
   /** Varias fotos seguidas, como la cámara del teléfono: no se cierra al disparar y muestra la miniatura de lo tomado. */
   multi?: boolean;
+  /** Quitó una foto ya tomada desde el visor de la cámara: a la papelera de la carpeta o borrada del todo. */
+  onDiscard?: (file: File, mode: "trash" | "delete") => void;
 }
 
 const GLASS = "grid h-10 w-10 place-items-center rounded-full bg-white/15 text-white backdrop-blur transition active:scale-90";
 
-export default function CameraCapture({ cliente = "", onCapture, onClose, onNative, multi = false }: Props) {
+export default function CameraCapture({ cliente = "", onCapture, onClose, onNative, multi = false, onDiscard }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const trackRef = useRef<MediaStreamTrack | null>(null);
@@ -66,9 +68,24 @@ export default function CameraCapture({ cliente = "", onCapture, onClose, onNati
   const [now, setNow] = useState(() => new Date());
   const [sty, setSty] = useState<StampStyle>(() => getStampStyle());
   const [panel, setPanel] = useState(false);
-  const [shots, setShots] = useState<{ url: string }[]>([]);
+  const [shots, setShots] = useState<{ url: string; file: File }[]>([]);
   const [view, setView] = useState<number | null>(null);
-  const shotsRef = useRef<{ url: string }[]>([]);
+  const shotsRef = useRef<{ url: string; file: File }[]>([]);
+  // la tira de miniaturas solo se centra al cambiar de foto (no en cada repintado: el reloj del sello lo hacía volver al inicio)
+  useEffect(() => {
+    if (view == null) return;
+    document.querySelector(`[data-shot="${view}"]`)?.scrollIntoView({ inline: "center", block: "nearest" });
+  }, [view]);
+  function discard(mode: "trash" | "delete") {
+    if (view == null || !shotsRef.current[view]) return;
+    if (mode === "delete" && !window.confirm("¿Borrar esta foto definitivamente?")) return;
+    const sh = shotsRef.current[view];
+    onDiscard?.(sh.file, mode);
+    URL.revokeObjectURL(sh.url);
+    shotsRef.current = shotsRef.current.filter((_, i) => i !== view);
+    setShots(shotsRef.current);
+    setView(shotsRef.current.length ? Math.min(view, shotsRef.current.length - 1) : null);
+  }
   useEffect(() => () => { shotsRef.current.forEach((x) => URL.revokeObjectURL(x.url)); }, []);
   const [custom, setCustom] = useState<string | null>(null);   // texto escrito a mano (null = automático)
   useEffect(() => { setStampText(null); }, []);
@@ -337,7 +354,7 @@ export default function CameraCapture({ cliente = "", onCapture, onClose, onNati
         const where = placeRef.current;
         onCapture(file, where);   // el sello y la subida siguen por detrás
         if (multi) {
-          const sh = { url: URL.createObjectURL(file) };
+          const sh = { url: URL.createObjectURL(file), file };
           shotsRef.current = [...shotsRef.current, sh];
           setShots(shotsRef.current);
         } else {
@@ -519,7 +536,11 @@ export default function CameraCapture({ cliente = "", onCapture, onClose, onNati
           <div className="flex items-center justify-between px-3 py-2 text-white">
             <button className="rounded-lg px-3 py-2 text-sm hover:bg-white/10" onClick={() => setView(null)}>← Cámara</button>
             <span className="text-xs text-white/70">{view + 1} de {shots.length}</span>
-            <button className="rounded-lg bg-white px-3 py-2 text-sm font-semibold text-black" onClick={onClose}>Listo</button>
+            <div className="flex items-center gap-2">
+              <button className="grid h-10 place-items-center rounded-full bg-white/15 px-3 text-sm text-white backdrop-blur active:scale-95" onClick={() => discard("trash")} aria-label="Mandar a la papelera" title="Papelera (se puede recuperar en la carpeta)">Papelera</button>
+              <button className="grid h-10 place-items-center rounded-full bg-red-600 px-3 text-sm font-semibold text-white active:scale-95" onClick={() => discard("delete")} aria-label="Borrar definitivamente" title="Borrar definitivamente">Borrar</button>
+              <button className="rounded-lg bg-white px-3 py-2 text-sm font-semibold text-black" onClick={onClose}>Listo</button>
+            </div>
           </div>
           <div className="flex min-h-0 flex-1 items-center justify-center">
             <img src={shots[view].url} alt="" className="max-h-full max-w-full object-contain" />
@@ -527,7 +548,7 @@ export default function CameraCapture({ cliente = "", onCapture, onClose, onNati
           <div className="flex gap-2 overflow-x-auto px-3 py-3" style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}>
             {shots.map((x, i) => (
               <button key={x.url} type="button" onClick={() => setView(i)} aria-label={`Foto ${i + 1}`}
-                ref={(el) => { if (el && i === view) el.scrollIntoView({ inline: "center", block: "nearest" }); }}
+                data-shot={i}
                 className={`h-16 w-16 shrink-0 overflow-hidden rounded-lg border-2 ${i === view ? "border-yellow-300" : "border-white/30"}`}>
                 <img src={x.url} alt="" className="h-full w-full object-cover" />
               </button>

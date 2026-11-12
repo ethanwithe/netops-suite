@@ -51,13 +51,23 @@ def _text(c: canvas.Canvas, el: dict, x, y, w, h, anchor_mid=False, inner_pad=0.
         for k, ln in enumerate(parts or [""]):
             lines.append((ln, spc if (k == 0 and pi > 0) else 0))
     total = sum(lead + s for _, s in lines)
-    top = (h * K - total) / 2 if anchor_mid else 0
+    va = el.get("valign") or ("m" if anchor_mid else "t")
+    top = (h * K - total) / 2 if va == "m" else (h * K - total) if va == "b" else 0
     cy = top
     al = el.get("align", "l")
-    for ln, s in lines:
+    from reportlab.pdfbase.pdfmetrics import stringWidth as _sw
+    for idx, (ln, s) in enumerate(lines):
         cy += s + lead
         base = (y * K) + (cy - lead) + (lead - fpt) / 2 + fpt * 0.82
-        if al == "c":
+        nxt_new_para = idx + 1 >= len(lines) or lines[idx + 1][1] > 0   # última línea del párrafo: no se justifica
+        if al == "j" and not nxt_new_para and " " in ln.strip():
+            words = ln.split()
+            gap = (maxw - _sw("".join(words), font, fpt)) / max(1, len(words) - 1)
+            cx = (x + inner_pad) * K
+            for wd in words:
+                c.drawString(cx, -base, wd)
+                cx += _sw(wd, font, fpt) + gap
+        elif al == "c":
             c.drawCentredString((x + w / 2) * K, -base, ln)
         elif al == "r":
             c.drawRightString((x + w - inner_pad) * K, -base, ln)
