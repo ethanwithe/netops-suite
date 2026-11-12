@@ -43,6 +43,8 @@ interface Props {
   multi?: boolean;
 }
 
+const GLASS = "grid h-10 w-10 place-items-center rounded-full bg-white/15 text-white backdrop-blur transition active:scale-90";
+
 export default function CameraCapture({ cliente = "", onCapture, onClose, onNative, multi = false }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -361,20 +363,24 @@ export default function CameraCapture({ cliente = "", onCapture, onClose, onNati
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-black" role="dialog" aria-label="Cámara" style={{ touchAction: "none", overscrollBehavior: "contain" }}>
-      <div className="flex items-center justify-between px-3 py-2 text-white">
-        <button className={`rounded-lg px-3 py-2 text-sm ${shots.length ? "bg-white font-semibold text-black" : "hover:bg-white/10"}`} onClick={onClose}>{shots.length ? `Listo (${shots.length})` : "Cerrar"}</button>
-        <button
-          className="rounded-lg px-3 py-2 text-sm hover:bg-white/10"
-          onClick={() => setPanel((v) => !v)}
-          title="Posición, letra, color, tamaño y texto del sello"
-        >
-          {panel ? "Cerrar sello" : "✎ Sello"}
-        </button>
-        {hasTorch && (
-          <button className="rounded-lg px-3 py-2 text-sm hover:bg-white/10" onClick={toggleTorch}>
-            {torch ? "Linterna: sí" : "Linterna: no"}
+      <div className="flex items-center justify-between gap-2 px-3 pb-2 pt-[max(0.5rem,env(safe-area-inset-top))] text-white">
+        {shots.length ? (
+          <button className="h-10 rounded-full bg-white px-4 text-sm font-semibold text-black active:scale-95" onClick={onClose}>Listo ({shots.length})</button>
+        ) : (
+          <button className={GLASS} onClick={onClose} aria-label="Cerrar la cámara">
+            <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg>
           </button>
         )}
+        <div className="flex items-center gap-2">
+          {hasTorch && (
+            <button className={`${GLASS} ${torch ? "!bg-yellow-300 !text-black" : ""}`} onClick={toggleTorch} aria-label={torch ? "Apagar linterna" : "Encender linterna"} aria-pressed={torch}>
+              <svg viewBox="0 0 24 24" className="h-5 w-5" fill={torch ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinejoin="round"><path d="M13 2L5 14h6l-1 8 8-12h-6l1-8z" /></svg>
+            </button>
+          )}
+          <button className={`${GLASS} ${panel ? "!bg-white !text-black" : ""}`} onClick={() => setPanel((v) => !v)} aria-label="Sello: posición, letra, color y texto" aria-pressed={panel} title="Sello">
+            <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 20h4L19 9l-4-4L4 16v4zM13.5 6.5l4 4" /></svg>
+          </button>
+        </div>
       </div>
 
       <div ref={areaRef} className="relative flex-1 overflow-hidden" style={{ touchAction: "none" }} onClick={refocus}
@@ -442,9 +448,9 @@ export default function CameraCapture({ cliente = "", onCapture, onClose, onNati
         )}
       </div>
 
-      <div className="flex flex-col items-center gap-2 px-4 pt-3" style={{ paddingBottom: "max(1.5rem, env(safe-area-inset-bottom))" }}>
+      <div className="flex flex-col items-center gap-3 px-4 pt-3" style={{ paddingBottom: "max(1.25rem, env(safe-area-inset-bottom))" }}>
         {panel && (
-          <div className="w-full max-w-md space-y-2 rounded-xl bg-white/10 p-3 text-white">
+          <div className="w-full max-w-md space-y-2 rounded-3xl border border-white/15 bg-white/15 p-3 text-white shadow-2xl backdrop-blur-xl">
             <div className="flex items-start gap-3">
               <div className="grid shrink-0 grid-cols-3 gap-1" aria-label="Posición del sello">
                 {STAMP_ORDER.map((p) => (
@@ -479,25 +485,33 @@ export default function CameraCapture({ cliente = "", onCapture, onClose, onNati
             {custom != null && <button type="button" className="text-[11px] underline" onClick={() => editText(null)}>Volver al texto automático (fecha, lugar y cliente)</button>}
           </div>
         )}
-        <p className="text-[11px] text-white/60">Así saldrá el sello. Pellizca o usa la rueda del mouse para acercar · toca para enfocar · Espacio o Enter disparan.</p>
-        <div className="flex w-full items-center justify-between">
-          {shots.length ? (
-            <button type="button" aria-label="Ver las fotos tomadas" onClick={() => setView(shots.length - 1)} className="relative h-14 w-14 shrink-0 overflow-hidden rounded-lg border-2 border-white/80 bg-black">
-              <img src={shots[shots.length - 1].url} alt="" className="h-full w-full object-cover" />
-              <span className="absolute bottom-0 right-0 rounded-tl bg-black/70 px-1 text-[10px] font-semibold text-white">{shots.length}</span>
-            </button>
-          ) : (
-            <button className="w-28 text-left text-xs text-white/70 underline" onClick={onNative}>Cámara del teléfono</button>
-          )}
+        <div className="flex w-full max-w-md items-center justify-between">
+          <div className="flex w-20 justify-start">
+            {shots.length ? (
+              <button type="button" aria-label="Ver las fotos tomadas" onClick={() => setView(shots.length - 1)} className="relative h-14 w-14 shrink-0 overflow-hidden rounded-2xl border-2 border-white/90 bg-black shadow-lg active:scale-95">
+                <img src={shots[shots.length - 1].url} alt="" className="h-full w-full object-cover" />
+                <span className="absolute -right-0 -top-0 min-w-[18px] rounded-bl-lg bg-white px-1 text-center text-[11px] font-bold text-black">{shots.length}</span>
+              </button>
+            ) : (
+              <button className={GLASS} onClick={onNative} aria-label="Usar la cámara del teléfono" title="Cámara del teléfono">
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z" /><circle cx="12" cy="13" r="3.5" /></svg>
+              </button>
+            )}
+          </div>
           <button
             aria-label="Tomar foto"
             disabled={!ready || busy}
             onClick={shoot}
-            className="h-[72px] w-[72px] rounded-full border-4 border-white bg-white/90 shadow-[0_0_0_4px_rgba(255,255,255,.25)] transition-transform active:scale-90 disabled:opacity-40"
-          />
-          <button className="w-28 text-right text-xs text-white/70 underline" onClick={toggleHq} title="Rápida: toma el cuadro que ves (instantánea). Alta calidad: usa el sensor completo y tarda más.">
-            {hq ? "Alta calidad" : "Rápida"}
+            className="grid h-[78px] w-[78px] place-items-center rounded-full border-[4px] border-white bg-transparent transition-transform active:scale-90 disabled:opacity-40"
+          >
+            <span className={`block h-[62px] w-[62px] rounded-full bg-white transition-transform ${busy ? "scale-75" : ""}`} />
           </button>
+          <div className="flex w-20 justify-end">
+            <button className={`h-9 rounded-full px-3 text-xs font-semibold backdrop-blur ${hq ? "bg-yellow-300 text-black" : "bg-white/15 text-white"}`} onClick={toggleHq} aria-pressed={hq}
+              title="Rápida: toma el cuadro que ves (instantánea). Alta calidad: usa el sensor completo y tarda más.">
+              {hq ? "HQ" : "Rápida"}
+            </button>
+          </div>
         </div>
       </div>
       {view != null && shots[view] && (

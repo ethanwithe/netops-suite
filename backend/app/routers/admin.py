@@ -248,6 +248,51 @@ def set_participants(client_id: str, p: AssocIn, actor: models.User = Depends(ad
     return ca.client_out(db, c)
 
 
+class MergeIn(BaseModel):
+    into: str
+
+
+@router.post("/clients/{client_id}/merge")
+def merge_client(client_id: str, p: MergeIn, actor: models.User = Depends(admin_user), db: Session = Depends(get_db)):
+    """Une dos clientes con la misma SOT (la hicieron varios por separado): todo queda en `into`,
+    con la unión de participantes, datos, reportes y ventanas guardadas. El otro desaparece."""
+    src, dst = db.get(models.Client, client_id), db.get(models.Client, p.into)
+    if not src or not dst or src.id == dst.id:
+        raise HTTPException(404, "Clientes no válidos para unir.")
+    if src.sot != dst.sot:
+        raise HTTPException(400, "Solo se pueden unir clientes con la misma SOT.")
+    for f in ("nombre", "cid", "proy", "contrata"):
+        if not (getattr(dst, f) or "").strip() and (getattr(src, f) or "").strip():
+            setattr(dst, f, getattr(src, f))
+    if src.fecha and (not dst.fecha or src.fecha < dst.fecha):
+        dst.fecha = src.fecha
+    datos = dict(src.datos or {})
+    datos.update(dst.datos or {})            # lo ya guardado en el destino manda
+    dst.datos = datos
+    seen = {(r.get("filename"), r.get("at")) for r in (dst.reportes or []) if isinstance(r, dict)}
+    dst.reportes = list(dst.reportes or []) + [r for r in (src.reportes or []) if not (isinstance(r, dict) and (r.get("filename"), r.get("at")) in seen)]
+    have = {r.user_id for r in db.query(models.ClientShare).filter(models.ClientShare.client_id == dst.id).all()}
+    for r in db.query(models.ClientShare).filter(models.ClientShare.client_id == src.id).all():
+        if r.user_id not in have:
+            db.add(models.ClientShare(client_id=dst.id, user_id=r.user_id))
+            have.add(r.user_id)
+    mine = {w.key for w in db.query(models.UserWorkspace).filter(models.UserWorkspace.client_id == dst.id).all()}
+    for w in db.query(models.UserWorkspace).filter(models.UserWorkspace.client_id == src.id).all():
+        if w.key not in mine:
+            w.client_id = dst.id
+        else:
+            db.delete(w)
+    db.query(models.WorkspaceVersion).filter(models.WorkspaceVersion.client_id == src.id).update({"client_id": dst.id})
+    db.flush()
+    db.query(models.ClientShare).filter(models.ClientShare.client_id == src.id).delete()
+    db.delete(src)
+    dst.deleted_at = None
+    dst.updated_at = dt.datetime.utcnow()
+    db.commit()
+    log_activity(db, actor, "cliente_unido", f"SOT {dst.sot}: se unieron registros repetidos", dst.id)
+    return ca.client_out(db, dst)
+
+
 @router.put("/clients/{client_id}/restore")
 def restore_client(client_id: str, actor: models.User = Depends(admin_user), db: Session = Depends(get_db)):
     c = db.get(models.Client, client_id)

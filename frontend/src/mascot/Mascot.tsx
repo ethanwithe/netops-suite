@@ -445,11 +445,21 @@ export default function Mascot() {
     if (busyRef.current) return;
     const t = norm(raw);
     if (t.length < 2) return;
+    // El reconocimiento de voz a veces escribe «bit» como «bits», «vit», «bid» o «beat».
+    const WAKE = /(^| )(oye |hey |hola |ok |okay )?(bit|bits|bid|vit|beat|bip|bt)( |$)/;
+    const named = WAKE.test(t);
     if (cfgRef.current.needName) {
-      const addressed = /(^| )bit( |$)/.test(t) || Date.now() - lastTalk.current < 25000;
+      const addressed = named || Date.now() - lastTalk.current < 40000;   // tras responderte sigue atento 40 s (conversación)
       if (!addressed) return;
     }
-    void ask(raw.replace(/^\s*(oye|hey|hola|ok)?[, ]*bit[,:]?\s*/i, "") || raw, true);
+    const rest = raw.replace(/^\s*(oye|hey|hola|ok|okay)?[, ]*(bit|bits|bid|vit|beat|bip)[,:.!]?\s*/i, "").trim();
+    if (named && !rest) {   // solo dijo su nombre: se despierta y espera la orden
+      lastTalk.current = Date.now();
+      express("listening", 2500);
+      void speak("Dime.", true);
+      return;
+    }
+    void ask(rest || raw, true);
   };
 
   // ---------- arrastre ----------
@@ -601,7 +611,7 @@ export default function Mascot() {
               <button type="button" className="btn-secondary px-2 py-1 text-[11px]" onClick={() => { express("happy"); void speak("Hola, así suena mi voz. ¿Te gusta?", true); }}>Probar la voz</button>
               {!cloud.length && <p className="text-slate-500">Para tener voces mucho más naturales y variadas, el servidor necesita OPENAI_API_KEY (voces en la nube). Mientras tanto uso las de tu navegador; en Edge hay voces «Natural».</p>}
               <label className="flex items-center gap-2"><input type="checkbox" checked={cfg.voice} onChange={(e) => setMascot({ voice: e.target.checked })} />Responder en voz alta también cuando escribo</label>
-              <label className="flex items-center gap-2"><input type="checkbox" checked={cfg.needName} onChange={(e) => setMascot({ needName: e.target.checked })} />Solo responder si digo «Bit» (ambientes con ruido)</label>
+              <label className="flex items-center gap-2"><input type="checkbox" checked={cfg.needName} onChange={(e) => setMascot({ needName: e.target.checked })} />Despertar con mi nombre: «Bit, …» (como un asistente; sigue atento 40 s después de responder)</label>
               <label className="flex items-center gap-2"><input type="checkbox" checked={cfg.idle} onChange={(e) => setMascot({ idle: e.target.checked })} />Comentarios espontáneos</label>
               <label className="flex items-center gap-2"><input type="checkbox" checked={cfg.learn} onChange={(e) => setMascot({ learn: e.target.checked })} />Aprender de mí (gustos y hábitos)</label>
 
