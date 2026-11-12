@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { usePersistentState } from "../store/persistentState";
 import { agentStart, agentStatus, agentStop } from "../utils/saturadorAgent";
 import type { AgentResult, AgentStatus } from "../utils/saturadorAgent";
+import { startBrowserSat } from "../utils/browserSaturate";
+import type { BrowserSat, SatTick } from "../utils/browserSaturate";
 
 /**
  * Controla el saturador de tu laptop (saturador.py --agente) desde la página:
@@ -20,6 +22,10 @@ export default function SaturadorPanel({
   const [mbps, setMbps] = usePersistentState("saturador.mbps", defaultMbps || "100");
   const [seg, setSeg] = usePersistentState("saturador.seg", "600");
   const [code, setCode] = usePersistentState("saturador.codigo", "");
+  const [via, setVia] = usePersistentState<"agente" | "navegador">("saturador.via", "agente");
+  const [bt, setBt] = useState<SatTick | null>(null);
+  const [btRun, setBtRun] = useState(false);
+  const btRef = useRef<BrowserSat | null>(null);
   const [res, setRes] = useState<AgentResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const timer = useRef<number | null>(null);
@@ -29,8 +35,9 @@ export default function SaturadorPanel({
   const running = !!st?.corriendo;
 
   const poll = useCallback(async () => {
+    if (via !== "agente") return;
     try { setRes(await agentStatus(code.trim())); } catch { /* se reintenta */ }
-  }, [code]);
+  }, [code, via]);
 
   useEffect(() => {
     void poll();
@@ -38,7 +45,18 @@ export default function SaturadorPanel({
     return () => { if (timer.current) window.clearInterval(timer.current); };
   }, [poll]);
 
-  useEffect(() => { onRunning?.(running); }, [running]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { onRunning?.(via === "navegador" ? btRun : running); }, [running, btRun, via]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => () => btRef.current?.stop(), []);
+
+  function startBr() {
+    setError(null); setBt(null); setBtRun(true);
+    btRef.current = startBrowserSat({
+      seconds: Number(seg) || 0,
+      onTick: setBt,
+      onEnd: (err) => { setBtRun(false); if (err) setError(err); },
+    });
+  }
+  function stopBr() { btRef.current?.stop(); }
 
   async function start() {
     setError(null);
@@ -61,8 +79,59 @@ export default function SaturadorPanel({
     </div>
   );
 
+  const modeSwitch = (
+    <div className="flex flex-wrap gap-2">
+      <button className={via === "agente" ? "btn-primary text-xs" : "btn-secondary text-xs"} onClick={() => setVia("agente")}>Con agente (ICMP, Internet o RPV)</button>
+      <button className={via === "navegador" ? "btn-primary text-xs" : "btn-secondary text-xs"} onClick={() => setVia("navegador")}>Desde el navegador (sin agente)</button>
+    </div>
+  );
+
+  if (via === "navegador") {
+    const tgt = Number(mbps) || 0;
+    return (
+      <div className="space-y-3">
+        {modeSwitch}
+        <p className="text-xs text-slate-500">
+          Satura el enlace de Internet de esta PC descargando y subiendo datos en paralelo desde el navegador: no necesita instalar nada ni código.
+          Para saturar una RPV o por ICMP usa el agente.
+        </p>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <label className="block text-sm">
+            <span className="mb-1 block text-xs font-medium text-slate-500">Objetivo de referencia (Mbps)</span>
+            <input className="input w-full" inputMode="decimal" value={mbps} onChange={(e) => setMbps(e.target.value)} />
+          </label>
+          <label className="block text-sm">
+            <span className="mb-1 block text-xs font-medium text-slate-500">Duración (seg, 0 = hasta detener)</span>
+            <input className="input w-full" inputMode="numeric" value={seg} onChange={(e) => setSeg(e.target.value)} />
+          </label>
+          <div className="flex items-end">
+            {!btRun ? <button className="btn-primary w-full text-sm" onClick={startBr}>Iniciar saturación</button>
+              : <button className="btn-secondary w-full text-sm" onClick={stopBr}>Detener</button>}
+          </div>
+        </div>
+        {error && <p className="text-sm text-red-600">{error}</p>}
+        {bt && (
+          <div className="space-y-2 rounded-lg border border-slate-200 p-3">
+            <p className="text-xs text-slate-500">{btRun ? `Saturando · ${bt.sec}s` : "Última saturación (detenida)"}</p>
+            {[["Subida", bt.up, "bg-blue-500"], ["Bajada", bt.down, "bg-emerald-500"]].map(([l, v, c]) => {
+              const val = v as number, pc = tgt > 0 ? Math.min(100, Math.round((val / tgt) * 100)) : 0;
+              return (
+                <div key={l as string} className="space-y-0.5">
+                  <div className="flex justify-between text-xs"><span>{l}</span><span className="font-mono">{val.toFixed(1)} Mbps{tgt > 0 ? ` · ${pc}%` : ""}</span></div>
+                  <div className="h-2.5 overflow-hidden rounded bg-slate-200"><div className={`h-full ${c}`} style={{ width: `${pc}%` }} /></div>
+                </div>
+              );
+            })}
+            <p className="text-xs text-slate-500">Picos: subida {bt.peakUp.toFixed(1)} / bajada {bt.peakDown.toFixed(1)} Mbps</p>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-3">
+      {modeSwitch}
       <div className="flex flex-wrap items-center gap-2">
         {res?.kind === "ok" && st?.icmp && <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-700">Agente conectado</span>}
         {res?.kind === "ok" && !st?.icmp && <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-medium text-amber-700">Agente sin permisos ICMP (ábrelo con sudo)</span>}

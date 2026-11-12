@@ -27,6 +27,7 @@ export const listActivity = (p: { user_id?: string; action?: string; limit?: num
 export const listAllClients = (p: { user_id?: string; month?: string; year?: number; q?: string; deleted?: boolean }) =>
   api.get<ClientRecord[]>("/admin/clients", { params: p }).then((r) => r.data);
 export const setParticipants = (id: string, user_ids: string[]) => api.put<ClientRecord>(`/admin/clients/${id}/participants`, { user_ids }).then((r) => r.data);
+export const mergeClients = (id: string, into: string) => api.post<ClientRecord>(`/admin/clients/${id}/merge`, { into }).then((r) => r.data);
 export const adminRestore = (id: string) => api.put(`/admin/clients/${id}/restore`);
 export const adminPurge = (id: string) => api.delete(`/admin/clients/${id}/purge`);
 

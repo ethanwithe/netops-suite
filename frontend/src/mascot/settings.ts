@@ -9,18 +9,23 @@ export interface MascotSettings {
   voiceName: string; // voz elegida ('' = la mejor disponible; 'nube:nova' = voz del servidor)
   voiceStyle: string; // normal | grave | aguda | pausada | rapida | robot | dibujos
   listen: boolean;   // conversación: micrófono siempre atento
-  needName: boolean; // solo responder si dices «Bit»
+  needName: boolean; // despertar al decir «Bit» (como un asistente de voz)
   learn: boolean;    // aprender de ti
   mute: boolean;     // voz de Bit apagada (independiente del micrófono)
 }
 const KEY = "netops.mascot";
-const DEFAULTS: MascotSettings = { hidden: false, voice: false, idle: true, right: 16, bottom: 16, voiceName: "", voiceStyle: "normal", listen: true, needName: false, learn: true, mute: false };
+const DEFAULTS: MascotSettings = { hidden: false, voice: false, idle: true, right: 16, bottom: 16, voiceName: "", voiceStyle: "normal", listen: true, needName: true, learn: true, mute: false };
 const listeners = new Set<() => void>();
 
 function load(): MascotSettings {
   try {
     const raw = localStorage.getItem(KEY);
-    if (raw) return { ...DEFAULTS, ...JSON.parse(raw) };
+    if (raw) {
+      const j = { ...DEFAULTS, ...JSON.parse(raw) };
+      // Una sola vez: Bit pasa a despertar con su nombre («Bit, ...»); se puede volver a apagar en su panel.
+      if (!localStorage.getItem("netops.mascot.wake1")) { j.needName = true; localStorage.setItem("netops.mascot.wake1", "1"); }
+      return j;
+    }
   } catch { /* sin almacenamiento */ }
   return { ...DEFAULTS };
 }

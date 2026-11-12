@@ -56,6 +56,7 @@ export function applyLook() {
   const d = document.documentElement, st = d.style;
   const set = (k: string, v: string | null) => (v == null ? st.removeProperty(k) : st.setProperty(k, v));
   const b = look.bgHue, a = look.accentHue;
+  set("--bga", b == null ? null : "1");   // el color de fondo elegido vuelve a pintar las manchas
   set("--bg1", b == null ? null : hsl(b, 92, 58));
   set("--bg2", b == null ? null : hsl((b + 40) % 360, 82, 52));
   set("--bg3", b == null ? null : hsl((b + 330) % 360, 88, 66));

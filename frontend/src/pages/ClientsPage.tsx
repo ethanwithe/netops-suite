@@ -4,7 +4,7 @@ import { apiErrorMessage, setActingClient } from "../api/client";
 import Spinner from "../components/Spinner";
 import { usePersistentState } from "../store/persistentState";
 import { createClient, deleteClient, listClients, listTrash, restoreClient, updateClient } from "../store/clients";
-import { adminPurge, adminRestore, exportClientUrl, exportClientsUrl, FORMATS, listAllClients, listUsers, setParticipants } from "../store/admin";
+import { adminPurge, adminRestore, exportClientUrl, exportClientsUrl, FORMATS, listAllClients, listUsers, mergeClients, setParticipants } from "../store/admin";
 import type { AdminUser } from "../store/admin";
 import { can, useAuth } from "../store/auth";
 import type { ClientInput, ClientRecord } from "../store/clients";
@@ -106,7 +106,7 @@ export default function ClientsPage({ all = false }: { all?: boolean }) {
       ) : (
         <div className="space-y-2">
           {shown.map((c) => (
-            <ClientCard key={c.id} c={c} onEdit={() => setEditing(c)} showMonth={!y} all={all} trash={trash} users={users} onChanged={() => void reload()} />
+            <ClientCard key={c.id} c={c} onEdit={() => setEditing(c)} showMonth={!y} all={all} trash={trash} users={users} onChanged={() => void reload()} twins={all && !trash ? rows.filter((x) => x.sot === c.sot && x.id !== c.id) : []} />
           ))}
         </div>
       )}
@@ -123,7 +123,7 @@ export default function ClientsPage({ all = false }: { all?: boolean }) {
   );
 }
 
-function ClientCard({ c, onEdit, showMonth, all, trash, users, onChanged }: { c: ClientRecord; onEdit: () => void; showMonth: boolean; all: boolean; trash: boolean; users: AdminUser[]; onChanged: () => void }) {
+function ClientCard({ c, onEdit, showMonth, all, trash, users, onChanged, twins = [] }: { c: ClientRecord; onEdit: () => void; showMonth: boolean; all: boolean; trash: boolean; users: AdminUser[]; onChanged: () => void; twins?: ClientRecord[] }) {
   const { me } = useAuth();
   const [assoc, setAssoc] = useState(false);
   const [open, setOpen] = useState(false);
@@ -206,6 +206,12 @@ function ClientCard({ c, onEdit, showMonth, all, trash, users, onChanged }: { c:
               <>
                 <button className="btn-secondary text-xs" onClick={onEdit}>Editar</button>
                 {all && <button className="btn-secondary text-xs" onClick={() => setAssoc(true)}>Asociar usuarios</button>}
+                {all && twins.length > 0 && (
+                  <button className="btn-secondary text-xs" title="Hay otro registro con esta misma SOT: se junta todo en este y los participantes se suman"
+                    onClick={() => { if (confirm(`La SOT ${c.sot} está repetida (${twins.length + 1} registros). ¿Unirlos en este? Se suman participantes, datos, reportes y ventanas guardadas.`)) void (async () => { try { for (const t of twins) await mergeClients(t.id, c.id); onChanged(); } catch (e) { alert(apiErrorMessage(e, "No se pudo unir.")); } })(); }}>
+                    Unir repetidas ({twins.length + 1})
+                  </button>
+                )}
                 {can(me, "exportar") && <ExportMenu label="Descargar" urlFor={(f) => exportClientUrl(c.id, f)} />}
               </>
             )}
