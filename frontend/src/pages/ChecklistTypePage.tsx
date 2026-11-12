@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Navigate, useNavigate, useParams } from "react-router-dom";
 import { api, apiErrorMessage } from "../api/client";
 import ImageUpload from "../components/ImageUpload";
@@ -152,15 +152,18 @@ function Inner({ type }: { type: CkType }) {
   useEffect(() => {
     if (connected) return;
     let alive = true;
-    const tick = async () => { const r = await puenteEstado(code); if (alive) { setPst(r); if (r.kind === "ok" && r.ports.length && !r.ports.some((x) => x.device === puerto)) setPuerto((r.ports.find((x) => x.usb) ?? r.ports[0]).device); } };
+    const tick = async () => { const r = await puenteEstado(code); if (alive) { setPst((o) => (JSON.stringify(o) === JSON.stringify(r) ? o : r)); if (r.kind === "ok" && r.ports.length && !r.ports.some((x) => x.device === puerto)) setPuerto((r.ports.find((x) => x.usb) ?? r.ports[0]).device); } };
     void tick();
     const t = window.setInterval(() => void tick(), 3000);
     return () => { alive = false; window.clearInterval(t); };
   }, [connected, code]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const row = (itemId: string): Row => s.rows[itemId] ?? emptyRow;
-  const setRow = (itemId: string, patch: Partial<Row>) =>
-    setS((p) => ({ ...p, rows: { ...p.rows, [itemId]: { ...(p.rows[itemId] ?? emptyRow), ...patch } } }));
+  const setRow = useCallback((itemId: string, patch: Partial<Row>) =>
+    setS((p) => ({ ...p, rows: { ...p.rows, [itemId]: { ...(p.rows[itemId] ?? emptyRow), ...patch } } })), [setS]);
+  const runRef = useRef<(items: CkItem[], id: string) => void>(() => undefined);
+  const onRun = useCallback((items: CkItem[], id: string) => runRef.current(items, id), []);
+  const onEdit = useCallback((itemId: string, idx: number, url: string) => setEditImg({ itemId, idx, url }), []);
   const setParam = (k: string, v: string) => setS((p) => ({ ...p, params: { ...p.params, [k]: v } }));
   const setF = <K extends keyof RunState>(k: K, v: RunState[K]) => setS((p) => ({ ...p, [k]: v }));
 
@@ -260,6 +263,7 @@ function Inner({ type }: { type: CkType }) {
     });
   }
 
+  runRef.current = (items, label) => void runItems(items, label);
   async function runItems(items: CkItem[], label: string) {
     const sess = session.current;
     if (!sess?.connected) { alert("Primero conecta la consola o el SSH (tarjeta de conexión)."); return; }
@@ -588,84 +592,10 @@ function Inner({ type }: { type: CkType }) {
               </div>
 
               <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-2">
-              {sec.items.map((it) => {
-                const r = row(it.id);
-                const filled = it.cmd ? fillCmd(it.cmd, s.params) : null;
-                return (
-                  <div key={it.id} className="rounded-lg border border-slate-200 p-3 space-y-2" style={{ contentVisibility: "auto", containIntrinsicSize: "auto 150px" }}>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <input type="checkbox" checked={r.incluir} onChange={(e) => setRow(it.id, { incluir: e.target.checked })} />
-                      <span className="font-medium text-sm text-slate-800 flex-1 min-w-[180px]">{it.nombre}</span>
-                      <span className={`rounded px-2 py-0.5 text-[10px] font-semibold ${it.modo === "texto" ? "bg-blue-100 text-blue-700" : "bg-purple-100 text-purple-700"}`}>
-                        {it.modo === "texto" ? "TEXTO" : "FOTO"}
-                      </span>
-                      {it.cmd && (
-                        <button className="btn-secondary text-xs" disabled={!connected || !!busy} onClick={() => runItems([it], it.id)} title="Ejecutar solo este ítem">Ejecutar</button>
-                      )}
-                    </div>
-                    {isSatItem(it) && (
-                      <p className={`text-[11px] ${saturando ? "text-green-700" : "text-amber-700"}`}>
-                        {saturando ? "Saturación activa: se puede capturar." : "Solo se captura con la saturación activa."}
-                        {readings[it.id] && (() => {
-                          const rt = readings[it.id];
-                          const bw = Number(s.ancho) || 0;
-                          const peak = Math.max(rt.inMbps, rt.outMbps);
-                          const pct = bw ? Math.round((peak / bw) * 100) : null;
-                          const low = pct !== null && pct < 70;
-                          return (
-                            <span className={low ? "ml-2 font-semibold text-red-600" : "ml-2 font-semibold"}>
-                              Router: bajada {rt.inMbps.toFixed(1)} / subida {rt.outMbps.toFixed(1)} Mbps{pct !== null ? ` (${pct}% de ${bw} Mbps)` : ""}
-                              {low ? " — Atención: parece que NO está saturando; espera y repite la captura" : ""}
-                            </span>
-                          );
-                        })()}
-                      </p>
-                    )}
-                    {filled && (
-                      <p className="font-mono text-[11px] text-slate-500 break-all">
-                        $ {filled.cmd}
-                        {filled.missing.length > 0 && <span className="text-amber-600">  (falta: {filled.missing.join(", ")})</span>}
-                      </p>
-                    )}
-
-                    {it.modo === "foto" && (
-                      <div className="flex flex-wrap items-start gap-2">
-                        {r.images.map((im, k) => (
-                          <div key={im.path} className="relative">
-                            <img src={im.url} alt="" className="h-20 w-28 rounded border object-cover" />
-                            <button type="button" aria-label="Editar captura" title="Editar (líneas, flechas, texto, recorte…)"
-                              className="absolute -left-1 -top-1 rounded-full bg-slate-700 px-1.5 text-xs text-white"
-                              onClick={() => setEditImg({ itemId: it.id, idx: k, url: im.url })}>Editar</button>
-                            <button type="button" aria-label="Quitar captura"
-                              className="absolute -right-1 -top-1 rounded-full bg-red-500 px-1.5 text-xs text-white"
-                              onClick={() => setRow(it.id, { images: r.images.filter((_, j) => j !== k) })}>×</button>
-                          </div>
-                        ))}
-                        <ImageUpload
-                          key={r.images.length}
-                          compact
-                          camera={false}
-                          label="Agregar captura..."
-                          onUploaded={(path, url) => path && setRow(it.id, { images: [...r.images, { path, url }] })}
-                        />
-                      </div>
-                    )}
-
-                    <details open={it.modo === "texto" || undefined}>
-                      <summary className="cursor-pointer text-xs text-slate-500">
-                        {it.modo === "texto" ? "Salida del comando" : "Salida del comando (sale como terminal si no hay captura)"}
-                        {r.texto ? ` · ${r.texto.split("\n").length} líneas` : ""}
-                      </summary>
-                      <textarea
-                        className="input mt-1 h-32 w-full font-mono text-[11px]"
-                        value={r.texto}
-                        placeholder="Se llena al ejecutar, o pega aquí la salida"
-                        onChange={(e) => setRow(it.id, { texto: e.target.value })}
-                      />
-                    </details>
-                  </div>
-                );
-              })}
+              {sec.items.map((it) => (
+                <ItemCard key={it.id} it={it} r={row(it.id)} params={s.params} ancho={s.ancho} connected={connected} busy={!!busy}
+                  saturando={saturando} reading={readings[it.id]} onRow={setRow} onRun={onRun} onEdit={onEdit} />
+              ))}
               </div>
             </div>
           ))}
@@ -707,6 +637,88 @@ function Inner({ type }: { type: CkType }) {
 }
 
 /** Casilla que se estira hacia abajo si el texto es largo (se puede arrastrar la esquina). Solo mide cuando cambia el texto. */
+const ItemCard = memo(function ItemCard({ it, r, params, ancho, connected, busy, saturando, reading, onRow, onRun, onEdit }: {
+  it: CkItem; r: Row; params: Record<string, string>; ancho: string; connected: boolean; busy: boolean; saturando: boolean;
+  reading?: { inMbps: number; outMbps: number };
+  onRow: (id: string, patch: Partial<Row>) => void; onRun: (items: CkItem[], id: string) => void; onEdit: (id: string, idx: number, url: string) => void;
+}) {
+  const filled = it.cmd ? fillCmd(it.cmd, params) : null;
+  return (
+    <div className="rounded-lg border border-slate-200 p-3 space-y-2" style={{ contentVisibility: "auto", containIntrinsicSize: "auto 150px" }}>
+      <div className="flex flex-wrap items-center gap-2">
+        <input type="checkbox" checked={r.incluir} onChange={(e) => onRow(it.id, { incluir: e.target.checked })} />
+        <span className="font-medium text-sm text-slate-800 flex-1 min-w-[180px]">{it.nombre}</span>
+        <span className={`rounded px-2 py-0.5 text-[10px] font-semibold ${it.modo === "texto" ? "bg-blue-100 text-blue-700" : "bg-purple-100 text-purple-700"}`}>
+          {it.modo === "texto" ? "TEXTO" : "FOTO"}
+        </span>
+        {it.cmd && (
+          <button className="btn-secondary text-xs" disabled={!connected || busy} onClick={() => onRun([it], it.id)} title="Ejecutar solo este ítem">Ejecutar</button>
+        )}
+      </div>
+      {isSatItem(it) && (
+        <p className={`text-[11px] ${saturando ? "text-green-700" : "text-amber-700"}`}>
+          {saturando ? "Saturación activa: se puede capturar." : "Solo se captura con la saturación activa."}
+          {reading && (() => {
+            const rt = reading;
+            const bw = Number(ancho) || 0;
+            const peak = Math.max(rt.inMbps, rt.outMbps);
+            const pct = bw ? Math.round((peak / bw) * 100) : null;
+            const low = pct !== null && pct < 70;
+            return (
+              <span className={low ? "ml-2 font-semibold text-red-600" : "ml-2 font-semibold"}>
+                Router: bajada {rt.inMbps.toFixed(1)} / subida {rt.outMbps.toFixed(1)} Mbps{pct !== null ? ` (${pct}% de ${bw} Mbps)` : ""}
+                {low ? " — Atención: parece que NO está saturando; espera y repite la captura" : ""}
+              </span>
+            );
+          })()}
+        </p>
+      )}
+      {filled && (
+        <p className="font-mono text-[11px] text-slate-500 break-all">
+          $ {filled.cmd}
+          {filled.missing.length > 0 && <span className="text-amber-600">  (falta: {filled.missing.join(", ")})</span>}
+        </p>
+      )}
+
+      {it.modo === "foto" && (
+        <div className="flex flex-wrap items-start gap-2">
+          {r.images.map((im, k) => (
+            <div key={im.path} className="relative">
+              <img src={im.url} alt="" className="h-20 w-28 rounded border object-cover" />
+              <button type="button" aria-label="Editar captura" title="Editar (líneas, flechas, texto, recorte…)"
+                className="absolute -left-1 -top-1 rounded-full bg-slate-700 px-1.5 text-xs text-white"
+                onClick={() => onEdit(it.id, k, im.url)}>Editar</button>
+              <button type="button" aria-label="Quitar captura"
+                className="absolute -right-1 -top-1 rounded-full bg-red-500 px-1.5 text-xs text-white"
+                onClick={() => onRow(it.id, { images: r.images.filter((_, j) => j !== k) })}>×</button>
+            </div>
+          ))}
+          <ImageUpload
+            key={r.images.length}
+            compact
+            camera={false}
+            label="Agregar captura..."
+            onUploaded={(path, url) => path && onRow(it.id, { images: [...r.images, { path, url }] })}
+          />
+        </div>
+      )}
+
+      <details open={it.modo === "texto" || undefined}>
+        <summary className="cursor-pointer text-xs text-slate-500">
+          {it.modo === "texto" ? "Salida del comando" : "Salida del comando (sale como terminal si no hay captura)"}
+          {r.texto ? ` · ${r.texto.split("\n").length} líneas` : ""}
+        </summary>
+        <textarea
+          className="input mt-1 h-32 w-full font-mono text-[11px]"
+          value={r.texto}
+          placeholder="Se llena al ejecutar, o pega aquí la salida"
+          onChange={(e) => onRow(it.id, { texto: e.target.value })}
+        />
+      </details>
+    </div>
+  );
+});
+
 function Field({ label, value, onChange, className = "" }: { label: string; value: string; onChange: (v: string) => void; className?: string }) {
   const ref = useRef<HTMLTextAreaElement>(null);
   useLayoutEffect(() => {

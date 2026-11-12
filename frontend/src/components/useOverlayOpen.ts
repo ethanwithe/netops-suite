@@ -12,7 +12,14 @@ export function useOverlayOpen(): boolean {
       raf = requestAnimationFrame(() => setOpen(!!document.querySelector(SELECTOR)));
     };
     check();
-    const mo = new MutationObserver(check);
+    // solo importa cuando entra o sale un elemento (no cuando cambia texto: la salida del terminal muta el DOM sin parar)
+    const relevant = (n: Node) => n instanceof Element && (n.matches(SELECTOR) || !!n.querySelector(SELECTOR));
+    const mo = new MutationObserver((recs) => {
+      for (const r of recs) {
+        for (const n of Array.from(r.addedNodes)) if (relevant(n)) return check();
+        for (const n of Array.from(r.removedNodes)) if (relevant(n)) return check();
+      }
+    });
     mo.observe(document.body, { childList: true, subtree: true });
     return () => { mo.disconnect(); cancelAnimationFrame(raf); };
   }, []);
