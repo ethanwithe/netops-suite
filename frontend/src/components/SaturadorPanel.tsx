@@ -139,7 +139,7 @@ export default function SaturadorPanel({
         {(!res || res.kind === "ausente") && <span className="rounded-full bg-slate-200 px-3 py-1 text-xs font-medium text-slate-600">Agente no detectado</span>}
         <label className="ml-auto flex items-center gap-1 text-xs text-slate-500">
           Código del agente
-          <input className="input w-24 font-mono uppercase" value={code} onChange={(e) => setCode(e.target.value.trim())} placeholder="A1B2C3" />
+          <input className="input w-24 font-mono uppercase" value={code} onChange={(e) => setCode(e.target.value.trim().toUpperCase())} placeholder="A1B2C3" />
         </label>
       </div>
       {(!res || res.kind === "ausente") && (

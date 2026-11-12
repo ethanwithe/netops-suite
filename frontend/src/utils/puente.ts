@@ -19,7 +19,7 @@ async function call(path: string, code: string, body?: unknown, timeoutMs = 1500
   try {
     return await fetch(PUENTE_URL + path, {
       method: body === undefined ? "GET" : "POST",
-      headers: { "X-Token": code, ...(body === undefined ? {} : { "Content-Type": "application/json" }) },
+      headers: { "X-Token": code.trim().toUpperCase(), ...(body === undefined ? {} : { "Content-Type": "application/json" }) },
       body: body === undefined ? undefined : JSON.stringify(body),
       signal: ctl.signal,
     });
@@ -54,6 +54,7 @@ export class PuenteSession extends ConsoleSession {
   async connect(opts: PuenteOpen): Promise<void> {
     const r = await call("/abrir", this.code, opts, 30000);
     const d = await r.json().catch(() => ({}));
+    if (r.status === 401) throw new Error("El código del puente no coincide: mira el que muestra la ventana del puente (puente.py) y pégalo en el recuadro «Código del puente».");
     if (!r.ok) throw new Error(d?.error || `Error ${r.status}`);
     this.sid = d.sid;
     this.closed = false;
