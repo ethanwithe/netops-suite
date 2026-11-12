@@ -27,15 +27,36 @@ export function ColorInput({ v, on, none }: { v: string | null | undefined; on: 
 const DASHES: [Dash, string][] = [["", "Continua"], ["dash", "Guiones"], ["lgDash", "Guiones largos"], ["sysDash", "Guiones cortos"], ["dot", "Puntos"], ["dashDot", "Guion y punto"]];
 const HEADS: [Head, string][] = [["none", "Sin punta"], ["triangle", "Flecha"], ["arrow", "Flecha abierta"], ["stealth", "Flecha fina"], ["oval", "Círculo"], ["diamond", "Rombo"]];
 
-function Align({ v, on }: { v: "l" | "c" | "r"; on: (a: "l" | "c" | "r") => void }) {
+const ALIGN_ICON: Record<string, string> = { l: "M3 5h14M3 9h9M3 13h14M3 17h9", c: "M3 5h14M6 9h8M3 13h14M6 17h8", r: "M3 5h14M8 9h9M3 13h14M8 17h9", j: "M3 5h14M3 9h14M3 13h14M3 17h14" };
+const ALIGN_NAME: Record<string, string> = { l: "Izquierda", c: "Centrar", r: "Derecha", j: "Justificar" };
+const VALIGN_ICON: Record<string, string> = { t: "M3 3h14M10 7v11M6 11l4-4 4 4", m: "M3 10h14M10 3v4M10 13v4M7 5l3 2 3-2M7 15l3-2 3 2", b: "M3 17h14M10 3v11M6 9l4 4 4-4" };
+const VALIGN_NAME: Record<string, string> = { t: "Arriba", m: "Al centro", b: "Abajo" };
+
+function Align({ v, on }: { v: "l" | "c" | "r" | "j"; on: (a: "l" | "c" | "r" | "j") => void }) {
   return (
     <span className="seg">
-      {(["l", "c", "r"] as const).map((a) => <button key={a} type="button" className={v === a ? "on" : ""} onClick={() => on(a)}>{a === "l" ? "Izq" : a === "c" ? "Centro" : "Der"}</button>)}
+      {(["l", "c", "r", "j"] as const).map((a) => (
+        <button key={a} type="button" className={v === a ? "on" : ""} onClick={() => on(a)} title={ALIGN_NAME[a]} aria-label={ALIGN_NAME[a]} aria-pressed={v === a}>
+          <svg viewBox="0 0 20 22" className="mx-auto h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d={ALIGN_ICON[a]} /></svg>
+        </button>
+      ))}
     </span>
   );
 }
 
-function TextStyle({ e, p }: { e: { size?: number; bold?: boolean; italic?: boolean; color?: string; align?: "l" | "c" | "r" }; p: Patch }) {
+function VAlign({ v, on }: { v: "t" | "m" | "b"; on: (a: "t" | "m" | "b") => void }) {
+  return (
+    <span className="seg">
+      {(["t", "m", "b"] as const).map((a) => (
+        <button key={a} type="button" className={v === a ? "on" : ""} onClick={() => on(a)} title={VALIGN_NAME[a]} aria-label={`Alinear ${VALIGN_NAME[a].toLowerCase()}`} aria-pressed={v === a}>
+          <svg viewBox="0 0 20 20" className="mx-auto h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d={VALIGN_ICON[a]} /></svg>
+        </button>
+      ))}
+    </span>
+  );
+}
+
+function TextStyle({ e, p, vDefault = "t" }: { e: { size?: number; bold?: boolean; italic?: boolean; color?: string; align?: "l" | "c" | "r" | "j"; valign?: "t" | "m" | "b" }; p: Patch; vDefault?: "t" | "m" | "b" }) {
   return (
     <>
       <Row label="Tamaño"><Num v={e.size ?? 12} on={(n) => p({ size: Math.max(1, n) })} w="w-[4.6rem]" /></Row>
@@ -45,6 +66,7 @@ function TextStyle({ e, p }: { e: { size?: number; bold?: boolean; italic?: bool
       </Row>
       <Row label="Color del texto"><ColorInput v={e.color} on={(c) => p({ color: c ?? "#000000" })} /></Row>
       <Row label="Alineación"><Align v={e.align ?? "l"} on={(a) => p({ align: a })} /></Row>
+      <Row label="Vertical"><VAlign v={e.valign ?? vDefault} on={(a) => p({ valign: a })} /></Row>
     </>
   );
 }
@@ -72,7 +94,7 @@ export default function PropsPanel({ el, p, selCell, setSelCell, onReplaceIcon }
         return (
           <>
             <textarea className="input text-sm" rows={3} value={t.text} onChange={(e) => p({ text: e.target.value })} aria-label="Texto" />
-            <TextStyle e={t} p={p} />
+            <TextStyle e={t} p={p} vDefault={t.fill ? "m" : "t"} />
             <Row label="Fondo"><ColorInput v={t.fill} on={(c) => p({ fill: c })} none /></Row>
             <Row label="Sin saltos"><input type="checkbox" className="ios" checked={!!t.nowrap} onChange={(e) => p({ nowrap: e.target.checked })} /></Row>
           </>
@@ -90,7 +112,7 @@ export default function PropsPanel({ el, p, selCell, setSelCell, onReplaceIcon }
               <select className="input w-36 px-2 py-1 text-xs" value={r.dash ?? ""} onChange={(e) => p({ dash: e.target.value as Dash })}>{DASHES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
             </Row>
             <textarea className="input text-sm" rows={2} placeholder="Texto dentro de la forma" value={r.text ?? ""} onChange={(e) => p({ text: e.target.value })} />
-            {(r.text ?? "") !== "" && <TextStyle e={{ size: r.size ?? 16, bold: r.bold, italic: r.italic, color: r.color ?? "#000000", align: r.align ?? "c" }} p={p} />}
+            {(r.text ?? "") !== "" && <TextStyle e={{ size: r.size ?? 16, bold: r.bold, italic: r.italic, color: r.color ?? "#000000", align: r.align ?? "c", valign: r.valign }} p={p} vDefault="m" />}
           </>
         );
       })()}
@@ -143,7 +165,7 @@ export default function PropsPanel({ el, p, selCell, setSelCell, onReplaceIcon }
               <>
                 <p className="text-xs font-semibold text-slate-600">Celda fila {selCell!.r + 1}, columna {selCell!.c + 1}</p>
                 <textarea className="input text-sm" rows={3} value={cell.text} onChange={(e) => set({ text: e.target.value })} aria-label="Texto de la celda" />
-                <TextStyle e={cell} p={set as Patch} />
+                <TextStyle e={cell} p={set as Patch} vDefault="m" />
                 <Row label="Fondo"><ColorInput v={cell.fill} on={(c) => set({ fill: c, grad: c ? null : cell.grad })} none /></Row>
               </>
             )}

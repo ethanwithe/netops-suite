@@ -146,10 +146,13 @@ def _style_run(run, font, size, bold, italic, color, bg=None):
             rPr.remove(sf); rPr.insert(0, sf)
 
 
+_VANCHOR = {"t": MSO_ANCHOR.TOP, "m": MSO_ANCHOR.MIDDLE, "b": MSO_ANCHOR.BOTTOM}
+
+
 def _fill_paragraphs(tf, text, *, size, bold, italic, color, align, line_h=None, spc_bef=0, font="Arial"):  # noqa
     for i, line in enumerate((text or "").split("\n")):
         p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
-        p.alignment = {"c": PP_ALIGN.CENTER, "r": PP_ALIGN.RIGHT}.get(align, PP_ALIGN.LEFT)
+        p.alignment = {"c": PP_ALIGN.CENTER, "r": PP_ALIGN.RIGHT, "j": PP_ALIGN.JUSTIFY}.get(align, PP_ALIGN.LEFT)
         if line_h:
             p.line_spacing = Pt(round(float(line_h) * 0.75, 2))
         if spc_bef and i > 0:
@@ -220,7 +223,7 @@ def build_pptx(doc: dict, load_icon) -> bytes:
             if (el.get("text") or "").strip():
                 tf = s.text_frame
                 tf.word_wrap = True
-                tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+                tf.vertical_anchor = _VANCHOR.get(el.get("valign") or "m", MSO_ANCHOR.MIDDLE)
                 _fill_paragraphs(tf, el["text"], size=el.get("size", 16), bold=el.get("bold"), italic=el.get("italic"),
                                  color=el.get("color") or "#000000", align=el.get("align", "c"))
             _rotate(s, el.get("rot"))
@@ -234,7 +237,7 @@ def build_pptx(doc: dict, load_icon) -> bytes:
                 _set_sp_fill(tb, el["fill"])
                 # sobre el color la letra no toca el borde: aire a los lados y centrada en vertical
                 tf.margin_left = tf.margin_right = Emu(emu(PAD_X))
-                tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+            tf.vertical_anchor = _VANCHOR.get(el.get("valign") or ("m" if el.get("fill") else "t"), MSO_ANCHOR.TOP)
             _fill_paragraphs(tf, el.get("text", ""), size=el.get("size", 12), bold=el.get("bold"), italic=el.get("italic"),
                              color=el.get("color") or "#000000", align=el.get("align", "l"), line_h=el.get("lineH"), spc_bef=el.get("spcBef"))
             _rotate(tb, el.get("rot"))
@@ -286,7 +289,7 @@ def _add_table(sh, el):
                              color=c.get("color") or "#000000", align=c.get("align", "l"), font="Calibri")
             cell.margin_left = cell.margin_right = 0
             cell.margin_top = cell.margin_bottom = 0
-            cell.vertical_anchor = MSO_ANCHOR.MIDDLE
+            cell.vertical_anchor = _VANCHOR.get(c.get("valign") or "m", MSO_ANCHOR.MIDDLE)
             tcPr = cell._tc.get_or_add_tcPr()
             for tag in ("a:noFill", "a:solidFill", "a:gradFill", "a:lnL", "a:lnR", "a:lnT", "a:lnB"):
                 for e in tcPr.findall(qn(tag)):

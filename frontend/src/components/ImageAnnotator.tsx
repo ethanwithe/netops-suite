@@ -6,7 +6,7 @@ import { fontOf, getStampStyle, posH, posV, shadowFor, STAMP_COLORS, STAMP_FONTS
 import type { StampPos } from "../utils/photoStamp";
 
 /** Sello de la foto (fecha, dirección, coordenadas) como objeto libre: se mueve, se agranda y se edita. */
-type Align = "left" | "center" | "right";
+type Align = "left" | "center" | "right" | "justify";
 export interface StampInit { lines: string[]; fx?: number; fy?: number; size?: number; font?: string; color?: string; align?: Align }
 export interface StampState { lines: string[]; fx: number; fy: number; size: number; font?: string; color?: string; align?: Align }
 
@@ -115,6 +115,22 @@ function shapeFromDrag(kind: "arrow" | "rect" | "ellipse", a: Point, b: Point, s
 // DIBUJO
 // ============================================================
 
+/** Dibuja una línea alineada dentro del ancho de la caja de texto; «justify» reparte los espacios (menos en la última línea). */
+function drawAligned(ctx: CanvasRenderingContext2D, mode: "fill" | "stroke", l: string, x: number, y: number, boxW: number, align: Align | undefined, last: boolean) {
+  const f = (t: string, xx: number) => (mode === "fill" ? ctx.fillText(t, xx, y) : ctx.strokeText(t, xx, y));
+  const lw = ctx.measureText(l).width;
+  if (align === "justify" && !last && l.includes(" ")) {
+    const words = l.split(" ").filter(Boolean);
+    if (words.length > 1) {
+      const gap = (boxW - ctx.measureText(words.join("")).width) / (words.length - 1);
+      let cx = x;
+      for (const w of words) { f(w, cx); cx += ctx.measureText(w).width + gap; }
+      return;
+    }
+  }
+  f(l, x + (align === "right" ? boxW - lw : align === "center" ? (boxW - lw) / 2 : 0));
+}
+
 function textMetrics(ctx: CanvasRenderingContext2D, o: Extract<Obj, { k: "text" }>, px: number) {
   ctx.font = o.stamp ? `${fontOf(o.font).weight} ${px}px ${fontOf(o.font).family}` : `${o.bold ? "bold " : ""}${px}px Arial`;
   const lines = o.text.split("\n");
@@ -203,11 +219,7 @@ function renderObjects(ctx: CanvasRenderingContext2D, objects: Obj[], s: number,
         ctx.shadowColor = shadowFor(o.color);
         ctx.shadowBlur = Math.max(3, px * 0.14);
         ctx.shadowOffsetX = ctx.shadowOffsetY = Math.max(1, px * 0.04);
-        m.lines.forEach((l, i) => {
-          const lw = ctx.measureText(l).width;
-          const dx = o.align === "right" ? m.w - lw : o.align === "center" ? (m.w - lw) / 2 : 0;
-          ctx.fillText(l, x + dx, y + i * m.lead);
-        });
+        m.lines.forEach((l, i) => drawAligned(ctx, "fill", l, x, y + i * m.lead, m.w, o.align, i === m.lines.length - 1));
         ctx.restore();
         continue;
       }
@@ -219,9 +231,9 @@ function renderObjects(ctx: CanvasRenderingContext2D, objects: Obj[], s: number,
       if (o.bg === "none") {
         ctx.lineWidth = Math.max(2, px * 0.12);
         ctx.strokeStyle = o.color === "#000000" ? "rgba(255,255,255,0.9)" : "rgba(0,0,0,0.8)";
-        m.lines.forEach((l, i) => ctx.strokeText(l, x, y + i * m.lead));
+        m.lines.forEach((l, i) => drawAligned(ctx, "stroke", l, x, y + i * m.lead, m.w, o.align, i === m.lines.length - 1));
       }
-      m.lines.forEach((l, i) => ctx.fillText(l, x, y + i * m.lead));
+      m.lines.forEach((l, i) => drawAligned(ctx, "fill", l, x, y + i * m.lead, m.w, o.align, i === m.lines.length - 1));
     } else {
       const lw = o.w * u * s;
       ctx.strokeStyle = o.color;
@@ -1223,7 +1235,7 @@ export default function ImageAnnotator({ imageUrl, baseUrl, stamp, onClose, onSa
 
       {/* Opciones de la herramienta: una sola fila fina, solo cuando hacen falta */}
       {hasContext && (
-        <div className="relative flex h-9 shrink-0 items-center gap-1.5 overflow-x-auto border-b border-slate-200 bg-white/90 px-1.5">
+        <div className="relative flex min-h-9 shrink-0 flex-wrap items-center gap-x-1.5 gap-y-1 border-b border-slate-200 bg-white/95 px-1.5 py-1">
           {showColors && (
             <div className="flex shrink-0 items-center gap-1">
               {COLORS.map((c) => (
@@ -1273,16 +1285,35 @@ export default function ImageAnnotator({ imageUrl, baseUrl, stamp, onClose, onSa
                         className={`h-5 w-5 rounded-full border-2 ${selected.color.toLowerCase() === c ? "border-blue-500" : "border-slate-300"}`} style={{ background: c }} />
                     ))}
                   </span>
-                  <span className="grid shrink-0 grid-cols-3 gap-0.5" aria-label="Colocar el sello">
-                    {STAMP_ORDER.map((p) => (
-                      <button key={p} type="button" title="Colocar el sello aquí" aria-label={`Colocar ${p}`}
-                        className="h-4 w-4 rounded-sm border border-slate-400 bg-white text-[8px] leading-none hover:bg-blue-100"
-                        onClick={() => {
-                          const H = posH(p), al: Align = H === "r" ? "right" : H === "c" ? "center" : "left";
-                          const o2 = { ...selected, align: al };
-                          setObjects(objects.map((o) => (o.id === selected.id ? { ...o2, p: stampSpot(doc.base, o2, p) } : o)));
-                        }}>▫</button>
+                </>
+              )}
+              {selected?.k === "text" && doc && (
+                <>
+                  <span className="flex shrink-0 overflow-hidden rounded-md border border-slate-300" role="group" aria-label="Alinear el texto">
+                    {([["left", "Izquierda", "M3 5h14M3 9h9M3 13h14M3 17h9"], ["center", "Centrar", "M3 5h14M6 9h8M3 13h14M6 17h8"], ["right", "Derecha", "M3 5h14M8 9h9M3 13h14M8 17h9"], ["justify", "Justificar", "M3 5h14M3 9h14M3 13h14M3 17h14"]] as const).map(([al, tt, d]) => (
+                      <button key={al} type="button" title={tt} aria-label={tt} aria-pressed={(selected.align ?? "left") === al}
+                        className={`grid h-7 w-8 place-items-center ${(selected.align ?? "left") === al ? "bg-brand-600 text-white" : "bg-white text-slate-600 hover:bg-slate-100"}`}
+                        onClick={() => patchSelected({ align: al })}>
+                        <svg viewBox="0 0 20 22" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d={d} /></svg>
+                      </button>
                     ))}
+                  </span>
+                  <span className="flex shrink-0 items-center gap-1 text-[10px] text-slate-500">
+                    En la foto
+                    <span className="grid grid-cols-3 gap-0.5" role="group" aria-label="Colocar el texto en la foto">
+                      {STAMP_ORDER.map((p) => {
+                        const V = posV(p) === "t" ? "arriba" : posV(p) === "m" ? "al centro" : "abajo", H = posH(p) === "l" ? "izquierda" : posH(p) === "c" ? "centro" : "derecha";
+                        return (
+                          <button key={p} type="button" title={`${V}, ${H}`} aria-label={`Colocar ${V} ${H}`}
+                            className="h-4 w-4 rounded-sm border border-slate-400 bg-white hover:bg-blue-100"
+                            onClick={() => {
+                              const Hh = posH(p), al: Align = selected.align === "justify" ? "justify" : Hh === "r" ? "right" : Hh === "c" ? "center" : "left";
+                              const o2 = { ...selected, align: al };
+                              setObjects(objects.map((o) => (o.id === selected.id ? { ...o2, p: stampSpot(doc.base, o2, p) } : o)));
+                            }} />
+                        );
+                      })}
+                    </span>
                   </span>
                 </>
               )}
