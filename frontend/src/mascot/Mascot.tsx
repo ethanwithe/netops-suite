@@ -56,6 +56,7 @@ export default function Mascot() {
   const bubbleT = useRef<number>();
   const lastSay = useRef(0);
   const lastTalk = useRef(0);
+  const hintAt = useRef(0);
   const listEnd = useRef<HTMLDivElement>(null);
   const clicks = useRef<number[]>([]);
   const busyRef = useRef(false);
@@ -89,7 +90,9 @@ export default function Mascot() {
       talkT.current = window.setTimeout(() => setTalking(false), Math.min(5000, 600 + text.length * 38));
       return Promise.resolve();
     }
-    return speakText(text, voiceId(), cfgRef.current.voiceStyle).then(() => setTalking(false));
+    // Si la voz del navegador se queda trabada (pasa con pestañas ocultas o voces sin cargar), no se deja a Bit mudo ni con el micrófono pausado.
+    const cap = new Promise<void>((res) => window.setTimeout(() => { stopSpeaking(); res(); }, 6000 + text.length * 90));
+    return Promise.race([speakText(text, voiceId(), cfgRef.current.voiceStyle), cap]).then(() => setTalking(false), () => setTalking(false));
   }, []);
 
   // Comentario flotante (no invasivo: pequeño, se va solo)
@@ -125,10 +128,15 @@ export default function Mascot() {
           setBubble({ text: "No puedo oírte: permite el micrófono en el candado de la barra de direcciones y toca el punto de mi esquina." });
           return;
         }
+        if (err === "network") {
+          setBubble({ text: "El reconocimiento de voz del navegador no logra conectarse a su servicio (Chrome lo necesita con Internet). Reintento…" });
+        }
         const f = failRef.current, now = Date.now();
-        f.n = now - f.t < 4000 ? f.n + 1 : 0; f.t = now;
+        if (err === "no-speech" || err === "aborted") f.n = 0;   // silencio normal: no cuenta como falla
+        else f.n = now - f.t < 4000 ? f.n + 1 : 0;
+        f.t = now;
         if (f.n >= 6) { setMicState("off"); return; }
-        if (!pausedRef.current) window.setTimeout(startMic, 250 + f.n * 400);
+        if (!pausedRef.current) window.setTimeout(startMic, 120 + f.n * 400);
       },
     });
     micRef.current = l;
@@ -401,44 +409,50 @@ export default function Mascot() {
     if (!openRef.current) setBubble({ heard: text, text: "Pensando…" });
     if (cfgRef.current.learn) countChat();
 
-    let r: (Reply & { remember?: string[]; agenda?: { op: string; title: string }[]; did?: { op: string; title: string }[]; dash?: Dash[] }) | null = null;
-    const notes: string[] = [];
-    // ¿acaba de preguntarte el nombre?
-    if (pendingName.current && text.split(/\s+/).length <= 5 && !text.includes("?")) {
-      pendingName.current = false;
-      const n = setName(text);
-      if (n) { r = { text: `Mucho gusto, ${n}. Ya te tengo anotado. Cuéntame qué te gusta o en qué trabajas y lo recuerdo.`, mood: "happy" }; notes.push(`Se llama ${n}`); }
-    }
-    if (!r && cfgRef.current.learn) notes.push(...learnFrom(text));
-    if (!r) {
-      r = await askAI(text);
-      if (r?.remember?.length && cfgRef.current.learn) r.remember.forEach((f) => { if (remember(f)) notes.push(f); });
-      if (r?.did?.length) notes.push(...r.did.map((a) => (a.op === "client" ? `Cliente guardado: ${a.title}` : `Dato guardado: ${a.title}`)));
-      if (r?.agenda?.length) {
-        void reloadAgenda().catch(() => {});
-        if ("Notification" in window && Notification.permission === "default") void Notification.requestPermission();
-        notes.push(...r.agenda.map((a) => (a.op === "add" ? `Agenda: ${a.title}` : a.op === "done" ? `Hecho: ${a.title}` : `Borrado: ${a.title}`)));
+    try {
+      let r: (Reply & { remember?: string[]; agenda?: { op: string; title: string }[]; did?: { op: string; title: string }[]; dash?: Dash[] }) | null = null;
+      const notes: string[] = [];
+      // ¿acaba de preguntarte el nombre?
+      if (pendingName.current && text.split(/\s+/).length <= 5 && !text.includes("?")) {
+        pendingName.current = false;
+        const n = setName(text);
+        if (n) { r = { text: `Mucho gusto, ${n}. Ya te tengo anotado. Cuéntame qué te gusta o en qué trabajas y lo recuerdo.`, mood: "happy" }; notes.push(`Se llama ${n}`); }
       }
+      if (!r && cfgRef.current.learn) notes.push(...learnFrom(text));
+      if (!r) {
+        r = await askAI(text);
+        if (r?.remember?.length && cfgRef.current.learn) r.remember.forEach((f) => { if (remember(f)) notes.push(f); });
+        if (r?.did?.length) notes.push(...r.did.map((a) => (a.op === "client" ? `Cliente guardado: ${a.title}` : `Dato guardado: ${a.title}`)));
+        if (r?.agenda?.length) {
+          void reloadAgenda().catch(() => {});
+          if ("Notification" in window && Notification.permission === "default") void Notification.requestPermission();
+          notes.push(...r.agenda.map((a) => (a.op === "add" ? `Agenda: ${a.title}` : a.op === "done" ? `Hecho: ${a.title}` : `Borrado: ${a.title}`)));
+        }
+      }
+      // Modo básico (sin IA): entiende recordatorios y tareas sencillas y consulta la agenda
+      if (!r) r = await localAgenda(text);
+      if (!r) {
+        await sleep(250 + Math.random() * 350);
+        const m = memRef.current;
+        r = answer(text, { pathname: pathRef.current, hour: new Date().getHours(), themeLabel: themeRef.current.pref, name: m.name, facts: m.facts, aiOn: aiRef.current });
+      }
+      setTyping(false);
+      setMsgs((m) => [...m.slice(-59), { who: "bot", text: r!.text, dash: (r as { dash?: Dash[] }).dash }, ...(notes.length ? [{ who: "note" as const, text: `Bit anotó: ${notes.join("; ")}` }] : [])]);
+      express(r.mood, Math.min(10000, 2500 + r.text.length * 45));
+      runAction(r.action);
+      if (!openRef.current) {
+        setBubble({ heard: text, text: r.text });
+        window.clearTimeout(bubbleT.current);
+      }
+      await speak(r.text, fromVoice);
+      if (!openRef.current) bubbleT.current = window.setTimeout(() => setBubble(null), 4500);
+    } catch {
+      setTyping(false);
+      setBubble({ text: "Se me cruzaron los cables. Inténtalo otra vez." });
+    } finally {
+      busyRef.current = false; pausedRef.current = false;
+      window.setTimeout(startMic, 350);
     }
-    // Modo básico (sin IA): entiende recordatorios y tareas sencillas y consulta la agenda
-    if (!r) r = await localAgenda(text);
-    if (!r) {
-      await sleep(250 + Math.random() * 350);
-      const m = memRef.current;
-      r = answer(text, { pathname: pathRef.current, hour: new Date().getHours(), themeLabel: themeRef.current.pref, name: m.name, facts: m.facts, aiOn: aiRef.current });
-    }
-    setTyping(false);
-    setMsgs((m) => [...m.slice(-59), { who: "bot", text: r!.text, dash: (r as { dash?: Dash[] }).dash }, ...(notes.length ? [{ who: "note" as const, text: `Bit anotó: ${notes.join("; ")}` }] : [])]);
-    express(r.mood, Math.min(10000, 2500 + r.text.length * 45));
-    runAction(r.action);
-    if (!openRef.current) {
-      setBubble({ heard: text, text: r.text });
-      window.clearTimeout(bubbleT.current);
-    }
-    await speak(r.text, fromVoice);
-    if (!openRef.current) bubbleT.current = window.setTimeout(() => setBubble(null), 4500);
-    busyRef.current = false; pausedRef.current = false;
-    window.setTimeout(startMic, 350);
   }
 
   handleHeard.current = (raw: string) => {
@@ -450,7 +464,15 @@ export default function Mascot() {
     const named = WAKE.test(t);
     if (cfgRef.current.needName) {
       const addressed = named || Date.now() - lastTalk.current < 40000;   // tras responderte sigue atento 40 s (conversación)
-      if (!addressed) return;
+      if (!addressed) {
+        if (Date.now() - hintAt.current > 15000 && !openRef.current) {
+          hintAt.current = Date.now();
+          setBubble({ heard: raw, text: "Te oí, pero espero que me llames: di «Bit, …» primero." });
+          window.clearTimeout(bubbleT.current);
+          bubbleT.current = window.setTimeout(() => setBubble(null), 4000);
+        }
+        return;
+      }
     }
     const rest = raw.replace(/^\s*(oye|hey|hola|ok|okay)?[, ]*(bit|bits|bid|vit|beat|bip)[,:.!]?\s*/i, "").trim();
     if (named && !rest) {   // solo dijo su nombre: se despierta y espera la orden
