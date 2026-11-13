@@ -4,7 +4,7 @@ IA para el editor de imágenes.
 - /adjust  (Claude con visión, ANTHROPIC_API_KEY): entiende la foto y lo que pide el
   usuario y devuelve ajustes (brillo, sombras, nitidez…), un recorte sugerido y zonas a
   difuminar. No inventa píxeles: es seguro para evidencias.
-- /edit    (edición generativa: Gemini con GEMINI_API_KEY —modelo de imagen— o, si falla, OpenAI con OPENAI_API_KEY): cambia la imagen según la instrucción
+- /edit    (edición generativa: OpenRouter con OPENROUTER_API_KEY —modelo de imagen OPENROUTER_IMAGE_MODEL—, o si falla Gemini con GEMINI_API_KEY, o OpenAI con OPENAI_API_KEY): cambia la imagen según la instrucción
   (quitar objetos, cambiar fondo, limpiar, etc.). Modifica el contenido de la foto.
 Sin las claves, el editor usa su mejora local y avisa.
 """
@@ -26,6 +26,7 @@ router = APIRouter(prefix="/api/imageai", tags=["imageai"])
 
 VISION_MODEL = os.getenv("IMAGE_AI_MODEL", "claude-sonnet-5-5").strip() or "claude-sonnet-5-5"
 EDIT_MODEL = os.getenv("IMAGE_EDIT_MODEL", "gpt-image-1").strip() or "gpt-image-1"
+OPENROUTER_IMAGE_MODEL = os.getenv("OPENROUTER_IMAGE_MODEL", "google/gemini-2.5-flash-image").strip() or "google/gemini-2.5-flash-image"
 GEMINI_IMAGE_MODEL = os.getenv("GEMINI_IMAGE_MODEL", "gemini-2.5-flash-image").strip() or "gemini-2.5-flash-image"
 MAX_B64 = 8_000_000
 
@@ -57,14 +58,19 @@ def _gemini_key() -> str:
     return os.getenv("GEMINI_API_KEY", "").strip().strip('"').strip("'")
 
 
+def _openrouter_key() -> str:
+    return os.getenv("OPENROUTER_API_KEY", "").strip().strip('"').strip("'")
+
+
 def _openai_key() -> str:
     return os.getenv("OPENAI_API_KEY", "").strip()
 
 
 @router.get("/status")
 def status():
-    return {"adjust": bool(_anthropic_key()) or bool(llm.free_provider()), "edit": bool(_openai_key()) or bool(_gemini_key()),
-            "edit_provider": "gemini" if _gemini_key() else ("openai" if _openai_key() else None)}
+    return {"adjust": bool(_anthropic_key()) or bool(llm.free_provider()),
+            "edit": bool(_openrouter_key()) or bool(_openai_key()) or bool(_gemini_key()),
+            "edit_provider": "openrouter" if _openrouter_key() else ("gemini" if _gemini_key() else ("openai" if _openai_key() else None))}
 
 
 def _num(v, lo, hi, default=0):
@@ -116,7 +122,7 @@ def adjust(body: AdjustIn):
         text = "".join(b.get("text", "") for b in data.get("content", []) if b.get("type") == "text")
     else:
         try:
-            text = llm.complete(SYSTEM, [{"role": "user", "content": f"Instrucción del usuario: {prompt}"}], 700, image=body.image)
+            text = llm.complete(SYSTEM, [{"role": "user", "content": f"Instrucción del usuario: {prompt}"}], 700, image=body.image, prefer="openrouter")
         except urllib.error.HTTPError as e:
             raise HTTPException(502, f"La IA respondió {e.code}")
         except Exception:
@@ -181,10 +187,50 @@ def _gemini_edit(key: str, img: bytes, ctype: str, prompt: str, _retry: bool = F
     raise HTTPException(502, "Gemini no devolvió una imagen (puede haber rechazado la instrucción)")
 
 
+def _openrouter_edit(key: str, img: bytes, ctype: str, prompt: str) -> str:
+    """Edición de imagen con OpenRouter (modelo de imagen, p. ej. google/gemini-2.5-flash-image). Devuelve un data URL."""
+    body = {
+        "model": OPENROUTER_IMAGE_MODEL,
+        "modalities": ["image", "text"],
+        "messages": [{"role": "user", "content": [
+            {"type": "text", "text": f"{prompt}\n\n{FIDELITY}"},
+            {"type": "image_url", "image_url": {"url": f"data:{ctype};base64,{base64.b64encode(img).decode()}"}},
+        ]}],
+    }
+    req = urllib.request.Request("https://openrouter.ai/api/v1/chat/completions", data=json.dumps(body).encode(), method="POST",
+                                 headers={"Content-Type": "application/json", "Authorization": f"Bearer {key}",
+                                          "HTTP-Referer": os.getenv("APP_URL", "https://netops-suite.up.railway.app"), "X-Title": "NetOps Suite"})
+    try:
+        with urllib.request.urlopen(req, timeout=180) as r:
+            data = json.loads(r.read())
+    except urllib.error.HTTPError as e:
+        try:
+            detail = json.loads(e.read().decode("utf-8", "replace")).get("error", {}).get("message", "")
+        except Exception:
+            detail = ""
+        print("[IA imagen] OpenRouter respondió", e.code, detail[:300], flush=True)
+        hint = " (revisa el saldo/créditos de OpenRouter y que el modelo de imagen esté disponible)" if e.code in (402, 403, 429) else ""
+        raise HTTPException(502, f"OpenRouter respondió {e.code}{hint}")
+    except Exception:
+        raise HTTPException(502, "No se pudo contactar a OpenRouter")
+    msg = ((data.get("choices") or [{}])[0].get("message") or {})
+    for im in msg.get("images") or []:
+        u = (im.get("image_url") or {}).get("url") or im.get("url") or ""
+        if u.startswith("data:image"):
+            return u
+    content = msg.get("content")
+    if isinstance(content, list):        # algunos modelos devuelven la imagen dentro del contenido
+        for part in content:
+            u = (part.get("image_url") or {}).get("url", "") if isinstance(part, dict) else ""
+            if u.startswith("data:image"):
+                return u
+    raise HTTPException(502, "OpenRouter no devolvió una imagen (el modelo puede haber rechazado la instrucción)")
+
+
 @router.post("/edit")
 async def edit(file: UploadFile = File(...), prompt: str = Form(...)):
-    gkey, key = _gemini_key(), _openai_key()
-    if not key and not gkey:
+    gkey, key, okey = _gemini_key(), _openai_key(), _openrouter_key()
+    if not key and not gkey and not okey:
         raise HTTPException(503, "Edición generativa no configurada")
     prompt = prompt.strip()[:900]
     if not prompt:
@@ -193,10 +239,20 @@ async def edit(file: UploadFile = File(...), prompt: str = Form(...)):
     if len(img) > 12_000_000:
         raise HTTPException(413, "Imagen demasiado grande")
     ctype = file.content_type or "image/jpeg"
+    # Orden: OpenRouter (el preferido) -> Gemini -> OpenAI; si uno falla se intenta el siguiente.
+    last: HTTPException | None = None
+    if okey:
+        try:
+            return {"image": await run_in_threadpool(_openrouter_edit, okey, img, ctype, prompt)}
+        except HTTPException as e:
+            last = e
+            if not gkey and not key:
+                raise
     if gkey:
         try:
             return {"image": await run_in_threadpool(_gemini_edit, gkey, img, ctype, prompt)}
-        except HTTPException:
+        except HTTPException as e:
+            last = e
             if not key:
                 raise
             # Gemini falló y hay OpenAI configurado: se intenta con él
