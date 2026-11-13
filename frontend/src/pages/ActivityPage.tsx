@@ -11,7 +11,8 @@ const ACTION: Record<string, string> = {
   ventana_borrada: "Borró una ventana", version_recuperada: "Recuperó una versión", exportacion: "Exportó",
   usuario_creado: "Creó usuario", usuario_editado: "Editó usuario", usuario_eliminado: "Eliminó usuario",
   password_cambiada: "Cambió su contraseña", password_restablecida: "Restableció contraseña", perfil_editado: "Editó su perfil",
-  sesion_cerrada_por_admin: "Cerró sesiones",
+  sesion_cerrada_por_admin: "Cerró sesiones", cliente_unido: "Unió SOT repetidas", anuncio: "Anuncio", trabajo_transferido: "Transfirió trabajo",
+  usuarios_masivo: "Acción masiva", sesiones_cerradas_todas: "Cerró todas las sesiones", respaldo_descargado: "Descargó respaldo",
 };
 
 export default function ActivityPage() {

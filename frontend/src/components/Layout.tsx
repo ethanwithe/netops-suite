@@ -10,6 +10,7 @@ import { usePersistentState } from "../store/persistentState";
 import ThemeSwitcher from "./ThemeSwitcher";
 // Bit se carga aparte, después de que la pantalla ya apareció
 const Mascot = lazy(() => import("../mascot/Mascot"));
+import AnnouncementBar from "./AnnouncementBar";
 import Backdrop from "./Backdrop";
 import TabBar, { TabGroup } from "./TabBar";
 import { initLiquid } from "../liquid";
@@ -126,7 +127,7 @@ export default function Layout() {
     ...(can(me, "checklist") ? [{ id: "ck", label: "CheckList", prefixes: ["/checklist"], items: ckSub }] : []),
     ...(okFoto || can(me, "poder_judicial") ? [{ id: "ft", label: "Fotos", prefixes: ["/fotografico"], items: fotoSub }] : []),
     { id: "cl", label: "Clientes", prefixes: ["/clientes"], items: [{ to: "/clientes", label: "Mis clientes" }, ...years.map((y) => ({ to: `/clientes/${y.year}`, label: `Clientes ${y.year}` }))] },
-    ...(me?.is_admin ? [{ id: "ad", label: "Admin", prefixes: ["/admin"], items: [{ to: "/admin/usuarios", label: "Usuarios" }, { to: "/admin/clientes", label: "Clientes de todos" }, { to: "/admin/actividad", label: "Actividad" }, { to: "/admin/reportes", label: "Reportes de Bit" }] }] : []),
+    ...(me?.is_admin ? [{ id: "ad", label: "Admin", prefixes: ["/admin"], items: [{ to: "/admin/usuarios", label: "Usuarios" }, { to: "/admin/clientes", label: "Clientes de todos" }, { to: "/admin/actividad", label: "Actividad" }, { to: "/admin/reportes", label: "Reportes de Bit" }, ...(me.role === "superadmin" ? [{ to: "/admin/sistema", label: "Sistema" }] : [])] }] : []),
   ];
   const link = (isActive: boolean) => `side-item ${isActive ? "active" : ""}`;
   const sub = (isActive: boolean) => `side-item ${isActive ? "active" : ""}`;
@@ -264,6 +265,7 @@ export default function Layout() {
             <button className="font-semibold underline" onClick={() => { setActingClient(null); setActing(null); }}>Salir de este modo</button>
           </div>
         )}
+        <AnnouncementBar />
         <main ref={mainRef} className="flex-1 overflow-y-auto overflow-x-hidden">
           <div key={pathname} className="view-enter page-pad w-full max-lg:pb-28">
             <Suspense fallback={<div className="flex justify-center py-16"><Spinner className="h-7 w-7 text-brand-600" /></div>}><Outlet /></Suspense>
