@@ -4,6 +4,10 @@ import type { CkData, CkItem, CkParam, CkSection, CkType } from "../store/checkl
 
 const uid = () => `x${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
+const INP = "input !py-1 text-xs";
+const BTN = "btn-secondary !px-2 !py-0.5 text-xs disabled:opacity-30";
+const NUM = "inline-flex h-6 w-6 shrink-0 items-center justify-center rounded bg-slate-200 text-[11px] font-bold text-slate-700";
+
 const move = <T,>(arr: T[], i: number, d: number): T[] => {
   const j = i + d;
   if (j < 0 || j >= arr.length) return arr;
@@ -46,14 +50,14 @@ export default function ChecklistStructure({
   }
 
   return (
-    <div className="space-y-4">
-      <div className="card space-y-3">
+    <div className="space-y-2">
+      <div className="card space-y-2 !p-3">
         <p className="text-xs text-slate-500">
           Aquí cambias cómo es este checklist. En los comandos puedes usar parámetros como <code>{"{WAN}"}</code>,{" "}
           <code>{"{NEXTHOP}"}</code>, <code>{"{REMOTE}"}</code>… (se piden al inicio). Un ítem sin comando es solo captura manual
           (por ejemplo Speedtest o iperf).
         </p>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
           <label className="block text-sm sm:col-span-3">
             <span className="mb-1 block text-xs font-medium text-slate-500">Nombre del checklist</span>
             <input className="input w-full" value={nombre} onChange={(e) => setNombre(e.target.value)} />
@@ -82,47 +86,60 @@ export default function ChecklistStructure({
         </div>
       </div>
 
-      <div className="card space-y-2">
+      <div className="card space-y-1.5 !p-3">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold text-slate-700">Parámetros que se piden al inicio</h3>
-          <button className="btn-secondary text-xs" onClick={() => setD({ ...d, params: [...d.params, { key: "NUEVO", label: "Nuevo parámetro", default: "" }] })}>+ Parámetro</button>
+          <button className="btn-secondary !px-2 !py-1 text-xs" onClick={() => setD({ ...d, params: [...d.params, { key: "NUEVO", label: "Nuevo parámetro", default: "" }] })}>+ Parámetro</button>
         </div>
         {d.params.map((p, i) => (
-          <div key={i} className="flex flex-wrap items-center gap-2">
-            <input className="input w-32 font-mono text-xs" value={p.key} title="Nombre usado en los comandos: {NOMBRE}"
+          <div key={i} className="flex flex-wrap items-center gap-1.5">
+            <span className={NUM}>{i + 1}</span>
+            <input className={`${INP} w-28 font-mono`} value={p.key} title="Nombre usado en los comandos: {NOMBRE}"
               onChange={(e) => setParam(i, { key: e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, "") })} />
-            <input className="input min-w-[160px] flex-1" value={p.label} placeholder="Texto que verás" onChange={(e) => setParam(i, { label: e.target.value })} />
-            <input className="input w-36" value={p.default} placeholder="Valor por defecto" onChange={(e) => setParam(i, { default: e.target.value })} />
-            <button className="btn-secondary text-xs" onClick={() => setD({ ...d, params: d.params.filter((_, j) => j !== i) })}>Quitar</button>
+            <input className={`${INP} min-w-[140px] flex-1`} value={p.label} placeholder="Texto que verás" onChange={(e) => setParam(i, { label: e.target.value })} />
+            <input className={`${INP} w-32`} value={p.default} placeholder="Por defecto" onChange={(e) => setParam(i, { default: e.target.value })} />
+            <button className={BTN} title="Quitar" onClick={() => setD({ ...d, params: d.params.filter((_, j) => j !== i) })}>✕</button>
           </div>
         ))}
       </div>
 
       {d.sections.map((sec, si) => (
-        <div key={sec.id} className="card space-y-2">
-          <div className="flex flex-wrap items-center gap-2">
-            <input className="input min-w-[200px] flex-1 font-semibold" value={sec.titulo} onChange={(e) => setSec(si, (s) => ({ ...s, titulo: e.target.value }))} />
-            <button className="btn-secondary text-xs" onClick={() => setD({ ...d, sections: move(d.sections, si, -1) })} title="Subir sección">Subir</button>
-            <button className="btn-secondary text-xs" onClick={() => setD({ ...d, sections: move(d.sections, si, 1) })} title="Bajar sección">Bajar</button>
-            <button className="btn-secondary text-xs" onClick={() => confirm("¿Borrar la sección y sus ítems?") && setD({ ...d, sections: d.sections.filter((_, j) => j !== si) })}>Quitar</button>
+        <div key={sec.id} className="card space-y-1.5 !p-3">
+          <div className="flex items-center gap-1.5">
+            <span className={`${NUM} !w-7 bg-sky-600 text-white`} title={`Sección en posición ${si + 1}`}>{si + 1}</span>
+            <input className={`${INP} min-w-0 flex-1 font-semibold`} value={sec.titulo} onChange={(e) => setSec(si, (s) => ({ ...s, titulo: e.target.value }))} />
+            <span className="hidden text-[11px] text-slate-400 sm:inline">{sec.items.length} ítems</span>
+            <button className={BTN} disabled={si === 0} onClick={() => setD({ ...d, sections: move(d.sections, si, -1) })} title="Subir sección">↑</button>
+            <button className={BTN} disabled={si === d.sections.length - 1} onClick={() => setD({ ...d, sections: move(d.sections, si, 1) })} title="Bajar sección">↓</button>
+            <button className={BTN} title="Quitar sección" onClick={() => confirm("¿Borrar la sección y sus ítems?") && setD({ ...d, sections: d.sections.filter((_, j) => j !== si) })}>✕</button>
           </div>
           {sec.items.map((it, ii) => (
-            <div key={it.id} className="flex flex-wrap items-center gap-2 rounded border border-slate-200 p-2">
-              <input className="input min-w-[200px] flex-1" value={it.nombre} placeholder="Título del ítem" onChange={(e) => setItem(si, ii, { nombre: e.target.value })} />
-              <select className="input w-24" value={it.modo} onChange={(e) => setItem(si, ii, { modo: e.target.value as CkItem["modo"] })}>
-                <option value="texto">Texto</option>
-                <option value="foto">Foto</option>
-              </select>
-              <label className="flex items-center gap-1 text-[11px] text-slate-600" title="Solo se captura mientras se satura el enlace">
-                <input type="checkbox" checked={!!it.sat} onChange={(e) => setItem(si, ii, { sat: e.target.checked })} /> Con saturación
-              </label>
-              <input className="input min-w-[220px] flex-1 font-mono text-xs" value={it.cmd} placeholder="Comando (vacío = solo captura manual)" onChange={(e) => setItem(si, ii, { cmd: e.target.value })} />
-              <button className="btn-secondary text-xs" onClick={() => setSec(si, (s) => ({ ...s, items: move(s.items, ii, -1) }))}>Subir</button>
-              <button className="btn-secondary text-xs" onClick={() => setSec(si, (s) => ({ ...s, items: move(s.items, ii, 1) }))}>Bajar</button>
-              <button className="btn-secondary text-xs" onClick={() => setSec(si, (s) => ({ ...s, items: s.items.filter((_, j) => j !== ii) }))}>Quitar</button>
+            <div key={it.id} className="grid grid-cols-[auto_1fr_auto] items-center gap-1.5 rounded border border-slate-200 px-1.5 py-1 lg:grid-cols-[auto_minmax(0,1fr)_5rem_auto_minmax(0,1.5fr)_auto]">
+              <span className={`${NUM} !w-9`} title={`Posición ${si + 1}.${ii + 1}`}>{si + 1}.{ii + 1}</span>
+              <input className={`${INP} min-w-0`} value={it.nombre} placeholder="Título del ítem" onChange={(e) => setItem(si, ii, { nombre: e.target.value })} />
+              <div className="col-start-3 row-start-1 flex gap-1 lg:hidden">
+                <button className={BTN} disabled={ii === 0} onClick={() => setSec(si, (s) => ({ ...s, items: move(s.items, ii, -1) }))}>↑</button>
+                <button className={BTN} disabled={ii === sec.items.length - 1} onClick={() => setSec(si, (s) => ({ ...s, items: move(s.items, ii, 1) }))}>↓</button>
+                <button className={BTN} onClick={() => setSec(si, (s) => ({ ...s, items: s.items.filter((_, j) => j !== ii) }))}>✕</button>
+              </div>
+              <div className="col-span-3 flex items-center gap-2 lg:contents">
+                <select className={`${INP} w-20`} value={it.modo} onChange={(e) => setItem(si, ii, { modo: e.target.value as CkItem["modo"] })}>
+                  <option value="texto">Texto</option>
+                  <option value="foto">Foto</option>
+                </select>
+                <label className="flex items-center gap-1 whitespace-nowrap text-[11px] text-slate-600" title="Solo se captura mientras se satura el enlace">
+                  <input type="checkbox" checked={!!it.sat} onChange={(e) => setItem(si, ii, { sat: e.target.checked })} /> Sat.
+                </label>
+                <input className={`${INP} min-w-0 flex-1 font-mono`} value={it.cmd} placeholder="Comando (vacío = captura manual)" onChange={(e) => setItem(si, ii, { cmd: e.target.value })} />
+              </div>
+              <div className="hidden gap-1 lg:flex">
+                <button className={BTN} title="Subir" disabled={ii === 0} onClick={() => setSec(si, (s) => ({ ...s, items: move(s.items, ii, -1) }))}>↑</button>
+                <button className={BTN} title="Bajar" disabled={ii === sec.items.length - 1} onClick={() => setSec(si, (s) => ({ ...s, items: move(s.items, ii, 1) }))}>↓</button>
+                <button className={BTN} title="Quitar" onClick={() => setSec(si, (s) => ({ ...s, items: s.items.filter((_, j) => j !== ii) }))}>✕</button>
+              </div>
             </div>
           ))}
-          <button className="btn-secondary text-xs" onClick={() => setSec(si, (s) => ({ ...s, items: [...s.items, { id: uid(), nombre: "NUEVO ÍTEM", modo: "foto", cmd: "" }] }))}>+ Ítem</button>
+          <button className="btn-secondary !px-2 !py-1 text-xs" onClick={() => setSec(si, (s) => ({ ...s, items: [...s.items, { id: uid(), nombre: "NUEVO ÍTEM", modo: "foto", cmd: "" }] }))}>+ Ítem</button>
         </div>
       ))}
 
