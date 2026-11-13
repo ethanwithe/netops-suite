@@ -309,7 +309,7 @@ h1, h2, h3 { font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', I
 
 
 /* ============ Escenas de fondo 3D ============ */
-.scene { position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; opacity: calc(.85 * var(--bgo, 1)); }
+.scene { position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; contain: strict; opacity: calc(.85 * var(--bgo, 1)); }
 .px-layer { position: absolute; transform: translate3d(calc(var(--px, 0) * var(--depth, 10) * 1px), calc(var(--py, 0) * var(--depth, 10) * 1px), 0); transition: transform .3s ease-out; will-change: transform; }
 .dark .scene { opacity: calc(.7 * var(--bgo, 1)); }
 
@@ -625,3 +625,8 @@ html[data-liquid="on"].dark .tab-pill { background: linear-gradient(180deg, rgb(
 @media (prefers-reduced-transparency: reduce) {
   html[data-liquid="on"] :is(.glass, .dock, .tabbar) { -webkit-backdrop-filter: none; backdrop-filter: none; background: rgb(var(--surface) / .94); }
 }
+
+/* Rendimiento: fondo quieto con la pestaña oculta o durante el scroll */
+html[data-paused] .scene *, html[data-scrolling] .scene * { animation-play-state: paused !important; }
+html[data-scrolling] .px-layer { transition: none; }
+html[data-scrolling] .lg-wave { display: none; }

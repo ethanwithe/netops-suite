@@ -42,6 +42,9 @@ export default function App() {
     if (!me) return;
     const ric = (window as unknown as { requestIdleCallback?: (f: () => void) => void }).requestIdleCallback ?? ((f: () => void) => window.setTimeout(f, 1500));
     ric(() => { void import("./pages/ChecklistTypePage"); void import("./pages/FotograficoPage"); void import("./pages/ClientsPage"); void import("./pages/GraficaPage"); });
+    // y un poco después el resto, para que cualquier pantalla abra sin espera
+    const t = window.setTimeout(() => ric(() => { void import("./pages/DashboardPage"); void import("./pages/ChecklistHome"); void import("./pages/AgendaPage"); void import("./pages/SaturadorPage"); void import("./pages/CustomFotograficoPage"); void import("./pages/PlantillasPage"); }), 4000);
+    return () => window.clearTimeout(t);
   }, [me?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (loading) {
