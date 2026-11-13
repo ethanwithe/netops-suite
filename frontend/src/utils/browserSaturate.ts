@@ -12,6 +12,10 @@ export interface SatTick {
   /** false = el destino no deja leer lo descargado (sin CORS): hay tráfico pero la bajada no se puede medir. */
   downMeasured: boolean;
   errors: number;
+  /** Bytes acumulados desde que empezó. */
+  downBytes: number; upBytes: number;
+  /** Bytes de este segundo. */
+  dBytes: number; uBytes: number;
 }
 export interface BrowserSat { stop: () => void }
 
@@ -80,9 +84,10 @@ export function startBrowserSat(o: { seconds: number; streams?: number; target?:
   let sec = 0, ld = 0, lu = 0, pd = 0, pu = 0;
   const tick = window.setInterval(() => {
     sec += 1;
-    const d = ((down - ld) * 8) / 1e6, u = ((up - lu) * 8) / 1e6;
+    const dB = down - ld, uB = up - lu;
+    const d = (dB * 8) / 1e6, u = (uB * 8) / 1e6;
     ld = down; lu = up; pd = Math.max(pd, d); pu = Math.max(pu, u);
-    o.onTick({ down: d, up: u, sec, peakDown: pd, peakUp: pu, downMeasured: measured, errors });
+    o.onTick({ down: d, up: u, sec, peakDown: pd, peakUp: pu, downMeasured: measured, errors, downBytes: down, upBytes: up, dBytes: dB, uBytes: uB });
     if (!ok && sec >= 10) {
       const http = custom.startsWith("http://") && location.protocol === "https:";
       finish(http

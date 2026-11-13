@@ -14,7 +14,7 @@ from sqlalchemy import inspect, text
 from app.database import Base, engine, SessionLocal
 from app import db_seed
 from app.routers import services, vendors, templates, checklist, photos, tests, files, serial_ports, tools, logos, clients, mascot, imageai
-from app.routers import auth as auth_router, admin as admin_router, exports as exports_router, diagrams as diagrams_router, agenda as agenda_router
+from app.routers import auth as auth_router, admin as admin_router, exports as exports_router, diagrams as diagrams_router, agenda as agenda_router, system as system_router
 from app import auth as authlib, models
 from app.services import security
 
@@ -68,6 +68,7 @@ async def require_login(request: Request, call_next):
 
 app.include_router(auth_router.router)
 app.include_router(admin_router.router)
+app.include_router(system_router.router)
 app.include_router(exports_router.router)
 app.include_router(diagrams_router.router)
 app.include_router(agenda_router.router)

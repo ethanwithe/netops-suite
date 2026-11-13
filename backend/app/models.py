@@ -255,6 +255,16 @@ class WorkspaceVersion(Base):
     saved_by = Column(String, nullable=True)
 
 
+class AppSetting(Base):
+    """Ajustes globales de la aplicación (por ejemplo, el anuncio que ve todo el equipo)."""
+    __tablename__ = "app_settings"
+
+    key = Column(String, primary_key=True)
+    value = Column(JSON, nullable=False, default=dict)
+    updated_at = Column(DateTime, default=dt.datetime.utcnow)
+    updated_by = Column(String, nullable=True)
+
+
 class ActivityLog(Base):
     """Qué hace cada usuario (inicios de sesión, clientes, PDF...), solo lo ve el administrador."""
     __tablename__ = "activity_log"

@@ -23,6 +23,7 @@ const AgendaPage = lazy(() => import("./pages/AgendaPage"));
 const BitReportsPage = lazy(() => import("./pages/BitReportsPage"));
 const AdminUsersPage = lazy(() => import("./pages/AdminUsersPage"));
 const ActivityPage = lazy(() => import("./pages/ActivityPage"));
+const AdminSystemPage = lazy(() => import("./pages/AdminSystemPage"));
 
 /** Muestra la página solo si el usuario tiene esa función (o es administrador). */
 function Need({ feature, admin, children }: { feature?: string; admin?: boolean; children: JSX.Element }) {
@@ -41,6 +42,9 @@ export default function App() {
     if (!me) return;
     const ric = (window as unknown as { requestIdleCallback?: (f: () => void) => void }).requestIdleCallback ?? ((f: () => void) => window.setTimeout(f, 1500));
     ric(() => { void import("./pages/ChecklistTypePage"); void import("./pages/FotograficoPage"); void import("./pages/ClientsPage"); void import("./pages/GraficaPage"); });
+    // y un poco después el resto, para que cualquier pantalla abra sin espera
+    const t = window.setTimeout(() => ric(() => { void import("./pages/DashboardPage"); void import("./pages/ChecklistHome"); void import("./pages/AgendaPage"); void import("./pages/SaturadorPage"); void import("./pages/CustomFotograficoPage"); void import("./pages/PlantillasPage"); }), 4000);
+    return () => window.clearTimeout(t);
   }, [me?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (loading) {
@@ -75,6 +79,7 @@ export default function App() {
         <Route path="/admin/usuarios" element={<Need admin><AdminUsersPage /></Need>} />
         <Route path="/admin/clientes" element={<Need admin><ClientsPage all /></Need>} />
         <Route path="/admin/actividad" element={<Need admin><ActivityPage /></Need>} />
+        <Route path="/admin/sistema" element={me.role === "superadmin" ? <AdminSystemPage /> : <div className="card text-sm text-slate-600">Solo el superadmin puede ver esta pantalla.</div>} />
         <Route path="/admin/reportes" element={<Need admin><BitReportsPage /></Need>} />
         <Route path="*" element={<Navigate to="/panel" replace />} />
       </Route>

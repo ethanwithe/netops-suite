@@ -174,18 +174,18 @@ def _do(name: str, key: str, system: str, messages: list, max_tokens: int, image
     return ((data.get("choices") or [{}])[0].get("message", {}).get("content", "") or "").strip()
 
 
-def _ordered(provs: list, think: bool) -> list:
+def _ordered(provs: list, think: bool, prefer: str | None = None) -> list:
     """Sin búsqueda web (think=False) se prefiere el más rápido (Groq); con think, Gemini (razona y busca)."""
     pref = ["gemini", "groq", "openrouter"] if think else ["groq", "gemini", "openrouter"]
-    return sorted(provs, key=lambda nk: pref.index(nk[0]) if nk[0] in pref else 9)
+    return sorted(provs, key=lambda nk: -1 if nk[0] == prefer else (pref.index(nk[0]) if nk[0] in pref else 9))
 
 
-def complete(system: str, messages: list, max_tokens: int = 700, image: str | None = None, think: bool = False) -> str:
+def complete(system: str, messages: list, max_tokens: int = 700, image: str | None = None, think: bool = False, prefer: str | None = None) -> str:
     """messages: [{role, content}]. image: data URL opcional (se adjunta al último mensaje de usuario).
     Prueba los proveedores configurados; si uno tarda más de LLM_HEDGE segundos se lanza el siguiente
     en paralelo y gana la primera respuesta válida. Si uno falla (cuota, error, vacío) pasa al siguiente."""
     global last_error
-    provs = _ordered(configured(), think)
+    provs = _ordered(configured(), think, prefer)
     if not provs:
         raise RuntimeError("sin proveedor")
     from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED

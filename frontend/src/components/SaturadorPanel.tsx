@@ -49,15 +49,54 @@ export default function SaturadorPanel({
   useEffect(() => { onRunning?.(via === "navegador" ? btRun : running); }, [running, btRun, via]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => () => btRef.current?.stop(), []);
 
+  // Registro tipo iperf: una línea por segundo y el resumen al final
+  const [btLog, setBtLog] = useState<string[]>([]);
+  const lastTick = useRef<SatTick | null>(null);
+  const logBox = useRef<HTMLPreElement>(null);
+  useEffect(() => { const el = logBox.current; if (el) el.scrollTop = el.scrollHeight; }, [btLog]);
+  const mb = (b: number) => (b >= 1e9 ? `${(b / 1e9).toFixed(2)} GBytes` : `${(b / 1e6).toFixed(2)} MBytes`);
+  const iv = (a: number, b: number) => `${a.toFixed(2).padStart(6)}-${b.toFixed(2).padEnd(6)}`;
+  const row = (id: string, a: number, b: number, dB: number, uB: number, dM: number, uM: number, retr: string, measured: boolean) =>
+    `[${id.padStart(4)}] ${iv(a, b)} sec  ↓ ${(measured ? mb(dB) : "  n/d").padStart(12)} ${(measured ? dM.toFixed(1) : "n/d").padStart(8)} Mbits/sec  ↑ ${mb(uB).padStart(12)} ${uM.toFixed(1).padStart(8)} Mbits/sec  ${retr}`;
+  const HEAD = "[ ID] Intervalo        ↓ Bajada: transferencia / velocidad      ↑ Subida: transferencia / velocidad      Retr";
+  const pushLog = (...l: string[]) => setBtLog((o) => [...o, ...l].slice(-4000));
+  const stamp = () => new Date().toLocaleTimeString("es-PE");
+
   function startBr() {
-    setError(null); setBt(null); setBtRun(true);
+    setError(null); setBt(null); setBtRun(true); lastTick.current = null;
+    const dest = navDest.trim() || "speed.cloudflare.com (servidor de pruebas)";
+    const t0 = Number(seg) || 0;
+    setBtLog([`${stamp()}  Conectando a ${dest} · 6 flujos de bajada y 3 de subida en paralelo · ${t0 ? `${t0} s` : "hasta detener"}`, HEAD]);
     btRef.current = startBrowserSat({
-      seconds: Number(seg) || 0,
+      seconds: t0,
       target: navDest,
-      onTick: setBt,
-      onEnd: (err) => { setBtRun(false); if (err) setError(err); },
+      onTick: (t) => {
+        setBt(t); lastTick.current = t;
+        pushLog(row("SUM", t.sec - 1, t.sec, t.dBytes, t.uBytes, t.down, t.up, String(t.errors), t.downMeasured));
+        if (t.sec % 10 === 0) pushLog(HEAD);
+      },
+      onEnd: (err) => {
+        setBtRun(false);
+        const t = lastTick.current;
+        const lines = ["- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -", HEAD];
+        if (t) {
+          lines.push(row("SUM", 0, t.sec, t.downBytes, t.upBytes, (t.downBytes * 8) / 1e6 / Math.max(1, t.sec), (t.upBytes * 8) / 1e6 / Math.max(1, t.sec), `${t.errors}  promedio`, t.downMeasured));
+          lines.push(`Picos: bajada ${t.peakDown.toFixed(1)} · subida ${t.peakUp.toFixed(1)} Mbits/sec`);
+        }
+        lines.push(err ? `${stamp()}  Error: ${err}` : `${stamp()}  Terminado.`);
+        pushLog(...lines);
+        if (err) setError(err);
+      },
     });
   }
+  const copyLog = () => { void navigator.clipboard?.writeText(btLog.join("\n")).catch(() => undefined); };
+  const saveLog = () => {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([btLog.join("\n") + "\n"], { type: "text/plain" }));
+    a.download = `saturacion-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")}.txt`;
+    document.body.appendChild(a); a.click(); a.remove();
+    window.setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  };
   function stopBr() { btRef.current?.stop(); }
 
   async function start() {
@@ -138,6 +177,19 @@ export default function SaturadorPanel({
               );
             })}
             <p className="text-xs text-slate-500">Picos: subida {bt.peakUp.toFixed(1)} / bajada {bt.peakDown.toFixed(1)} Mbps{!bt.downMeasured ? " · la bajada no se puede medir en este destino (sin CORS), pero sí se está generando" : ""}</p>
+          </div>
+        )}
+        {btLog.length > 0 && (
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-medium text-slate-500">Registro de la saturación</span>
+              <span className="ml-auto flex gap-1">
+                <button type="button" className="btn-secondary text-xs" onClick={copyLog}>Copiar</button>
+                <button type="button" className="btn-secondary text-xs" onClick={saveLog}>Descargar .txt</button>
+                <button type="button" className="btn-secondary text-xs" onClick={() => setBtLog([])} disabled={btRun}>Limpiar</button>
+              </span>
+            </div>
+            <pre ref={logBox} className="max-h-72 overflow-auto rounded-lg bg-slate-900 p-3 font-mono text-[11px] leading-snug text-emerald-300" aria-live="off">{btLog.join("\n")}</pre>
           </div>
         )}
       </div>
