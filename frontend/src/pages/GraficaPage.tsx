@@ -19,7 +19,8 @@ import type { ClientRecord } from "../store/clients";
 import { usePersistentState } from "../store/persistentState";
 import { useWorkspace } from "../store/workspaces";
 
-interface Saved { fields: Fields; doc: Doc | null }
+type FGroup = { title: string; fields: { key: string; label: string; hint?: string; multiline?: boolean }[] };
+interface Saved { fields: Fields; doc: Doc | null; groups?: FGroup[] }
 const EMPTY: Saved = { fields: {}, doc: null };
 const dmy = (iso: string) => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || ""); return m ? `${m[3]}/${m[2]}/${m[1]}` : iso || ""; };
 const today = () => dmy(new Date().toISOString().slice(0, 10));
@@ -49,6 +50,11 @@ function GraficaInner({ info, options, remote, reload }: { info: OptionInfo; opt
   const navigate = useNavigate();
   const [data, setData] = usePersistentState<Saved>(`grafica.${tpl.id}`, EMPTY);
   const fields = data.fields;
+  const groups: FGroup[] = data.groups ?? tpl.groups;
+  const [editFields, setEditFields] = useState(false);
+  const setGroups = (fn: (g: FGroup[]) => FGroup[]) => setData((p) => ({ ...p, groups: fn(p.groups ?? tpl.groups) }));
+  const patchField = (gi: number, fi: number, patch: Partial<FGroup["fields"][number]>) =>
+    setGroups((gs) => gs.map((g, i) => (i === gi ? { ...g, fields: g.fields.map((f, j) => (j === fi ? { ...f, ...patch } : f)) } : g)));
   const baseDoc: Doc = remote?.published ?? tpl.doc;     // lo que ven todos hasta que alguien edite su copia
   const doc = data.doc ?? baseDoc;
   const hist = useUndo<Doc>(doc, useCallback((d: Doc) => setData((p) => ({ ...p, doc: d })), [setData]));
@@ -84,11 +90,11 @@ function GraficaInner({ info, options, remote, reload }: { info: OptionInfo; opt
   }
 
   // Lo que se guarda por cliente: todo el diagrama (datos + lienzo editable).
-  const wsState = useMemo(() => ({ fields, doc: data.doc }), [fields, data.doc]);
+  const wsState = useMemo(() => ({ fields, doc: data.doc, groups: data.groups }), [fields, data.doc, data.groups]);
   const ws = useWorkspace({
     key: `grafica:${tpl.id}`, label: `Gráfica · ${tpl.label}`, sot: fields.sot ?? "", nombre: fields.cliente, fecha: toISODate(fields.fecha ?? ""),
     state: wsState,
-    apply: (saved: Saved) => { setData({ fields: saved?.fields ?? {}, doc: saved?.doc ?? null }); hist.clear(); },
+    apply: (saved: Saved) => { setData({ fields: saved?.fields ?? {}, doc: saved?.doc ?? null, groups: saved?.groups }); hist.clear(); },
     fill: (c) => fromClient(c, true),
   });
 
@@ -137,28 +143,57 @@ function GraficaInner({ info, options, remote, reload }: { info: OptionInfo; opt
         <div className="flex flex-wrap items-center gap-2">
           <h3 className="flex-1 font-semibold text-slate-800">Datos del diagrama</h3>
           <ClientPicker onPick={(c) => void pickClient(c)} />
+          <button className="btn-secondary text-xs" onClick={() => { setEditFields(!editFields); setOpen(true); }}>{editFields ? "Listo" : "Editar campos"}</button>
           <button className="btn-secondary text-xs" onClick={() => setOpen(!open)}>{open ? "Ocultar" : "Mostrar"}</button>
         </div>
         <WorkspaceBar ws={ws} />
         {open && (
           <div className="space-y-4">
-            {tpl.groups.map((g) => (
-              <div key={g.title} className="border-t border-slate-200 pt-3 first:border-0 first:pt-0">
-                <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-brand-600">{g.title}</p>
+            {groups.map((g, gi) => (
+              <div key={gi} className="border-t border-slate-200 pt-3 first:border-0 first:pt-0">
+                {editFields ? (
+                  <div className="mb-2 flex items-center gap-2">
+                    <input className="input !py-1 flex-1 text-xs font-bold uppercase tracking-wider" value={g.title} aria-label="Título del grupo"
+                      onChange={(e) => setGroups((gs) => gs.map((x, i) => (i === gi ? { ...x, title: e.target.value } : x)))} />
+                    <button className="btn-secondary !px-2 !py-1 text-xs" onClick={() => confirm(`¿Quitar el grupo «${g.title}» con sus ${g.fields.length} campos?`) && setGroups((gs) => gs.filter((_, i) => i !== gi))}>Quitar grupo</button>
+                  </div>
+                ) : (
+                  <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-brand-600">{g.title}</p>
+                )}
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                  {g.fields.map((f) => (
+                  {g.fields.map((f, fi) => (
                     <label key={f.key} className="block">
-                      <span className="label">{f.label}</span>
+                      {editFields ? (
+                        <span className="mb-1 flex items-center gap-1">
+                          <input className="input !py-0.5 flex-1 text-xs" value={f.label} aria-label="Nombre del campo" onChange={(e) => patchField(gi, fi, { label: e.target.value })} />
+                          <button type="button" className="btn-secondary !px-2 !py-0.5 text-xs" title="Quitar este campo"
+                            onClick={() => { setGroups((gs) => gs.map((x, i) => (i === gi ? { ...x, fields: x.fields.filter((_, j) => j !== fi) } : x))); setField(f.key, ""); }}>✕</button>
+                        </span>
+                      ) : (
+                        <span className="label">{f.label}</span>
+                      )}
                       {f.multiline ? (
                         <textarea className="input" rows={2} placeholder={f.hint} value={fields[f.key] ?? ""} onChange={(e) => setField(f.key, e.target.value)} />
                       ) : (
                         <input className="input" placeholder={f.hint} value={fields[f.key] ?? ""} onChange={(e) => setField(f.key, e.target.value)} />
                       )}
+                      {editFields && <span className="mt-0.5 block select-all text-[10px] text-slate-400" title="Escríbelo en un texto del lienzo para que se llene solo">{`{{${f.key}}}`}</span>}
                     </label>
                   ))}
                 </div>
+                {editFields && (
+                  <button className="btn-secondary mt-2 !px-2 !py-1 text-xs"
+                    onClick={() => setGroups((gs) => gs.map((x, i) => (i === gi ? { ...x, fields: [...x.fields, { key: `c_${Math.random().toString(36).slice(2, 7)}`, label: "Nuevo campo" }] } : x)))}>+ Campo</button>
+                )}
               </div>
             ))}
+            {editFields && (
+              <div className="flex flex-wrap items-center gap-2 border-t border-slate-200 pt-3">
+                <button className="btn-secondary text-xs" onClick={() => setGroups((gs) => [...gs, { title: "NUEVO GRUPO", fields: [] }])}>+ Grupo</button>
+                <button className="btn-secondary text-xs" onClick={() => confirm("¿Volver a los campos originales?") && setData((p) => ({ ...p, groups: undefined }))}>Restaurar campos originales</button>
+                <span className="text-[11px] text-slate-400">Cambia nombres, quita lo que no uses o agrega campos. Un campo nuevo se muestra en el lienzo escribiendo su código {"{{…}}"} dentro de un texto.</span>
+              </div>
+            )}
             <p className="text-[11px] text-slate-400">Los datos se escriben en el diagrama (y en «Mis clientes»). Si luego editas un texto directamente en el lienzo, ese texto ya no cambia con el formulario.</p>
           </div>
         )}
