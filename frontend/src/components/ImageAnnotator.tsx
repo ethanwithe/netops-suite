@@ -509,7 +509,7 @@ export default function ImageAnnotator({ imageUrl, baseUrl, stamp, onClose, onSa
   const [panel, setPanel] = useState<null | "adjust" | "ai">(null);
   const [menu, setMenu] = useState<null | "img" | "more">(null);
   const [moreAt, setMoreAt] = useState({ top: 80, right: 8 });
-  const [aiStatus, setAiStatus] = useState<{ adjust: boolean; edit: boolean; edit_provider?: string | null } | null>(null);
+  const [aiStatus, setAiStatus] = useState<{ adjust: boolean; edit: boolean; edit_provider?: string | null; edit_model?: string | null } | null>(null);
   const [aiPrompt, setAiPrompt] = useState("");
   const [aiBusy, setAiBusy] = useState(false);
   const [aiNote, setAiNote] = useState<string | null>(null);
@@ -1071,7 +1071,7 @@ export default function ImageAnnotator({ imageUrl, baseUrl, stamp, onClose, onSa
       const kx = nb.width / doc.base.width, ky = nb.height / doc.base.height;
       commit({ base: nb, objects: doc.objects.map((o) => mapObj(o, (p) => ({ x: p.x * kx, y: p.y * ky }))) });
       setAdj(NEUTRAL);
-      setAiNote("Listo: la imagen fue modificada por la IA. Puedes deshacer con «Deshacer».");
+      setAiNote(`Listo: imagen modificada con ${data.provider === "openrouter" ? `OpenRouter (${data.model})` : data.provider === "gemini" ? "Gemini" : "OpenAI"}. Puedes deshacer con «Deshacer».`);
     } catch (e) {
       setAiNote(apiErrorMessage(e, "No se pudo editar la imagen con IA."));
     } finally { setAiBusy(false); }
@@ -1423,7 +1423,7 @@ export default function ImageAnnotator({ imageUrl, baseUrl, stamp, onClose, onSa
                 </div>
                 <button className="btn-secondary mt-1.5 px-3 py-1.5 text-xs" disabled={aiBusy || !aiStatus?.edit || !aiPrompt.trim()} onClick={() => aiEdit(aiPrompt)}>Transformar con IA</button>
                 <p className="mt-1 text-[10.5px] leading-snug text-slate-500">
-                  {aiStatus?.edit ? `Modifica el contenido de la foto según tu instrucción (${aiStatus.edit_provider === "openrouter" ? "OpenRouter" : aiStatus.edit_provider === "gemini" ? "Gemini" : "OpenAI"}). Se puede deshacer.` : "No disponible: el servidor necesita OPENROUTER_API_KEY (o GEMINI_API_KEY / OPENAI_API_KEY) para editar imágenes."}
+                  {aiStatus?.edit ? `Modifica el contenido de la foto según tu instrucción (${aiStatus.edit_provider === "openrouter" ? `OpenRouter · ${aiStatus.edit_model ?? ""}` : aiStatus.edit_provider === "gemini" ? "Gemini" : "OpenAI"}). Se puede deshacer.` : "No disponible: el servidor necesita OPENROUTER_API_KEY (o GEMINI_API_KEY / OPENAI_API_KEY) para editar imágenes."}
                 </p>
               </div>
               {aiNote && <p className="mt-2 rounded-md bg-slate-100 p-2 text-[11px] text-slate-700">{aiNote}</p>}
