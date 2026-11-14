@@ -1,3 +1,4 @@
+import { ToolIcon, hasToolIcon } from "./ToolIcons";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, apiErrorMessage } from "../api/client";
 import { NEUTRAL, adjustCanvas, isNeutral } from "../utils/imageAdjust";
@@ -1363,8 +1364,8 @@ export default function ImageAnnotator({ imageUrl, baseUrl, stamp, onClose, onSa
         {/* Herramientas: columna delgada (en celular, fila deslizable) */}
         <div className="flex shrink-0 gap-1 overflow-auto border-slate-200 bg-white p-1 max-sm:border-b sm:w-[78px] sm:flex-col sm:border-r">
           {TOOLS.map(([t, label, title]) => (
-            <button key={t} type="button" className={ib(tool === t, "sm:w-full sm:justify-start sm:px-2")} onClick={() => pickTool(t)} title={title} aria-label={title}>
-              {label}
+            <button key={t} type="button" className={ib(tool === t, "sm:w-full sm:justify-center sm:px-2")} onClick={() => pickTool(t)} title={title} aria-label={title}>
+              {hasToolIcon(t) ? <ToolIcon name={t} /> : label}
             </button>
           ))}
         </div>
