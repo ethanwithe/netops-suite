@@ -33,6 +33,10 @@ export interface CkType {
   id: string;
   nombre: string;
   data: CkData;
+  /** Tiene tu propia versión editada (solo la ves tú). */
+  personal?: boolean;
+  /** Hay un diseño base fijado por el superadmin. */
+  has_base?: boolean;
 }
 
 interface Store {
@@ -84,6 +88,29 @@ export async function createChecklistType(input: { nombre: string; copiar_de?: s
 export async function updateChecklistType(id: string, nombre: string, data: CkData): Promise<CkType> {
   const { data: out } = await api.put<CkType>(`/checklist/templates/${id}`, { nombre, data });
   set({ list: state.list.map((t) => (t.id === id ? out : t)) });
+  return out;
+}
+
+const replace = (out: CkType) => set({ list: state.list.map((t) => (t.id === out.id ? out : t)) });
+
+/** Superadmin: lo editado pasa a ser la versión de todos. */
+export async function publishChecklistType(id: string, nombre: string, data: CkData): Promise<CkType> {
+  const { data: out } = await api.post<CkType>(`/checklist/templates/${id}/publish`, { nombre, data });
+  replace(out);
+  return out;
+}
+
+/** Superadmin: lo editado pasa a ser el diseño base (y la versión de todos). */
+export async function setChecklistBase(id: string, nombre: string, data: CkData): Promise<CkType> {
+  const { data: out } = await api.post<CkType>(`/checklist/templates/${id}/base`, { nombre, data });
+  replace(out);
+  return out;
+}
+
+/** Vuelve tu versión al diseño base. */
+export async function restoreChecklistBase(id: string): Promise<CkType> {
+  const { data: out } = await api.post<CkType>(`/checklist/templates/${id}/restore`);
+  replace(out);
   return out;
 }
 

@@ -1,3 +1,4 @@
+import datetime as dt
 import os
 from typing import Optional
 
@@ -5,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.auth import current_user
 from app.database import get_db
 from app.config import OUTPUTS_DIR, UPLOADS_DIR
 from app.services import filestore
@@ -108,13 +110,37 @@ def _clean_template(data: dict) -> dict:
     return out
 
 
+def _is_super(user: models.User) -> bool:
+    return user.role == "superadmin"
+
+
+def _view(row: models.ChecklistTemplate, copy, base_ids: set) -> schemas.ChecklistTemplateOut:
+    """Lo que ve el usuario: su versión personal si la tiene; si no, la versión de todos."""
+    src = copy or row
+    return schemas.ChecklistTemplateOut(
+        id=row.id, nombre=src.nombre, data=src.data or {}, personal=copy is not None, has_base=row.id in base_ids
+    )
+
+
+def _view_one(db: Session, user: models.User, tpl_id: str) -> schemas.ChecklistTemplateOut:
+    row = db.get(models.ChecklistTemplate, tpl_id)
+    if not row:
+        raise HTTPException(404, "El checklist ya no existe.")
+    copy = db.query(models.ChecklistUserCopy).filter_by(user_id=user.id, tpl_id=tpl_id).first()
+    has_base = db.get(models.ChecklistBase, tpl_id) is not None
+    return _view(row, copy, {tpl_id} if has_base else set())
+
+
 @router.get("/templates", response_model=list[schemas.ChecklistTemplateOut])
-def list_templates(db: Session = Depends(get_db)):
-    return (
+def list_templates(user: models.User = Depends(current_user), db: Session = Depends(get_db)):
+    rows = (
         db.query(models.ChecklistTemplate)
         .order_by(models.ChecklistTemplate.orden, models.ChecklistTemplate.created_at)
         .all()
     )
+    copies = {c.tpl_id: c for c in db.query(models.ChecklistUserCopy).filter_by(user_id=user.id).all()}
+    base_ids = {b.tpl_id for b in db.query(models.ChecklistBase).all()}
+    return [_view(r, copies.get(r.id), base_ids) for r in rows]
 
 
 @router.post("/templates", response_model=schemas.ChecklistTemplateOut)
@@ -139,7 +165,33 @@ def create_template(payload: schemas.ChecklistTemplateIn, db: Session = Depends(
 
 
 @router.put("/templates/{tpl_id}", response_model=schemas.ChecklistTemplateOut)
-def update_template(tpl_id: str, payload: schemas.ChecklistTemplateIn, db: Session = Depends(get_db)):
+def update_template(tpl_id: str, payload: schemas.ChecklistTemplateIn, user: models.User = Depends(current_user), db: Session = Depends(get_db)):
+    """Guarda los cambios SOLO en la versión personal de quien edita."""
+    if not db.get(models.ChecklistTemplate, tpl_id):
+        raise HTTPException(404, "El checklist ya no existe.")
+    nombre = payload.nombre.strip()
+    if not nombre:
+        raise HTTPException(400, "Escribe un nombre.")
+    copy = db.query(models.ChecklistUserCopy).filter_by(user_id=user.id, tpl_id=tpl_id).first()
+    if not copy:
+        copy = models.ChecklistUserCopy(user_id=user.id, tpl_id=tpl_id, nombre=nombre[:80], data={})
+        db.add(copy)
+    copy.nombre = nombre[:80]
+    copy.data = _clean_template(payload.data)
+    copy.updated_at = dt.datetime.utcnow()
+    db.commit()
+    return _view_one(db, user, tpl_id)
+
+
+def _need_super(user: models.User):
+    if not _is_super(user):
+        raise HTTPException(403, "Solo el superadmin puede hacer esto.")
+
+
+@router.post("/templates/{tpl_id}/publish", response_model=schemas.ChecklistTemplateOut)
+def publish_template(tpl_id: str, payload: schemas.ChecklistTemplateIn, user: models.User = Depends(current_user), db: Session = Depends(get_db)):
+    """Superadmin: lo que está en pantalla pasa a ser la versión de todos (quien no editó lo ve de inmediato)."""
+    _need_super(user)
     row = db.get(models.ChecklistTemplate, tpl_id)
     if not row:
         raise HTTPException(404, "El checklist ya no existe.")
@@ -148,9 +200,44 @@ def update_template(tpl_id: str, payload: schemas.ChecklistTemplateIn, db: Sessi
         raise HTTPException(400, "Escribe un nombre.")
     row.nombre = nombre[:80]
     row.data = _clean_template(payload.data)
+    db.query(models.ChecklistUserCopy).filter_by(user_id=user.id, tpl_id=tpl_id).delete()
     db.commit()
-    db.refresh(row)
-    return row
+    return _view_one(db, user, tpl_id)
+
+
+@router.post("/templates/{tpl_id}/base", response_model=schemas.ChecklistTemplateOut)
+def set_base_template(tpl_id: str, payload: schemas.ChecklistTemplateIn, user: models.User = Depends(current_user), db: Session = Depends(get_db)):
+    """Superadmin: lo que está en pantalla pasa a ser el diseño base (y la versión de todos)."""
+    _need_super(user)
+    publish_template(tpl_id, payload, user, db)
+    row = db.get(models.ChecklistTemplate, tpl_id)
+    base = db.get(models.ChecklistBase, tpl_id)
+    if not base:
+        base = models.ChecklistBase(tpl_id=tpl_id, nombre=row.nombre, data={})
+        db.add(base)
+    base.nombre, base.data, base.updated_at = row.nombre, row.data, dt.datetime.utcnow()
+    db.commit()
+    return _view_one(db, user, tpl_id)
+
+
+@router.post("/templates/{tpl_id}/restore", response_model=schemas.ChecklistTemplateOut)
+def restore_template(tpl_id: str, user: models.User = Depends(current_user), db: Session = Depends(get_db)):
+    """Vuelve la versión del usuario al diseño base (si no hay base fijada, a la versión de todos)."""
+    row = db.get(models.ChecklistTemplate, tpl_id)
+    if not row:
+        raise HTTPException(404, "El checklist ya no existe.")
+    q = db.query(models.ChecklistUserCopy).filter_by(user_id=user.id, tpl_id=tpl_id)
+    base = db.get(models.ChecklistBase, tpl_id)
+    if base:
+        copy = q.first()
+        if not copy:
+            copy = models.ChecklistUserCopy(user_id=user.id, tpl_id=tpl_id, nombre=base.nombre, data={})
+            db.add(copy)
+        copy.nombre, copy.data, copy.updated_at = base.nombre, base.data, dt.datetime.utcnow()
+    else:
+        q.delete()
+    db.commit()
+    return _view_one(db, user, tpl_id)
 
 
 @router.delete("/templates/{tpl_id}")
@@ -158,6 +245,8 @@ def delete_template(tpl_id: str, db: Session = Depends(get_db)):
     row = db.get(models.ChecklistTemplate, tpl_id)
     if not row:
         raise HTTPException(404, "El checklist ya no existe.")
+    db.query(models.ChecklistUserCopy).filter_by(tpl_id=tpl_id).delete()
+    db.query(models.ChecklistBase).filter_by(tpl_id=tpl_id).delete()
     db.delete(row)
     db.commit()
     return {"ok": True}

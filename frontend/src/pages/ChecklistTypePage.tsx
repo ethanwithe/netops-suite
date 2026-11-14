@@ -10,8 +10,9 @@ import SaturadorPanel from "../components/SaturadorPanel";
 import LiveCli from "../components/LiveCli";
 import { NO_LOGO } from "../logo";
 import type { LogoSel } from "../logo";
+import { useAuth } from "../store/auth";
 import { usePersistentState } from "../store/persistentState";
-import { deleteChecklistType, updateChecklistType, useChecklistTypes } from "../store/checklistTypes";
+import { deleteChecklistType, publishChecklistType, restoreChecklistBase, setChecklistBase, updateChecklistType, useChecklistTypes } from "../store/checklistTypes";
 import type { CkData, CkItem, CkType } from "../store/checklistTypes";
 import ClientPicker from "../components/ClientPicker";
 import { syncClient, useSotSync } from "../store/clients";
@@ -63,6 +64,7 @@ export default function ChecklistTypePage() {
 }
 
 function Inner({ type }: { type: CkType }) {
+  const { me } = useAuth();
   const { data } = type;
   const navigate = useNavigate();
   const [tab, setTab] = usePersistentState<"run" | "edit">(`checklist.tab.${type.id}`, "run");
@@ -394,7 +396,12 @@ function Inner({ type }: { type: CkType }) {
 
       {tab === "edit" ? (
         <ChecklistStructure
+          key={`${type.id}:${type.personal ? 1 : 0}:${JSON.stringify(type.data).length}`}
           type={type}
+          isSuper={me?.role === "superadmin"}
+          onPublish={async (nombre, d) => { await publishChecklistType(type.id, nombre, d); }}
+          onSetBase={async (nombre, d) => { await setChecklistBase(type.id, nombre, d); }}
+          onRestore={async () => { await restoreChecklistBase(type.id); }}
           onSave={async (nombre, d) => { await updateChecklistType(type.id, nombre, d); }}
           onDelete={async () => { await deleteChecklistType(type.id); navigate("/checklist", { replace: true }); }}
         />

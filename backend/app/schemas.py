@@ -268,6 +268,8 @@ class ChecklistTemplateOut(BaseModel):
     id: str
     nombre: str
     data: Dict[str, Any] = {}
+    personal: bool = False   # el usuario tiene su propia versión editada
+    has_base: bool = False   # hay un diseño base fijado por el superadmin
     class Config:
         from_attributes = True
 

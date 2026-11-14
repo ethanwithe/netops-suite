@@ -100,6 +100,28 @@ class ChecklistTemplate(Base):
     created_at = Column(DateTime, default=dt.datetime.utcnow)
 
 
+class ChecklistUserCopy(Base):
+    """Versión personal de un tipo de CheckList: lo que cada usuario edita solo se ve en su cuenta."""
+    __tablename__ = "checklist_user_copies"
+
+    id = Column(String, primary_key=True, default=gen_uuid)
+    user_id = Column(String, nullable=False, index=True)
+    tpl_id = Column(String, nullable=False, index=True)
+    nombre = Column(String, nullable=False)
+    data = Column(JSON, nullable=False, default=dict)
+    updated_at = Column(DateTime, default=dt.datetime.utcnow)
+
+
+class ChecklistBase(Base):
+    """Diseño base de un tipo de CheckList (lo fija el superadmin; «Restaurar» vuelve a él)."""
+    __tablename__ = "checklist_bases"
+
+    tpl_id = Column(String, primary_key=True)
+    nombre = Column(String, nullable=False)
+    data = Column(JSON, nullable=False, default=dict)
+    updated_at = Column(DateTime, default=dt.datetime.utcnow)
+
+
 class Client(Base):
     """Cliente / servicio identificado por su SOT.
 
