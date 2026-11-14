@@ -1,3 +1,4 @@
+import { ToolIcon } from "../components/ToolIcons";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { iconSize, iconUrl, uploadIcon, useIcons } from "./icons";
 import PropsPanel from "./Props";
@@ -423,9 +424,9 @@ export default function Editor({ doc, fields, hist }: { doc: Doc; fields: Fields
       <div className="min-w-0 space-y-2">
         <div className="card flex flex-wrap items-center gap-1.5 p-2">
           <button className={btn} onClick={addText}>Texto</button>
-          <button className={btn} onClick={addRect}>Forma</button>
-          <button className={btn} onClick={() => addLine(false)}>Línea</button>
-          <button className={btn} onClick={() => addLine(true)}>Flecha</button>
+          <button className={btn} onClick={addRect} title="Forma (rectángulo)" aria-label="Forma"><ToolIcon name="rect" /></button>
+          <button className={btn} onClick={() => addLine(false)} title="Línea" aria-label="Línea"><ToolIcon name="line" /></button>
+          <button className={btn} onClick={() => addLine(true)} title="Flecha" aria-label="Flecha"><ToolIcon name="arrow" /></button>
           <span className="mx-1 h-5 w-px bg-slate-300" />
           <button className={btn} onClick={hist.undo} disabled={!hist.canUndo} title="Deshacer (Ctrl+Z)">↶</button>
           <button className={btn} onClick={hist.redo} disabled={!hist.canRedo} title="Rehacer (Ctrl+Y)">↷</button>
