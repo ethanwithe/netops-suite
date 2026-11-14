@@ -121,14 +121,22 @@ export default function ChecklistStructure({
         </div>
         <div className="grid grid-cols-1 gap-1.5 md:grid-cols-2">
           {d.params.map((p, i) => (
-            <div key={i} data-dnd="param" data-dnd-id={String(i)} className="flex items-center gap-1.5 rounded border border-slate-200 px-1.5 py-1">
-              <Grip kind="param" id={String(i)} label="Arrastra para cambiar el orden" onDrop={(t, a) => setD((q) => ({ ...q, params: dropIdx(q.params, i, Number(t), a) }))} />
-              <span className={NUM}>{i + 1}</span>
-              <input className={`${INP} w-24 shrink-0 font-mono`} value={p.key} title="Nombre usado en los comandos: {NOMBRE}"
-                onChange={(e) => setParam(i, { key: e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, "") })} />
-              <input className={`${INP} min-w-0 flex-1`} value={p.label} placeholder="Texto que verás" onChange={(e) => setParam(i, { label: e.target.value })} />
-              <input className={`${INP} w-24 shrink-0`} value={p.default} placeholder="Por defecto" onChange={(e) => setParam(i, { default: e.target.value })} />
-              <button className={BTN} title="Quitar" onClick={() => setD({ ...d, params: d.params.filter((_, j) => j !== i) })}>✕</button>
+            <div key={i} data-dnd="param" data-dnd-id={String(i)} className="min-w-0 space-y-1 rounded border border-slate-200 px-1.5 py-1.5">
+              <div className="flex items-center gap-1.5">
+                <Grip kind="param" id={String(i)} label="Arrastra para cambiar el orden" onDrop={(t, a) => setD((q) => ({ ...q, params: dropIdx(q.params, i, Number(t), a) }))} />
+                <span className={NUM}>{i + 1}</span>
+                <input className={`${INP} min-w-0 flex-1 font-mono`} value={p.key} title="Nombre usado en los comandos: {NOMBRE}" placeholder="NOMBRE"
+                  onChange={(e) => setParam(i, { key: e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, "") })} />
+                <button className={BTN} title="Quitar" onClick={() => setD({ ...d, params: d.params.filter((_, j) => j !== i) })}>✕</button>
+              </div>
+              <div className="grid grid-cols-2 gap-1.5">
+                <label className="min-w-0 text-[10px] text-slate-500">Descripción
+                  <input className={`${INP} mt-0.5 w-full`} value={p.label} placeholder="Texto que verás" onChange={(e) => setParam(i, { label: e.target.value })} />
+                </label>
+                <label className="min-w-0 text-[10px] text-slate-500">Por defecto
+                  <input className={`${INP} mt-0.5 w-full`} value={p.default} placeholder="Valor inicial" onChange={(e) => setParam(i, { default: e.target.value })} />
+                </label>
+              </div>
             </div>
           ))}
         </div>
@@ -155,16 +163,14 @@ export default function ChecklistStructure({
                 <button className={BTN} disabled={ii === sec.items.length - 1} onClick={() => setSec(si, (s) => ({ ...s, items: move(s.items, ii, 1) }))}>↓</button>
                 <button className={BTN} onClick={() => setSec(si, (s) => ({ ...s, items: s.items.filter((_, j) => j !== ii) }))}>✕</button>
               </div>
-              <div className="col-span-4 flex items-center gap-2 lg:contents">
-                <select className={`${INP} w-20`} value={it.modo} onChange={(e) => setItem(si, ii, { modo: e.target.value as CkItem["modo"] })}>
-                  <option value="texto">Texto</option>
-                  <option value="foto">Foto</option>
-                </select>
-                <label className="flex items-center gap-1 whitespace-nowrap text-[11px] text-slate-600" title="Solo se captura mientras se satura el enlace">
-                  <input type="checkbox" checked={!!it.sat} onChange={(e) => setItem(si, ii, { sat: e.target.checked })} /> Sat.
-                </label>
-                <input className={`${INP} min-w-0 flex-1 font-mono`} value={it.cmd} placeholder="Comando (vacío = captura manual)" onChange={(e) => setItem(si, ii, { cmd: e.target.value })} />
-              </div>
+              <select className={`${INP} col-span-2 w-full lg:col-span-1`} value={it.modo} onChange={(e) => setItem(si, ii, { modo: e.target.value as CkItem["modo"] })}>
+                <option value="texto">Texto</option>
+                <option value="foto">Foto</option>
+              </select>
+              <label className="col-span-2 flex items-center gap-1 whitespace-nowrap text-[11px] text-slate-600 lg:col-span-1" title="Solo se captura mientras se satura el enlace">
+                <input type="checkbox" checked={!!it.sat} onChange={(e) => setItem(si, ii, { sat: e.target.checked })} /> Sat.
+              </label>
+              <input className={`${INP} col-span-4 min-w-0 font-mono lg:col-span-1`} value={it.cmd} placeholder="Comando (vacío = captura manual)" onChange={(e) => setItem(si, ii, { cmd: e.target.value })} />
               <div className="hidden gap-1 lg:flex">
                 <button className={BTN} title="Subir" disabled={ii === 0} onClick={() => setSec(si, (s) => ({ ...s, items: move(s.items, ii, -1) }))}>↑</button>
                 <button className={BTN} title="Bajar" disabled={ii === sec.items.length - 1} onClick={() => setSec(si, (s) => ({ ...s, items: move(s.items, ii, 1) }))}>↓</button>
