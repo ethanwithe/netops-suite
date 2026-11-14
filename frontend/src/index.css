@@ -630,3 +630,8 @@ html[data-liquid="on"].dark .tab-pill { background: linear-gradient(180deg, rgb(
 html[data-paused] .scene *, html[data-scrolling] .scene * { animation-play-state: paused !important; }
 html[data-scrolling] .px-layer { transition: none; }
 html[data-scrolling] .lg-wave { display: none; }
+
+/* Reordenar arrastrando */
+[data-dnd][data-dragging] { opacity: .45; }
+[data-dnd][data-over="before"] { box-shadow: 0 -3px 0 0 #2563eb; }
+[data-dnd][data-over="after"] { box-shadow: 0 3px 0 0 #2563eb; }
