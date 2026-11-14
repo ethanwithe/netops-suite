@@ -1,3 +1,4 @@
+import { Grip } from "../utils/dragSort";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, apiErrorMessage } from "../api/client";
 import ImageUpload from "../components/ImageUpload";
@@ -24,6 +25,9 @@ import {
   addCell,
   addSection,
   moveCell,
+  moveCellTo,
+  moveBlockTo,
+  moveSectionTo,
   moveSection,
   removeCell,
   removeSection,
@@ -357,7 +361,8 @@ function SeccionesTab({ tipo, items }: { tipo: FotoTipo; items: PhotoItem[] }) {
       {sections.map((sec, si) => {
         const op = resolveOpcion(sec.lado, manager.opciones);
         return (
-          <div key={sec.id} className="card flex flex-wrap items-center gap-2">
+          <div key={sec.id} data-dnd="section" data-dnd-id={sec.id} className="card flex flex-wrap items-center gap-2">
+            <Grip kind="section" id={sec.id} label="Arrastra para mover la sección" onDrop={(t, a) => moveSectionTo(tipo, sec.id, t, a)} />
             <select className="input min-w-[220px] flex-1 font-semibold" aria-label="Título de la sección" value={op.id} onChange={(e) => pickTitle(sec.id, e.target.value)}>
               {manager.opciones.map((o) => (
                 <option key={o.id} value={o.id} disabled={o.id !== op.id && usedLados.has(o.id)}>{o.label}</option>
@@ -595,7 +600,7 @@ function RunTab({
         const bloques = blockNames(sec.cells);
         const allOn = sec.cells.length > 0 && sec.cells.every((c) => c.incluir);
         return (
-          <div key={sec.id} className="card space-y-4">
+          <div key={sec.id} data-dnd="section" data-dnd-id={sec.id} className="card space-y-4">
             <div className="flex flex-wrap items-center gap-2">
               <h3 className="min-w-[220px] flex-1 text-sm font-semibold text-slate-800">{op.label}</h3>
               <label className="flex items-center gap-2 text-xs text-slate-500">
@@ -609,8 +614,9 @@ function RunTab({
               const shown = cells.filter((c) => !onlyUsed || c.incluir || c.imagePath);
               if (onlyUsed && shown.length === 0) return null;
               return (
-                <div key={bl || "__sin__"} className="space-y-2 rounded-xl border border-slate-200/70 p-3">
+                <div key={bl || "__sin__"} data-dnd="block" data-dnd-id={bl || "__sin__"} className="space-y-2 rounded-xl border border-slate-200/70 p-3">
                   <div className="flex flex-wrap items-center gap-2">
+                    <Grip kind="block" id={bl || "__sin__"} label="Arrastra para mover el bloque" onDrop={(t, a) => moveBlockTo(tipo, sec.id, bl, t === "__sin__" ? "" : t, a)} />
                     <input
                       className="input min-w-[200px] flex-1 text-sm font-semibold uppercase tracking-wide"
                       aria-label="Nombre del bloque"
@@ -628,7 +634,7 @@ function RunTab({
                     {shown.map((c) => {
                       const idx = sec.cells.findIndex((x) => x.id === c.id);
                       return (
-                        <div key={c.id} className={`space-y-2 rounded-lg border p-3 ${c.incluir ? "border-brand-300 bg-brand-50/40" : "border-slate-200"}`}>
+                        <div key={c.id} data-dnd="cell" data-dnd-id={c.id} className={`space-y-2 rounded-lg border p-3 ${c.incluir ? "border-brand-300 bg-brand-50/40" : "border-slate-200"}`}>
                           <textarea
                             className="input"
                             rows={2}
@@ -656,6 +662,7 @@ function RunTab({
                               Va en el PDF
                             </label>
                             <span className="flex items-center gap-1">
+                              <Grip kind="cell" id={c.id} onDrop={(t, a) => moveCellTo(tipo, sec.id, c.id, t, a)} />
                               <button className="rounded px-1.5 py-0.5 text-slate-500 hover:bg-slate-100 disabled:opacity-30" disabled={idx === 0} onClick={() => moveCell(tipo, sec.id, c.id, -1)} aria-label="Subir celda">↑</button>
                               <button className="rounded px-1.5 py-0.5 text-slate-500 hover:bg-slate-100 disabled:opacity-30" disabled={idx === sec.cells.length - 1} onClick={() => moveCell(tipo, sec.id, c.id, 1)} aria-label="Bajar celda">↓</button>
                               <button className="rounded px-1.5 py-0.5 text-red-600 hover:bg-red-50" onClick={() => removeCell(tipo, sec.id, c.id)}>Quitar celda</button>

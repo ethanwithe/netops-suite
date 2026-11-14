@@ -58,6 +58,8 @@ export interface WindowInput {
   config: WindowConfig;
   /** Solo al crear. "" = empezar sin ítems. */
   copiar_de?: string;
+  /** Solo al crear: ítems explícitos (categoría = título de sección, nombre = descripción). */
+  items?: { categoria: string; nombre: string }[];
 }
 
 export async function createWindow(input: WindowInput): Promise<PhotoWindow> {

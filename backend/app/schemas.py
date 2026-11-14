@@ -124,6 +124,8 @@ class PhotoWindowIn(BaseModel):
     # Solo al crear: de qué tipo se copian los ítems iniciales
     # ("fibra", "gpon_ont", "gpon_modulo", o "" para empezar vacía).
     copiar_de: Optional[str] = "fibra"
+    # Solo al crear: ítems explícitos (por ejemplo los de RF Poder Judicial): [{"categoria": ..., "nombre": ...}]
+    items: Optional[list[Dict[str, Any]]] = None
 
 
 class PhotoWindowOut(BaseModel):

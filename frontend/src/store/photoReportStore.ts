@@ -698,6 +698,45 @@ export function moveCell(tipo: FotoTipo, sid: string, cid: string, dir: -1 | 1):
   }));
 }
 
+/** Arrastrar: coloca una celda antes/después de otra (si es de otro bloque, pasa a ese bloque). */
+export function moveCellTo(tipo: FotoTipo, sid: string, cid: string, targetCid: string, after: boolean): void {
+  mapSections(tipo, (l) => l.map((x) => {
+    if (x.id !== sid || cid === targetCid) return x;
+    const cell = x.cells.find((c) => c.id === cid), tgt = x.cells.find((c) => c.id === targetCid);
+    if (!cell || !tgt) return x;
+    const rest = x.cells.filter((c) => c.id !== cid);
+    const j = rest.findIndex((c) => c.id === targetCid) + (after ? 1 : 0);
+    rest.splice(j, 0, { ...cell, bloque: tgt.bloque });
+    return { ...x, cells: rest };
+  }));
+}
+
+/** Arrastrar: coloca un bloque entero antes/después de otro. */
+export function moveBlockTo(tipo: FotoTipo, sid: string, bloque: string, target: string, after: boolean): void {
+  mapSections(tipo, (l) => l.map((x) => {
+    if (x.id !== sid || bloque === target) return x;
+    const names = blockNames(x.cells).filter((n) => n !== bloque);
+    const j = names.indexOf(target) + (after ? 1 : 0);
+    if (j < 0) return x;
+    names.splice(j, 0, bloque);
+    return { ...x, cells: names.flatMap((n) => x.cells.filter((c) => (c.bloque ?? "") === n)) };
+  }));
+}
+
+/** Arrastrar: coloca una sección antes/después de otra. */
+export function moveSectionTo(tipo: FotoTipo, sid: string, target: string, after: boolean): void {
+  mapSections(tipo, (l) => {
+    if (sid === target) return l;
+    const sec = l.find((x) => x.id === sid);
+    if (!sec) return l;
+    const rest = l.filter((x) => x.id !== sid);
+    const j = rest.findIndex((x) => x.id === target);
+    if (j < 0) return l;
+    rest.splice(j + (after ? 1 : 0), 0, sec);
+    return rest;
+  });
+}
+
 /** Sección nueva. Con `items` trae esas descripciones agrupadas en sus bloques; sin ellas queda vacía para armarla a mano. */
 export function addSection(tipo: FotoTipo, lado: Lado, items: { nombre: string; categoria: string }[] = []): void {
   mapSections(tipo, (l) => [...l, { id: uid(), lado, cells: items.map((it) => newCell(it.nombre, it.categoria)) }]);
