@@ -56,7 +56,6 @@ const emptyRow: Row = { incluir: true, texto: "", images: [] };
 /** Página de un tipo de CheckList: datos, ejecución por consola y PDF. */
 export default function ChecklistTypePage() {
   const { id = "" } = useParams();
-  const { me } = useAuth();
   const { list, loaded } = useChecklistTypes();
   const type = list.find((t) => t.id === id);
   if (!loaded) return <Spinner />;
@@ -65,6 +64,7 @@ export default function ChecklistTypePage() {
 }
 
 function Inner({ type }: { type: CkType }) {
+  const { me } = useAuth();
   const { data } = type;
   const navigate = useNavigate();
   const [tab, setTab] = usePersistentState<"run" | "edit">(`checklist.tab.${type.id}`, "run");
