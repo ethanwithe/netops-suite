@@ -87,7 +87,13 @@ def create_window(payload: schemas.PhotoWindowIn, db: Session = Depends(get_db))
     db.flush()
 
     base = payload.copiar_de or ""
-    if base:
+    if payload.items:
+        for i, it in enumerate(payload.items[:300]):
+            cat = str(it.get("categoria") or "").strip()[:120]
+            nom = str(it.get("nombre") or "").strip()[:200]
+            if cat and nom:
+                db.add(models.PhotoItem(tipo=win.id, categoria=cat, nombre=nom, orden=(i + 1) * 10))
+    elif base:
         for it in sorted(
             db.query(models.PhotoItem).filter(models.PhotoItem.tipo == base).all(),
             key=_sort_key,

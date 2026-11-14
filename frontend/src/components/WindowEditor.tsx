@@ -9,8 +9,32 @@ const BASES = [
   { value: "fibra", label: "Copiar los ítems de Fibra convencional" },
   { value: "gpon_ont", label: "Copiar los ítems de GPON con ONT" },
   { value: "gpon_modulo", label: "Copiar los ítems de GPON con módulo" },
+  { value: "pj", label: "Copiar los ítems de RF Poder Judicial" },
   { value: "", label: "Empezar sin ítems (los agrego yo)" },
 ];
+
+/** Secciones y descripciones del RF Poder Judicial (lo que haya guardado en esta cuenta, o su diseño base). */
+function pjItems(): { categoria: string; nombre: string }[] {
+  let secs: { title?: string; cells?: { caption?: string }[] }[] = [];
+  try {
+    const raw = localStorage.getItem("netops.ui.v1.poderjudicial.form");
+    const v = raw ? JSON.parse(raw)?.v : null;
+    if (Array.isArray(v?.sections)) secs = v.sections;
+  } catch { /* sin datos guardados */ }
+  if (!secs.length) {
+    secs = [
+      { title: "Equipos y Materiales Instalados en la Sede", cells: [{}, {}] },
+      { title: "Instalación y Diseño en la Sede", cells: [{}, {}] },
+      { title: "Etiquetado las Conexiones de Patchcord de FO en la Sede", cells: [{}, {}] },
+    ];
+  }
+  const out: { categoria: string; nombre: string }[] = [];
+  secs.forEach((s, si) => {
+    const cat = (s.title || "").trim().toUpperCase() || `SECCIÓN ${si + 1}`;
+    (s.cells?.length ? s.cells : [{}]).forEach((c, ci) => out.push({ categoria: cat, nombre: (c.caption || "").trim() || `Foto ${ci + 1}` }));
+  });
+  return out;
+}
 
 const toSel = (v?: { id: string | null }): LogoSel => (v?.id ? { id: v.id, path: "", url: "" } : NO_LOGO);
 
@@ -48,7 +72,8 @@ export default function WindowEditor({ initial, onSave, onCancel, onDelete }: Pr
       await onSave({
         nombre: nombre.trim(),
         config: { proy, cliente, sot, cid, contrata, logoIzq: { id: logoIzq.id }, logoDer: { id: logoDer.id } },
-        copiar_de: initial ? undefined : base,
+        copiar_de: initial ? undefined : base === "pj" ? "" : base,
+        items: !initial && base === "pj" ? pjItems() : undefined,
       });
     } catch (e) {
       setError(apiErrorMessage(e, "No se pudo guardar la ventana."));
