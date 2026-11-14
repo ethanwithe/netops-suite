@@ -36,7 +36,7 @@ type Poly = { id: number; k: "poly"; pts: Point[]; closed: boolean; smooth: bool
 type Obj =
   | Poly
   | { id: number; k: "blur"; a: Point; b: Point }
-  | { id: number; k: "text"; p: Point; text: string; size: number; color: string; bg: TextBg; bold: boolean; stamp?: boolean; font?: string; align?: Align };
+  | { id: number; k: "text"; p: Point; text: string; size: number; color: string; bg: TextBg; bold: boolean; stamp?: boolean; font?: string; align?: Align; rot?: number };
 
 interface Doc {
   base: HTMLCanvasElement; // imagen de trabajo (nunca se modifica: cada recorte/giro crea otra)
@@ -214,6 +214,7 @@ function renderObjects(ctx: CanvasRenderingContext2D, objects: Obj[], s: number,
       ctx.textBaseline = "top";
       const pad = px * 0.28;
       const x = o.p.x * s, y = o.p.y * s;
+      if (o.rot && !o.stamp) { const cx = x + m.w / 2, cy = y + m.h / 2; ctx.translate(cx, cy); ctx.rotate((o.rot * Math.PI) / 180); ctx.translate(-cx, -cy); }
       if (o.stamp) {
         // mismo estilo que el sello de la cámara: letra cursiva blanca con sombra, sin franja
         ctx.fillStyle = o.color;
@@ -246,6 +247,12 @@ function renderObjects(ctx: CanvasRenderingContext2D, objects: Obj[], s: number,
   }
 }
 
+/** Gira un punto `deg` grados alrededor de `c`. */
+function rotPt(p: Point, c: Point, deg: number): Point {
+  const a = (deg * Math.PI) / 180, co = Math.cos(a), si = Math.sin(a), dx = p.x - c.x, dy = p.y - c.y;
+  return { x: c.x + dx * co - dy * si, y: c.y + dx * si + dy * co };
+}
+
 /** Caja que ocupa un objeto, en píxeles de imagen. */
 function boundsImg(ctx: CanvasRenderingContext2D, o: Obj, u: number) {
   if (o.k === "text") {
@@ -272,6 +279,7 @@ function hit(ctx: CanvasRenderingContext2D, o: Obj, p: Point, tol: number, u: nu
         p.y >= Math.min(o.a.y, o.b.y) && p.y <= Math.max(o.a.y, o.b.y);
     case "text": {
       const m = textMetrics(ctx, o, o.size * u);
+      if (o.rot) p = rotPt(p, { x: o.p.x + m.w / 2, y: o.p.y + m.h / 2 }, -o.rot);
       return p.x >= o.p.x - tol / 2 && p.x <= o.p.x + m.w + tol / 2 && p.y >= o.p.y - tol / 2 && p.y <= o.p.y + m.h + tol / 2;
     }
   }
@@ -518,7 +526,7 @@ export default function ImageAnnotator({ imageUrl, baseUrl, stamp, onClose, onSa
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  const moving = useRef<{ id: number; kind: "obj" | "v" | "scale"; idx: number; last: Point; origin: Doc; moved: boolean; size0?: number; d0?: number; anchor?: Point } | null>(null);
+  const moving = useRef<{ id: number; kind: "obj" | "v" | "scale" | "rot"; idx: number; last: Point; origin: Doc; moved: boolean; size0?: number; d0?: number; anchor?: Point } | null>(null);
   // Dos dedos (pellizcar) sobre un texto/sello: agrandar, achicar y mover a la vez.
   const pointers = useRef(new Map<number, { x: number; y: number }>());
   const pinch = useRef<{ id: number; d0: number; size0: number; mid0: { x: number; y: number }; p0: Point; origin: Doc } | null>(null);
@@ -649,11 +657,22 @@ export default function ImageAnnotator({ imageUrl, baseUrl, stamp, onClose, onSa
     if (tool === "select" && selected) {
       const bb = boundsImg(ctx, selected, u);
       ctx.save();
+      const tr = selected.k === "text" && !selected.stamp && selected.rot && bb ? selected.rot : 0;
+      if (tr && bb) { const cx = (bb.x + bb.w / 2) * s, cy = (bb.y + bb.h / 2) * s; ctx.translate(cx, cy); ctx.rotate((tr * Math.PI) / 180); ctx.translate(-cx, -cy); }
       if (bb) {
         ctx.setLineDash([6 * cs, 4 * cs]); ctx.lineWidth = 1.2 * cs; ctx.strokeStyle = "rgba(37,99,235,.8)";
         ctx.strokeRect(bb.x * s - 4 * cs, bb.y * s - 4 * cs, bb.w * s + 8 * cs, bb.h * s + 8 * cs);
       }
       ctx.setLineDash([]);
+      if (selected.k === "text" && !selected.stamp && bb) {
+        // tirador de giro libre, encima de la caja
+        const rx = (bb.x + bb.w / 2) * s, ry = bb.y * s - 4 * cs - 26 * cs;
+        ctx.strokeStyle = "rgba(37,99,235,.8)"; ctx.lineWidth = 1.2 * cs;
+        ctx.beginPath(); ctx.moveTo(rx, bb.y * s - 4 * cs); ctx.lineTo(rx, ry); ctx.stroke();
+        ctx.beginPath(); ctx.arc(rx, ry, 9 * cs, 0, Math.PI * 2);
+        ctx.fillStyle = "#2563eb"; ctx.strokeStyle = "#fff"; ctx.lineWidth = 2 * cs; ctx.fill(); ctx.stroke();
+        ctx.beginPath(); ctx.arc(rx, ry, 4 * cs, -Math.PI * 0.8, Math.PI * 0.55); ctx.stroke();
+      }
       if (selected.k === "text" && bb) {
         // esquina para agrandar/achicar arrastrando
         const hx = (bb.x + bb.w) * s + 4 * cs, hy = (bb.y + bb.h) * s + 4 * cs;
@@ -758,9 +777,18 @@ export default function ImageAnnotator({ imageUrl, baseUrl, stamp, onClose, onSa
       const sel = selected;
       if (sel?.k === "text") {
         const m = textMetrics(ctx, sel, sel.size * u);
-        const hp = { x: sel.p.x + m.w + 4 * pxScale, y: sel.p.y + m.h + 4 * pxScale };
+        const ctr = { x: sel.p.x + m.w / 2, y: sel.p.y + m.h / 2 };
+        const rt = sel.stamp ? 0 : sel.rot ?? 0;
+        if (!sel.stamp) {
+          const rh = rotPt({ x: ctr.x, y: sel.p.y - 30 * pxScale }, ctr, rt);
+          if (dist(rh, p) <= 16 * pxScale) {
+            moving.current = { id: sel.id, kind: "rot", idx: -1, last: p, origin: doc, moved: false, anchor: ctr };
+            return;
+          }
+        }
+        const hp = rotPt({ x: sel.p.x + m.w + 4 * pxScale, y: sel.p.y + m.h + 4 * pxScale }, ctr, rt);
         if (dist(hp, p) <= 16 * pxScale) {
-          moving.current = { id: sel.id, kind: "scale", idx: -1, last: p, origin: doc, moved: false, size0: sel.size, d0: dist(hp, sel.p) || 1, anchor: sel.p };
+          moving.current = { id: sel.id, kind: "scale", idx: -1, last: p, origin: doc, moved: false, size0: sel.size, d0: dist(hp, rt ? ctr : sel.p) || 1, anchor: rt ? ctr : sel.p };
           return;
         }
       }
@@ -851,7 +879,13 @@ export default function ImageAnnotator({ imageUrl, baseUrl, stamp, onClose, onSa
       if (!m.moved && Math.hypot(dx, dy) < 2 * pxScale) return;
       m.moved = true;
       m.last = p;
-      if (m.kind === "scale" && m.anchor && m.d0 && m.size0) {
+      if (m.kind === "rot" && m.anchor) {
+        let deg = (Math.atan2(p.y - m.anchor.y, p.x - m.anchor.x) * 180) / Math.PI + 90;
+        deg = ((Math.round(deg) % 360) + 360) % 360;
+        const near = Math.round(deg / 15) * 15;
+        if (Math.abs(deg - near) <= 3) deg = near % 360; // se pega a múltiplos de 15°
+        setDoc((d) => d && { ...d, objects: d.objects.map((o) => (o.id === m.id && o.k === "text" ? { ...o, rot: deg } : o)) });
+      } else if (m.kind === "scale" && m.anchor && m.d0 && m.size0) {
         const size = Math.max(6, Math.min(600, m.size0 * (dist(p, m.anchor) / m.d0)));
         setDoc((d) => d && { ...d, objects: d.objects.map((o) => (o.id === m.id && o.k === "text" ? { ...o, size } : o)) });
       } else if (m.kind === "v") {
@@ -1317,6 +1351,15 @@ export default function ImageAnnotator({ imageUrl, baseUrl, stamp, onClose, onSa
                     </span>
                   </span>
                 </>
+              )}
+              {selected?.k === "text" && !selected.stamp && (
+                <label className="flex shrink-0 items-center gap-1 text-[11px] text-slate-600" title="Girar libremente (también con el círculo azul sobre el texto)">
+                  Girar
+                  <input type="range" min={0} max={359} value={selected.rot ?? 0} onChange={(e) => patchSelected({ rot: Number(e.target.value) })} className="w-24" />
+                  <input type="number" min={0} max={359} value={selected.rot ?? 0} className="input !w-14 !py-0.5 text-xs"
+                    onChange={(e) => patchSelected({ rot: ((Math.round(Number(e.target.value) || 0) % 360) + 360) % 360 })} />°
+                  <button type="button" className="rounded border border-slate-300 px-1.5 py-0.5 hover:bg-slate-100" onClick={() => patchSelected({ rot: 0 })}>0°</button>
+                </label>
               )}
               <span className="shrink-0 text-[10px] text-slate-400">Tamaño libre: pellizca con dos dedos, rueda del mouse o arrastra la esquina azul</span>
               <select className={sel} value={selected?.k === "text" ? selected.bg : textBg} aria-label="Fondo del texto"
