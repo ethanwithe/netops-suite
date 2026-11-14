@@ -70,6 +70,7 @@ def _openai_key() -> str:
 def status():
     return {"adjust": bool(_anthropic_key()) or bool(llm.free_provider()),
             "edit": bool(_openrouter_key()) or bool(_openai_key()) or bool(_gemini_key()),
+            "edit_model": OPENROUTER_IMAGE_MODEL if _openrouter_key() else None,
             "edit_provider": "openrouter" if _openrouter_key() else ("gemini" if _gemini_key() else ("openai" if _openai_key() else None))}
 
 
@@ -243,14 +244,13 @@ async def edit(file: UploadFile = File(...), prompt: str = Form(...)):
     last: HTTPException | None = None
     if okey:
         try:
-            return {"image": await run_in_threadpool(_openrouter_edit, okey, img, ctype, prompt)}
+            return {"image": await run_in_threadpool(_openrouter_edit, okey, img, ctype, prompt), "provider": "openrouter", "model": OPENROUTER_IMAGE_MODEL}
         except HTTPException as e:
             last = e
-            if not gkey and not key:
-                raise
+            raise  # con OpenRouter configurado no se cae en silencio a Gemini: se muestra el error real
     if gkey:
         try:
-            return {"image": await run_in_threadpool(_gemini_edit, gkey, img, ctype, prompt)}
+            return {"image": await run_in_threadpool(_gemini_edit, gkey, img, ctype, prompt), "provider": "gemini"}
         except HTTPException as e:
             last = e
             if not key:
