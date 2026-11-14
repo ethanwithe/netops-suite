@@ -1,10 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Navigate, useNavigate, useParams } from "react-router-dom";
 import { api, apiErrorMessage } from "../api/client";
 import ClientPicker from "../components/ClientPicker";
 import WorkspaceBar from "../components/WorkspaceBar";
 import Editor from "../diagram/Editor";
-import { DATOS_KEYS, findTemplate, resolveDoc, TEMPLATES } from "../diagram/templates";
+import { DATOS_KEYS, resolveDoc } from "../diagram/templates";
+import { fabricaOf, grupoOf, optId, storageId, templateFor } from "../diagram/groups";
+import type { OptionInfo } from "../diagram/groups";
+import Spinner from "../components/Spinner";
+import { fetchOption, fetchVersion, publishOption, setOptionBase, useDiagramOptions } from "../store/diagramOptions";
+import type { OptionDetail } from "../store/diagramOptions";
 import type { Fields } from "../diagram/templates";
 import type { Doc } from "../diagram/types";
 import { useUndo } from "../diagram/useUndo";
@@ -19,14 +24,33 @@ const EMPTY: Saved = { fields: {}, doc: null };
 const dmy = (iso: string) => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || ""); return m ? `${m[3]}/${m[2]}/${m[1]}` : iso || ""; };
 const today = () => dmy(new Date().toISOString().slice(0, 10));
 
-/** Ventana Gráfica: un diagrama por tipo de servicio; los datos se piden al inicio y todo se puede editar como en PowerPoint. */
-export default function GraficaPage({ tplId }: { tplId: string }) {
-  const tpl = findTemplate(tplId);
+/** Ventana Gráfica: una opción por marca y tipo de servicio; los datos se piden al inicio y todo se puede editar como en PowerPoint. */
+export default function GraficaPage() {
+  const { grupo = "", slug = "" } = useParams();
+  const { list, loaded } = useDiagramOptions();
+  const id = optId(grupo, slug);
+  const g = grupoOf(grupo);
+  const options: OptionInfo[] = useMemo(() => [
+    ...fabricaOf(grupo),
+    ...list.filter((o) => o.grupo === grupo && o.custom).map((o) => ({ id: o.id, grupo: grupo as OptionInfo["grupo"], slug: o.id.slice(grupo.length + 1), label: o.nombre, custom: true })),
+  ], [list, grupo]);
+  const info = options.find((o) => o.id === id);
+  const [remote, setRemote] = useState<OptionDetail | null | undefined>(undefined);
+  const reload = useCallback(() => fetchOption(id).then(setRemote).catch(() => setRemote((r) => r ?? null)), [id]);
+  useEffect(() => { setRemote(undefined); void reload(); }, [reload]);
+  if (!g || (loaded && !info)) return <Navigate to="/grafica" replace />;
+  if (!info || remote === undefined) return <Spinner />;
+  return <GraficaInner key={id} info={info} options={options} remote={remote} reload={reload} />;
+}
+
+function GraficaInner({ info, options, remote, reload }: { info: OptionInfo; options: OptionInfo[]; remote: OptionDetail | null; reload: () => Promise<void> }) {
+  const tpl = templateFor(storageId(info.id), info.label);
   const { me } = useAuth();
   const navigate = useNavigate();
   const [data, setData] = usePersistentState<Saved>(`grafica.${tpl.id}`, EMPTY);
   const fields = data.fields;
-  const doc = data.doc ?? tpl.doc;
+  const baseDoc: Doc = remote?.published ?? tpl.doc;     // lo que ven todos hasta que alguien edite su copia
+  const doc = data.doc ?? baseDoc;
   const hist = useUndo<Doc>(doc, useCallback((d: Doc) => setData((p) => ({ ...p, doc: d })), [setData]));
   const [open, setOpen] = useState(true);
   const [busy, setBusy] = useState<"" | "pptx" | "pdf">("");
@@ -104,8 +128,8 @@ export default function GraficaPage({ tplId }: { tplId: string }) {
           <h2 className="page-title">Gráfica</h2>
           <p className="text-sm text-slate-500">{tpl.desc}</p>
         </div>
-        <select className="input w-auto" value={tpl.id} onChange={(e) => navigate(`/grafica/${e.target.value}`)} aria-label="Tipo de diagrama">
-          {TEMPLATES.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
+        <select className="input w-auto" value={info.id} onChange={(e) => { const o = options.find((x) => x.id === e.target.value); if (o) navigate(`/grafica/${o.grupo}/${o.slug}`); }} aria-label="Opción de gráfica">
+          {options.map((o) => <option key={o.id} value={o.id}>{grupoOf(o.grupo)?.label.replace("Gráficas ", "")} · {o.label}</option>)}
         </select>
       </div>
 
@@ -145,10 +169,65 @@ export default function GraficaPage({ tplId }: { tplId: string }) {
       <div className="flex flex-wrap items-center gap-2">
         <button className="btn-primary" onClick={() => void download("pptx")} disabled={!!busy}>{busy === "pptx" ? "Generando…" : "Descargar PowerPoint (.pptx)"}</button>
         <button className="btn-secondary" onClick={() => void download("pdf")} disabled={!!busy}>{busy === "pdf" ? "Generando…" : "Descargar PDF"}</button>
-        <button className="btn-secondary" onClick={() => { if (confirm("¿Volver al diseño original? Puedes deshacerlo con Ctrl+Z.")) hist.commit(tpl.doc); }}>Restaurar diseño base</button>
         <span className="text-xs text-slate-500">{baseName}.pptx</span>
       </div>
+      <DesignBar doc={doc} remote={remote} factory={tpl.doc} optId={info.id} isSuper={me?.role === "superadmin"} hist={hist} reload={reload} />
       {error && <p className="text-sm text-red-600">{error}</p>}
+    </div>
+  );
+}
+
+
+/** Diseño de la gráfica: restaurar al base (todos) y, para el superadmin, publicar para todos y gestionar los diseños base. */
+function DesignBar({ doc, remote, factory, optId: oid, isSuper, hist, reload }: {
+  doc: Doc; remote: OptionDetail | null; factory: Doc; optId: string; isSuper: boolean;
+  hist: ReturnType<typeof useUndo<Doc>>; reload: () => Promise<void>;
+}) {
+  const [msg, setMsg] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const base = remote?.base ?? factory;
+  const run = async (fn: () => Promise<void>, ok: string) => {
+    setBusy(true); setMsg(null);
+    try { await fn(); setMsg(ok); } catch (e) { setMsg(apiErrorMessage(e, "No se pudo completar.")); }
+    setBusy(false);
+  };
+  const versions = remote?.versions ?? [];
+  return (
+    <div className="card space-y-2 !p-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Diseño</span>
+        <button className="btn-secondary text-xs" disabled={busy}
+          onClick={() => { if (confirm("¿Restaurar al diseño base? Puedes deshacerlo con Ctrl+Z.")) { hist.commit(base); setMsg("Restaurado al diseño base"); } }}>
+          Restaurar a diseño base
+        </button>
+        {isSuper && (
+          <>
+            <button className="btn-secondary text-xs" disabled={busy}
+              onClick={() => confirm("¿Actualizar esta gráfica para TODOS con el diseño que ves ahora?") && void run(async () => { await publishOption(oid, doc); await reload(); }, "Actualizado para todos")}>
+              Actualizar cambios para todos
+            </button>
+            <button className="btn-secondary text-xs" disabled={busy}
+              onClick={() => confirm("¿Poner el diseño actual como diseño base? Se guarda como la versión base más reciente (las anteriores se conservan) y pasa a ser la de todos.") && void run(async () => { await setOptionBase(oid, doc); await reload(); }, "Diseño base guardado")}>
+              Poner como diseño base
+            </button>
+            <button className="btn-secondary text-xs" disabled={busy || !remote?.base}
+              onClick={() => { if (remote?.base && confirm("¿Cargar el diseño base más reciente en el lienzo? Puedes deshacerlo con Ctrl+Z.")) { hist.commit(remote.base); setMsg("Cargado el diseño base reciente"); } }}>
+              Ir a diseño base reciente
+            </button>
+            <select className="input !w-auto !py-1 text-xs" value="" disabled={busy || versions.length === 0} aria-label="Recuperar un diseño base anterior"
+              onChange={(e) => {
+                const v = versions.find((x) => x.id === e.target.value);
+                if (!v) return;
+                void run(async () => { const d = await fetchVersion(oid, v.id); hist.commit(d); }, "Diseño base anterior cargado: revísalo y, si te sirve, ponlo como base o actualiza para todos");
+              }}>
+              <option value="">{versions.length ? "Recuperar diseño base anterior…" : "Sin diseños base anteriores"}</option>
+              {versions.map((v, i) => <option key={v.id} value={v.id}>{i === 0 ? "Vigente · " : ""}{new Date(v.at).toLocaleString("es-PE", { dateStyle: "short", timeStyle: "short" })}{v.by ? ` · ${v.by}` : ""}</option>)}
+            </select>
+          </>
+        )}
+        {msg && <span className="text-xs text-slate-600">{msg}</span>}
+      </div>
+      <p className="text-[11px] text-slate-400">Tus cambios se guardan solo en tu cuenta{isSuper ? "; «Actualizar cambios para todos» y «Poner como diseño base» los comparten" : ""}.</p>
     </div>
   );
 }

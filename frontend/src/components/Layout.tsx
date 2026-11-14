@@ -14,7 +14,7 @@ import AnnouncementBar from "./AnnouncementBar";
 import Backdrop from "./Backdrop";
 import TabBar, { TabGroup } from "./TabBar";
 import { initLiquid } from "../liquid";
-import { TEMPLATES } from "../diagram/templates";
+import { FABRICA, GRUPOS } from "../diagram/groups";
 import { can, displayName, logout, useAuth } from "../store/auth";
 import { Avatar } from "../pages/ProfilePage";
 import { getActingClient, setActingClient } from "../api/client";
@@ -39,7 +39,8 @@ const TITLES: Record<string, string> = {
   "/admin/actividad": "Actividad",
   "/admin/reportes": "Reportes de Bit",
   "/grafica/iconos": "Iconos",
-  ...Object.fromEntries(TEMPLATES.map((t) => [`/grafica/${t.id}`, t.label])),
+  ...Object.fromEntries(GRUPOS.map((g) => [`/grafica/${g.id}`, g.label])),
+  ...Object.fromEntries(GRUPOS.flatMap((g) => FABRICA.map((f) => [`/grafica/${g.id}/${f.slug}`, `${g.label.replace("Gráficas ", "")} · ${f.label}`]))),
   "/plantillas": "Plantillas",
   "/checklist": "CheckList",
   ...Object.fromEntries(FOTO_SUB.map((o) => [o.to, o.label])),
@@ -90,7 +91,7 @@ export default function Layout() {
   const inGr = pathname.startsWith("/grafica");
   const [grOpen, setGrOpen] = useState(inGr);
   const grShown = grOpen || inGr;
-  const grSub = [...TEMPLATES.map((t) => ({ to: `/grafica/${t.id}`, label: t.label })), { to: "/grafica/iconos", label: "Iconos" }];
+  const grSub = [...GRUPOS.map((g) => ({ to: `/grafica/${g.id}`, label: g.label })), { to: "/grafica/iconos", label: "Iconos" }];
   const inFoto = pathname.startsWith("/fotografico");
   const [fotoOpen, setFotoOpen] = useState(inFoto);
   const fotoShown = fotoOpen || inFoto;
@@ -197,7 +198,7 @@ export default function Layout() {
           )}
           <div className="side-group">Operación</div>
           {can(me, "grafica") && (
-            <Group inside={inGr} shown={grShown} onToggle={() => setGrOpen(!grShown)} title="Gráfica" desc={`${TEMPLATES.length} diagrama(s) · iconos`}>
+            <Group inside={inGr} shown={grShown} onToggle={() => setGrOpen(!grShown)} title="Gráfica" desc="Cisco · Huawei · Fortinet · iconos">
               {grSub.map((o) => subLink(o))}
             </Group>
           )}
