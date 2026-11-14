@@ -46,11 +46,15 @@ function moveItemTo(q: CkData, id: string, target: string, after: boolean): CkDa
 
 /** Edita todo el checklist: nombre, secciones, ítems (texto/foto + comando) y parámetros. */
 export default function ChecklistStructure({
-  type, onSave, onDelete,
+  type, onSave, onDelete, isSuper, onPublish, onSetBase, onRestore,
 }: {
   type: CkType;
   onSave: (nombre: string, data: CkData) => Promise<void>;
   onDelete: () => Promise<void>;
+  isSuper?: boolean;
+  onPublish?: (nombre: string, data: CkData) => Promise<void>;
+  onSetBase?: (nombre: string, data: CkData) => Promise<void>;
+  onRestore?: () => Promise<void>;
 }) {
   const [nombre, setNombre] = useState(type.nombre);
   const [d, setD] = useState<CkData>(() => JSON.parse(JSON.stringify(type.data)));
@@ -64,18 +68,26 @@ export default function ChecklistStructure({
   const setParam = (pi: number, patch: Partial<CkParam>) =>
     setD((p) => ({ ...p, params: p.params.map((x, i) => (i === pi ? { ...x, ...patch } : x)) }));
 
-  async function save() {
+  async function run(fn: () => Promise<void>, ok: string, fail: string) {
     setBusy(true);
     setMsg(null);
     try {
-      await onSave(nombre.trim() || type.nombre, d);
-      setMsg("Guardado");
+      await fn();
+      setMsg(ok);
     } catch (e) {
-      setMsg(apiErrorMessage(e, "No se pudo guardar."));
+      setMsg(apiErrorMessage(e, fail));
     } finally {
       setBusy(false);
     }
   }
+  const nm = () => nombre.trim() || type.nombre;
+  const save = () => run(() => onSave(nm(), d), "Guardado (solo en tu cuenta)", "No se pudo guardar.");
+  const publish = () => confirm("¿Actualizar este checklist para TODOS los usuarios con lo que ves ahora?") &&
+    run(() => onPublish!(nm(), d), "Actualizado para todos", "No se pudo actualizar para todos.");
+  const setBase = () => confirm("¿Poner esto como diseño base? También pasa a ser la versión de todos, y «Restaurar» volverá a esto.") &&
+    run(() => onSetBase!(nm(), d), "Diseño base guardado", "No se pudo fijar el diseño base.");
+  const restore = () => confirm("¿Restaurar al diseño base? Se pierden tus cambios no publicados de este checklist.") &&
+    run(() => onRestore!(), "Restaurado al diseño base", "No se pudo restaurar.");
 
   return (
     <div className="space-y-2">
@@ -197,6 +209,9 @@ export default function ChecklistStructure({
           >
             Borrar checklist
           </button>
+          {onRestore && <button className="btn-secondary text-sm" onClick={restore} disabled={busy} title="Vuelve a la versión base de este checklist">Restaurar a diseño base</button>}
+          {isSuper && onSetBase && <button className="btn-secondary text-sm" onClick={setBase} disabled={busy} title="Solo superadmin">Poner como diseño base</button>}
+          {isSuper && onPublish && <button className="btn-secondary text-sm" onClick={publish} disabled={busy} title="Solo superadmin">Actualizar cambios para todos</button>}
           <button className="btn-primary" onClick={save} disabled={busy}>{busy ? "Guardando..." : "Guardar cambios"}</button>
         </div>
       </div>
