@@ -122,6 +122,34 @@ class ChecklistBase(Base):
     updated_at = Column(DateTime, default=dt.datetime.utcnow)
 
 
+class DiagramDesign(Base):
+    """Opción de Gráfica (p. ej. «Cisco · Internet GPON con ONT»): su diseño publicado para todos.
+
+    Las opciones de fábrica solo tienen fila cuando alguien publica un cambio; las creadas por usuarios siempre.
+    """
+    __tablename__ = "diagram_designs"
+
+    id = Column(String, primary_key=True)
+    grupo = Column(String, nullable=False, index=True)
+    nombre = Column(String, nullable=False, default="")
+    custom = Column(Boolean, default=False)
+    orden = Column(Integer, default=100)
+    published = Column(JSON, nullable=True)
+    created_by = Column(String, nullable=True)
+    updated_at = Column(DateTime, default=dt.datetime.utcnow)
+
+
+class DiagramBaseVersion(Base):
+    """Historial de diseños base de una opción de Gráfica (el más reciente es el vigente)."""
+    __tablename__ = "diagram_base_versions"
+
+    id = Column(String, primary_key=True, default=gen_uuid)
+    opt_id = Column(String, nullable=False, index=True)
+    doc = Column(JSON, nullable=False)
+    created_by = Column(String, nullable=True)
+    created_at = Column(DateTime, default=dt.datetime.utcnow)
+
+
 class Client(Base):
     """Cliente / servicio identificado por su SOT.
 

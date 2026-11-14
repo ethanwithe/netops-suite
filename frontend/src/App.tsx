@@ -2,12 +2,12 @@ import { lazy, useEffect } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import Layout from "./components/Layout";
 import Spinner from "./components/Spinner";
-import { TEMPLATES } from "./diagram/templates";
 import LoginPage, { ForcePassword } from "./pages/LoginPage";
 import { can, loadMe, useAuth } from "./store/auth";
 
 // Cada pantalla se descarga solo cuando la abres (antes todo se bajaba de golpe al entrar)
 const GraficaPage = lazy(() => import("./pages/GraficaPage"));
+const GraficaGroupPage = lazy(() => import("./pages/GraficaGroupPage"));
 const DiagramIconsPage = lazy(() => import("./pages/DiagramIconsPage"));
 const PlantillasPage = lazy(() => import("./pages/PlantillasPage"));
 const ChecklistTypePage = lazy(() => import("./pages/ChecklistTypePage"));
@@ -60,9 +60,11 @@ export default function App() {
         <Route path="/panel" element={<DashboardPage />} />
         <Route path="/perfil" element={<ProfilePage />} />
         <Route path="/agenda" element={<AgendaPage />} />
-        <Route path="/grafica" element={<Navigate to={`/grafica/${TEMPLATES[0].id}`} replace />} />
+        <Route path="/grafica" element={<Navigate to="/grafica/cisco" replace />} />
+        <Route path="/grafica/ont-cisco" element={<Navigate to="/grafica/cisco/gpon-ont" replace />} />
         <Route path="/grafica/iconos" element={<Need feature="grafica"><DiagramIconsPage /></Need>} />
-        {TEMPLATES.map((t) => <Route key={t.id} path={`/grafica/${t.id}`} element={<Need feature="grafica"><GraficaPage key={t.id} tplId={t.id} /></Need>} />)}
+        <Route path="/grafica/:grupo" element={<Need feature="grafica"><GraficaGroupPage /></Need>} />
+        <Route path="/grafica/:grupo/:slug" element={<Need feature="grafica"><GraficaPage /></Need>} />
         <Route path="/pruebas" element={<Navigate to="/grafica" replace />} />
         <Route path="/plantillas" element={<Need feature="plantillas"><PlantillasPage /></Need>} />
         <Route path="/clientes" element={<ClientsPage />} />
