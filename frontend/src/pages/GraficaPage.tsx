@@ -33,9 +33,10 @@ export default function GraficaPage({ tplId }: { tplId: string }) {
   const [error, setError] = useState<string | null>(null);
 
   const setField = (k: string, v: string) => setData((p) => ({ ...p, fields: { ...p.fields, [k]: v } }));
-  const setMany = (patch: Fields, onlyEmpty = false) =>
+  const setMany = (patch: Fields, onlyEmpty = false, replace = false) =>
     setData((p) => {
-      const next = { ...p.fields };
+      // replace: al elegir otro cliente se parte de cero (solo se conserva «Realizado por»); lo que ese cliente no tenga queda en blanco
+      const next: Fields = replace ? { realizado: p.fields.realizado ?? myName, fecha: today() } : { ...p.fields };
       for (const [k, v] of Object.entries(patch)) if (v && (!onlyEmpty || !next[k]?.trim())) next[k] = v;
       return { ...p, fields: next };
     });
@@ -45,16 +46,16 @@ export default function GraficaPage({ tplId }: { tplId: string }) {
   useEffect(() => { if (myName && fields.realizado === undefined) setField("realizado", myName); }, [myName]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (fields.fecha === undefined) setField("fecha", today()); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const fromClient = useCallback((c: ClientRecord, onlyEmpty: boolean) => {
+  const fromClient = useCallback((c: ClientRecord, onlyEmpty: boolean, replace = false) => {
     const patch: Fields = { sot: c.sot, cliente: c.nombre, cid: c.cid, proyecto: c.proy, empresa: c.contrata, fecha: dmy(c.fecha) };
     const norm = (s: string) => s.trim().toUpperCase();
     const datos = Object.fromEntries(Object.entries(c.datos ?? {}).map(([k, v]) => [norm(k), v]));
     for (const [key, name] of Object.entries(DATOS_KEYS)) if (datos[name]) patch[key] = datos[name];
-    setMany(patch, onlyEmpty);
+    setMany(patch, onlyEmpty, replace);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function pickClient(c: ClientRecord) {
-    fromClient(c, false);
+    fromClient(c, false, true);
     try { const { data: full } = await api.get<ClientRecord>(`/clients/by-sot/${encodeURIComponent(c.sot)}`); fromClient(full, false); } catch { /* ya se usó lo básico */ }
   }
 
