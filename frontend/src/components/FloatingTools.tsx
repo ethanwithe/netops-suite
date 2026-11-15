@@ -23,7 +23,7 @@ export default function FloatingTools() {
       <div className={dock.sat ? "" : "hidden"}>
         <FloatWindow id="saturacion" title="Saturación" front={dock.front === "sat"} onFocus={() => dock.front !== "sat" && setDock({ front: "sat" })}
           onClose={() => setDock({ sat: false })} defaultGeo={{ x: 140, y: 110, w: 780, h: 560 }}>
-          <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto p-3">
+          <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto p-3 [&>*]:shrink-0 [&>*:first-child]:shrink [&>*:first-child]:min-h-[22rem]">
             <SaturadorPanel big onRunning={(r) => setDock({ satRunning: r })} />
             <label className="flex items-center gap-2 text-sm text-slate-700">
               <input type="checkbox" checked={dock.manualSat} onChange={(e) => setDock({ manualSat: e.target.checked })} />

@@ -59,8 +59,8 @@ export default function SaturadorPanel({
   const mb = (b: number) => (b >= 1e9 ? `${(b / 1e9).toFixed(2)} GBytes` : `${(b / 1e6).toFixed(2)} MBytes`);
   const iv = (a: number, b: number) => `${a.toFixed(2).padStart(6)}-${b.toFixed(2).padEnd(6)}`;
   const row = (id: string, a: number, b: number, dB: number, uB: number, dM: number, uM: number, retr: string, measured: boolean) =>
-    `[${id.padStart(4)}] ${iv(a, b)} sec  ↓ ${(measured ? mb(dB) : "  n/d").padStart(12)} ${(measured ? dM.toFixed(1) : "n/d").padStart(8)} Mbits/sec  ↑ ${mb(uB).padStart(12)} ${uM.toFixed(1).padStart(8)} Mbits/sec  ${retr}`;
-  const HEAD = "[ ID] Intervalo        ↓ Bajada: transferencia / velocidad      ↑ Subida: transferencia / velocidad      Retr";
+    `[${id.padStart(4)}] ${iv(a, b)} sec  Baj ${(measured ? mb(dB) : "n/d").padStart(12)} ${(measured ? dM.toFixed(1) : "n/d").padStart(8)} Mbits/sec  Sub ${mb(uB).padStart(12)} ${uM.toFixed(1).padStart(8)} Mbits/sec  ${retr}`;
+  const HEAD = "[ ID] Intervalo         Bajada (transferencia / velocidad)        Subida (transferencia / velocidad)        Retr";
   const pushLog = (...l: string[]) => setBtLog((o) => [...o, ...l].slice(-4000));
   const stamp = () => new Date().toLocaleTimeString("es-PE");
 
@@ -69,7 +69,7 @@ export default function SaturadorPanel({
   useEffect(() => {
     if (via !== "agente" || !st) return;
     const seen = agentSeen.current;
-    const AH = "[ ID] Intervalo        ↑ Subida (Mbits/sec)   ↓ Bajada (Mbits/sec)   Pérdida";
+    const AH = "[ ID] Intervalo         Subida (Mbits/sec)    Bajada (Mbits/sec)    Perdida";
     if (st.corriendo) {
       if (!seen.run) {
         seen.run = true; seen.sec = -1;
@@ -77,7 +77,7 @@ export default function SaturadorPanel({
       }
       if (st.segundos !== seen.sec && st.segundos > 0) {
         seen.sec = st.segundos;
-        const ln = `[ SUM] ${(st.segundos - 1).toFixed(2).padStart(6)}-${st.segundos.toFixed(2).padEnd(6)} sec  ↑ ${st.tx_mbps.toFixed(1).padStart(8)} Mbits/sec  ↓ ${st.rx_mbps.toFixed(1).padStart(8)} Mbits/sec  ${String(st.perdida).padStart(5)}%`;
+        const ln = `[ SUM] ${(st.segundos - 1).toFixed(2).padStart(6)}-${st.segundos.toFixed(2).padEnd(6)} sec  Sub ${st.tx_mbps.toFixed(1).padStart(8)} Mbits/sec  Baj ${st.rx_mbps.toFixed(1).padStart(8)} Mbits/sec  ${String(st.perdida).padStart(5)}%`;
         setBtLog((o) => [...o, ln, ...(st.segundos % 10 === 0 ? [AH] : [])].slice(-4000));
       }
     } else if (seen.run) {
@@ -151,41 +151,46 @@ export default function SaturadorPanel({
     </div>
   );
 
+  const [logFull, setLogFull] = useState(false);
   const logPane = (btLog.length > 0 || big) ? (
     <div className={`space-y-1 ${big ? "flex min-h-0 flex-1 flex-col" : ""}`}>
       <div className="flex items-center gap-2">
         <span className="text-xs font-medium text-slate-500">Registro de la saturación (en vivo)</span>
         <span className="ml-auto flex gap-1">
+          {big && <button type="button" className="btn-secondary text-xs" onClick={() => setLogFull((f) => !f)} title="Agranda el registro a toda la ventana">{logFull ? "Reducir" : "Agrandar"}</button>}
           <button type="button" className="btn-secondary text-xs" onClick={copyLog}>Copiar</button>
           <button type="button" className="btn-secondary text-xs" onClick={saveLog}>Descargar .txt</button>
           <button type="button" className="btn-secondary text-xs" onClick={() => setBtLog([])} disabled={btRun || running}>Limpiar</button>
         </span>
       </div>
-      <pre ref={logBox} className={`overflow-auto rounded-lg bg-black p-3 font-mono text-[11px] leading-snug text-emerald-300 ${big ? "min-h-[8rem] flex-1" : "max-h-72"}`} aria-live="off">{btLog.length ? btLog.join("\n") : "(esperando… inicia la saturación y aquí verás cómo va, como iperf)"}</pre>
+      <pre ref={logBox} className={`overflow-auto rounded-lg bg-black p-3 font-mono text-[11px] leading-snug text-emerald-300 ${big ? "min-h-[8rem] flex-1" : "max-h-72"}`} style={{ lineHeight: 1.45, fontVariantLigatures: "none" }} aria-live="off">{btLog.length ? btLog.join("\n") : "(esperando… inicia la saturación y aquí verás cómo va, como iperf)"}</pre>
     </div>
   ) : null;
+
+  if (big && logFull) {
+    const on = via === "navegador" ? btRun : running;
+    return (
+      <div className="flex min-h-0 flex-1 flex-col gap-2">
+        <div className="flex items-center gap-2">
+          <span className={`rounded-full px-3 py-1 text-xs font-medium ${on ? "bg-green-100 text-green-700" : "bg-slate-200 text-slate-600"}`}>{on ? "Saturando" : "Detenida"}</span>
+          {on && <button className="btn-secondary text-xs" onClick={via === "navegador" ? stopBr : stop}>Detener</button>}
+        </div>
+        {logPane}
+      </div>
+    );
+  }
 
   if (via === "navegador") {
     const tgt = Number(mbps) || 0;
     return (
       <div className={big ? "flex min-h-0 flex-1 flex-col gap-3" : "space-y-3"}>
-        {modeSwitch}
-        <p className="text-xs text-slate-500">
-          Satura el enlace de Internet de esta PC descargando y subiendo datos en paralelo desde el navegador: no necesita instalar nada ni código.
-          Para saturar una RPV o por ICMP usa el agente.
-        </p>
+        <div className="shrink-0">{modeSwitch}</div>
         <label className="block text-sm">
           <span className="mb-1 block text-xs font-medium text-slate-500">Destino (vacío = servidor de pruebas de Cloudflare)</span>
           <div className="flex flex-wrap gap-2">
             <input className="input min-w-[200px] flex-1" value={navDest} onChange={(e) => setNavDest(e.target.value)} placeholder="IP, dominio o URL (ej. 10.31.242.25 o https://host/archivo)" disabled={btRun} />
             {navDest && <button type="button" className="btn-secondary text-xs" onClick={() => setNavDest("")} disabled={btRun}>Usar Cloudflare</button>}
           </div>
-          {navDest.trim() && (
-            <span className="mt-1 block text-[11px] text-amber-700">
-              Un navegador solo manda HTTP(S) (no ping ni paquetes crudos) y desde esta página (https) no puede llamar a destinos http://. El destino debe responder
-              por https (se prueba https://{navDest.trim().replace(/^https?:\/\//i, "")}). Si no permite CORS, se genera el tráfico pero la bajada no se puede medir. Para ICMP o una IP de RPV usa el agente.
-            </span>
-          )}
         </label>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <label className="block text-sm">
@@ -203,7 +208,7 @@ export default function SaturadorPanel({
         </div>
         {error && <p className="text-sm text-red-600">{error}</p>}
         {bt && (
-          <div className="space-y-2 rounded-lg border border-slate-200 p-3">
+          <div className="shrink-0 space-y-2 rounded-lg border border-slate-200 p-3">
             <p className="text-xs text-slate-500">{btRun ? `Saturando${navDest.trim() ? ` ${navDest.trim()}` : ""} · ${bt.sec}s${Number(seg) ? ` de ${Number(seg)}s` : ""}` : "Última saturación (detenida)"}{bt.errors > 0 ? ` · ${bt.errors} reintento(s)` : ""}</p>
             {[["Subida", bt.up, "bg-blue-500"], ["Bajada", bt.down, "bg-emerald-500"]].map(([l, v, c]) => {
               const val = v as number, pc = tgt > 0 ? Math.min(100, Math.round((val / tgt) * 100)) : 0;
@@ -224,8 +229,8 @@ export default function SaturadorPanel({
 
   return (
     <div className={big ? "flex min-h-0 flex-1 flex-col gap-3" : "space-y-3"}>
-      {modeSwitch}
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="shrink-0">{modeSwitch}</div>
+      <div className="flex shrink-0 flex-wrap items-center gap-2">
         {res?.kind === "ok" && st?.icmp && <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-700">Agente conectado</span>}
         {res?.kind === "ok" && !st?.icmp && <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-medium text-amber-700">Agente sin permisos ICMP (ábrelo con sudo)</span>}
         {res?.kind === "codigo" && <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-medium text-amber-700">Agente encontrado: falta el código</span>}
@@ -235,13 +240,6 @@ export default function SaturadorPanel({
           <input className="input w-24 font-mono uppercase" value={code} onChange={(e) => setCode(e.target.value.trim().toUpperCase())} placeholder="A1B2C3" />
         </label>
       </div>
-      {(!res || res.kind === "ausente") && (
-        <p className="text-xs text-slate-500">
-          En tu laptop abre una terminal en la carpeta de <b>saturador.py</b> y ejecuta <code className="rounded bg-slate-100 px-1">python saturador.py --agente</code>{" "}
-          (en Linux/Mac con <code className="rounded bg-slate-100 px-1">sudo</code>). Te mostrará un código: pégalo aquí. Si el navegador pregunta por acceso a
-          dispositivos de la red local, acepta.
-        </p>
-      )}
 
       <div className="flex flex-wrap gap-2">
         <button className={modo === "internet" ? "btn-primary text-xs" : "btn-secondary text-xs"} onClick={() => setModo("internet")}>Internet</button>
@@ -276,7 +274,7 @@ export default function SaturadorPanel({
       {error && <p className="text-sm text-red-600">{error}</p>}
 
       {st && (running || st.pico_tx > 0) && (
-        <div className="space-y-2 rounded-lg border border-slate-200 p-3">
+        <div className="shrink-0 space-y-2 rounded-lg border border-slate-200 p-3">
           <p className="text-xs text-slate-500">
             {running ? `Saturando ${st.destino} · ${st.segundos}s${st.duracion ? ` de ${st.duracion}s` : ""}` : `Última saturación a ${st.destino} (detenida)`}
           </p>
