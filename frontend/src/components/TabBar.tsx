@@ -1,5 +1,7 @@
 import { useLocation, useNavigate } from "react-router-dom";
 import { useOverlayOpen } from "./useOverlayOpen";
+import { usePersistentState } from "../store/persistentState";
+import { useDock } from "../store/terminal";
 
 export interface TabGroup { id: string; label: string; prefixes: string[]; items: { to: string; label: string }[] }
 
@@ -22,7 +24,19 @@ export default function TabBar({ groups, menuOpen, onMenu }: { groups: TabGroup[
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const overlay = useOverlayOpen();
-  if (overlay) return null;
+  const dock = useDock();
+  const [hidden, setHidden] = usePersistentState("tabbar.oculta", false);
+  // con las ventanas de Herramientas abiertas la barra se oculta sola
+  if (overlay || dock.terminal || dock.sat) return null;
+  if (hidden) {
+    return (
+      <button type="button" onClick={() => setHidden(false)} aria-label="Mostrar la barra de navegación" title="Mostrar la barra de navegación"
+        className="fixed z-[45] grid place-items-center rounded-full border border-slate-300 bg-white/90 text-slate-600 shadow-lg backdrop-blur lg:hidden"
+        style={{ right: "max(.6rem, env(safe-area-inset-right))", bottom: "max(.6rem, env(safe-area-inset-bottom))", width: "clamp(26px, 7vw, 38px)", height: "clamp(26px, 7vw, 38px)" }}>
+        <svg viewBox="0 0 24 24" width="55%" height="55%" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 15l7-7 7 7" /></svg>
+      </button>
+    );
+  }
 
   const activeIdx = menuOpen ? groups.length : groups.findIndex((g) => g.prefixes.some((p) => pathname.startsWith(p)));
   const spin = (g: TabGroup, back: boolean) => {
@@ -54,6 +68,11 @@ export default function TabBar({ groups, menuOpen, onMenu }: { groups: TabGroup[
           </button>
         );
       })}
+      <button type="button" onClick={() => setHidden(true)} aria-label="Ocultar la barra de navegación" title="Ocultar la barra"
+        className="absolute grid place-items-center rounded-full border border-slate-300 bg-white/90 text-slate-600 shadow"
+        style={{ top: "-.55rem", right: ".9rem", width: "clamp(18px, 5vw, 24px)", height: "clamp(18px, 5vw, 24px)" }}>
+        <svg viewBox="0 0 24 24" width="60%" height="60%" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 9l7 7 7-7" /></svg>
+      </button>
       <button type="button" className={`tab lg ${menuOpen ? "tab-on" : ""}`} onClick={onMenu} aria-label={menuOpen ? "Cerrar el menú" : "Abrir el menú"} aria-expanded={menuOpen}>
         <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
           <path d={menuOpen ? "M6 6l12 12M18 6L6 18" : "M4 7h16M4 12h16M4 17h16"} />
