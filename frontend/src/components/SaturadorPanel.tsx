@@ -93,14 +93,14 @@ export default function SaturadorPanel({
     setError(null); setBt(null); setBtRun(true); lastTick.current = null;
     const dest = navDest.trim() || "speed.cloudflare.com (servidor de pruebas)";
     const t0 = Number(seg) || 0;
-    setBtLog([`${stamp()}  Conectando a ${dest} · 6 flujos de bajada y 3 de subida en paralelo · ${t0 ? `${t0} s` : "hasta detener"}`, HEAD]);
+    setBtLog([`${stamp()}  Conectando a ${dest} · bajada y subida en paralelo (los flujos aumentan solos hasta el objetivo) · ${t0 ? `${t0} s` : "hasta detener"}`, HEAD]);
     btRef.current = startBrowserSat({
       seconds: t0,
       mbps: Number(mbps) || 0,
       target: navDest,
       onTick: (t) => {
         setBt(t); lastTick.current = t;
-        pushLog(row("SUM", t.sec - 1, t.sec, t.dBytes, t.uBytes, t.down, t.up, String(t.errors), t.downMeasured));
+        pushLog(row("SUM", t.sec - 1, t.sec, t.dBytes, t.uBytes, t.down, t.up, `${t.errors}  flujos ${t.streamsDown}/${t.streamsUp}`, t.downMeasured));
         if (t.sec % 10 === 0) pushLog(HEAD);
       },
       onEnd: (err) => {

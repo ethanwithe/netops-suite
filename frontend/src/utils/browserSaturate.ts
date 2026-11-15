@@ -12,6 +12,8 @@ export interface SatTick {
   /** false = el destino no deja leer lo descargado (sin CORS): hay tráfico pero la bajada no se puede medir. */
   downMeasured: boolean;
   errors: number;
+  /** Flujos activos de bajada y de subida (se agregan solos hasta llegar al objetivo). */
+  streamsDown: number; streamsUp: number;
   /** Bytes acumulados desde que empezó. */
   downBytes: number; upBytes: number;
   /** Bytes de este segundo. */
@@ -35,16 +37,17 @@ export function startBrowserSat(o: { seconds: number; mbps?: number; streams?: n
   let down = 0, up = 0, ok = false, ended = false, errors = 0, measured = true, lastErr = "";
   // Objetivo por sentido (Mbps): bajada y subida se controlan por separado y a la vez. 0 = lo máximo posible.
   const rate = Math.max(0, o.mbps ?? 0) * 1e6 / 8; // bytes por segundo en cada sentido
-  const nUp = Math.max(2, Math.ceil(n / 2) + 1);
-  // con objetivo, las subidas son trozos chicos para poder dosificarlas; sin objetivo, trozos grandes
-  const chunkSize = rate > 0 ? Math.max(131072, Math.min(4_000_000, Math.round(rate / nUp / 4))) : 4_000_000;
-  const chunk = new Blob([new Uint8Array(chunkSize)]);
+  const MAX_STREAMS = 40;
+  let sDown = 0, sUp = 0;                   // flujos activos
+  const chunkBase = new Blob([new Uint8Array(8_000_000)]);
+  // con objetivo, las subidas son trozos medianos para poder dosificarlas; sin objetivo, trozos grandes
+  const chunkNow = () => (rate > 0 ? Math.max(131072, Math.min(8_000_000, Math.round(rate / Math.max(2, sUp) / 3))) : 8_000_000);
   let allowDown = rate * 0.5, allowUp = rate * 0.5;
   const url = (base: string) => base + (base.includes("?") ? "&" : "?") + "_=" + Math.random().toString(36).slice(2);
 
   const downOnce = async () => {
     if (!custom) {
-      const r = await fetch(`${CF_DOWN}25000000`, { cache: "no-store", signal: ctl.signal });
+      const r = await fetch(`${CF_DOWN}60000000`, { cache: "no-store", signal: ctl.signal });
       const rd = r.body?.getReader();
       if (!rd) throw new Error("El navegador no permite leer la descarga.");
       ok = true;
@@ -68,24 +71,25 @@ export function startBrowserSat(o: { seconds: number; mbps?: number; streams?: n
   const waitDown = async () => { while (rate > 0 && down >= allowDown && !ctl.signal.aborted) await sleep(15, ctl.signal); };
   const waitUp = async () => { while (rate > 0 && up >= allowUp && !ctl.signal.aborted) await sleep(15, ctl.signal); };
   /** Subida con avance en vivo (XMLHttpRequest): los bytes se cuentan mientras salen, no al terminar el trozo. */
-  const xhrUp = (target: string) => new Promise<void>((res, rej) => {
+  const xhrUp = (target: string, size: number) => new Promise<void>((res, rej) => {
     const x = new XMLHttpRequest();
     let last = 0;
     x.open("POST", target);
     x.upload.onprogress = (e) => { up += e.loaded - last; last = e.loaded; };
-    x.onload = () => { up += chunk.size - last; ok = true; res(); };
+    x.onload = () => { up += size - last; ok = true; res(); };
     x.onerror = () => rej(new Error("Error de red al subir"));
     x.onabort = () => res();
     ctl.signal.addEventListener("abort", () => x.abort(), { once: true });
-    x.send(chunk);
+    x.send(chunkBase.slice(0, size));
   });
   const upOnce = async () => {
     await waitUp();
     if (ctl.signal.aborted) return;
-    if (!custom) { await xhrUp(CF_UP); return; }
-    await fetch(url(custom), { method: "POST", body: chunk, cache: "no-store", mode: "no-cors", signal: ctl.signal });
+    const size = chunkNow();
+    if (!custom) { await xhrUp(CF_UP, size); return; }
+    await fetch(url(custom), { method: "POST", body: chunkBase.slice(0, size), cache: "no-store", mode: "no-cors", signal: ctl.signal });
     ok = true;
-    up += chunk.size;
+    up += size;
   };
 
   // Cada flujo se reintenta siempre (el servidor corta conexiones largas o limita): la saturación dura lo que pediste.
@@ -100,9 +104,10 @@ export function startBrowserSat(o: { seconds: number; mbps?: number; streams?: n
       }
     }
   };
-  // bajada y subida arrancan juntas y siguen a la vez
-  for (let i = 0; i < n; i++) void loop(downOnce);
-  for (let i = 0; i < nUp; i++) void loop(upOnce);
+  // bajada y subida arrancan juntas; si no se llega al objetivo se agregan flujos solos (hasta MAX_STREAMS)
+  const addDown = (k: number) => { for (let i = 0; i < k && sDown < MAX_STREAMS; i++) { sDown++; void loop(downOnce); } };
+  const addUp = (k: number) => { for (let i = 0; i < k && sUp < MAX_STREAMS; i++) { sUp++; void loop(upOnce); } };
+  addDown(n); addUp(Math.max(2, Math.ceil(n / 2) + 1));
   // reparto del presupuesto de bytes cada 100 ms (con un colchón de 0,5 s para no cortar el tráfico)
   const pace = window.setInterval(() => {
     if (rate <= 0) return;
@@ -111,13 +116,21 @@ export function startBrowserSat(o: { seconds: number; mbps?: number; streams?: n
   }, 100);
 
   const finish = (err?: string) => { if (ended) return; ended = true; window.clearInterval(tick); window.clearInterval(pace); ctl.abort(); o.onEnd(err); };
-  let sec = 0, ld = 0, lu = 0, pd = 0, pu = 0;
+  let sec = 0, ld = 0, lu = 0, pd = 0, pu = 0, rampD = 0, rampU = 0;
   const tick = window.setInterval(() => {
     sec += 1;
     const dB = down - ld, uB = up - lu;
     const d = (dB * 8) / 1e6, u = (uB * 8) / 1e6;
     ld = down; lu = up; pd = Math.max(pd, d); pu = Math.max(pu, u);
-    o.onTick({ down: d, up: u, sec, peakDown: pd, peakUp: pu, downMeasured: measured, errors, downBytes: down, upBytes: up, dBytes: dB, uBytes: uB });
+    o.onTick({ down: d, up: u, sec, peakDown: pd, peakUp: pu, downMeasured: measured, errors, streamsDown: sDown, streamsUp: sUp, downBytes: down, upBytes: up, dBytes: dB, uBytes: uB });
+    // cada 2 s: si todavía falta para el objetivo (o, sin objetivo, si el tráfico sigue creciendo) se suman flujos
+    if (sec % 2 === 0 && sec >= 2) {
+      const goal = rate > 0 ? (o.mbps ?? 0) : Infinity;
+      const gain = (cur: number, prev: number) => rate > 0 || cur > prev * 1.06 || prev === 0;
+      if (measured && d < goal * 0.93 && gain(d, rampD)) addDown(rate > 0 ? Math.ceil(sDown * 0.25) : 3);
+      if (u < goal * 0.93 && gain(u, rampU)) addUp(rate > 0 ? Math.ceil(sUp * 0.25) : 3);
+      rampD = d; rampU = u;
+    }
     if (!ok && sec >= 10) {
       const http = custom.startsWith("http://") && location.protocol === "https:";
       finish(http

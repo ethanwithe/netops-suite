@@ -53,7 +53,7 @@ export default function FloatWindow({ id, title, onClose, children, front, onFoc
   return (
     <div
       ref={box}
-      role="dialog" data-persist="1" aria-label={title}
+      role="dialog" data-persist="1" data-compact="1" aria-label={title}
       onPointerDown={onFocus}
       className={`fixed flex flex-col overflow-hidden rounded-xl border border-slate-300 bg-white shadow-2xl dark:border-slate-600 ${front ? "z-[16]" : "z-[15]"}`}
       style={{ ...style, minWidth: 300, minHeight: min ? 0 : 200 }}
