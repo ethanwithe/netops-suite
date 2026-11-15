@@ -10,11 +10,14 @@ import type { BrowserSat, SatTick } from "../utils/browserSaturate";
  * iniciar/detener y ver en vivo cuántos Mbps salen y regresan.
  */
 export default function SaturadorPanel({
-  defaultMbps, onRunning, big,
+  defaultMbps, onRunning, big, manual, onManual,
 }: {
   defaultMbps?: string;
-  /** En la ventana flotante el registro ocupa el espacio libre (como una consola). */
+  /** En la ventana flotante: barra compacta arriba y el registro ocupa el espacio libre (como una consola). */
   big?: boolean;
+  /** Casilla «saturo con otra herramienta» (solo en la ventana flotante). */
+  manual?: boolean;
+  onManual?: (v: boolean) => void;
   /** Avisa si la saturación está en marcha (para permitir las capturas de saturación). */
   onRunning?: (running: boolean) => void;
 }) {
@@ -93,6 +96,7 @@ export default function SaturadorPanel({
     setBtLog([`${stamp()}  Conectando a ${dest} · 6 flujos de bajada y 3 de subida en paralelo · ${t0 ? `${t0} s` : "hasta detener"}`, HEAD]);
     btRef.current = startBrowserSat({
       seconds: t0,
+      mbps: Number(mbps) || 0,
       target: navDest,
       onTick: (t) => {
         setBt(t); lastTick.current = t;
@@ -151,13 +155,11 @@ export default function SaturadorPanel({
     </div>
   );
 
-  const [logFull, setLogFull] = useState(false);
-  const logPane = (btLog.length > 0 || big) ? (
+  const logPane = btLog.length > 0 ? (
     <div className={`space-y-1 ${big ? "flex min-h-0 flex-1 flex-col" : ""}`}>
       <div className="flex items-center gap-2">
         <span className="text-xs font-medium text-slate-500">Registro de la saturación (en vivo)</span>
         <span className="ml-auto flex gap-1">
-          {big && <button type="button" className="btn-secondary text-xs" onClick={() => setLogFull((f) => !f)} title="Agranda el registro a toda la ventana">{logFull ? "Reducir" : "Agrandar"}</button>}
           <button type="button" className="btn-secondary text-xs" onClick={copyLog}>Copiar</button>
           <button type="button" className="btn-secondary text-xs" onClick={saveLog}>Descargar .txt</button>
           <button type="button" className="btn-secondary text-xs" onClick={() => setBtLog([])} disabled={btRun || running}>Limpiar</button>
@@ -167,15 +169,57 @@ export default function SaturadorPanel({
     </div>
   ) : null;
 
-  if (big && logFull) {
+  if (big) {
     const on = via === "navegador" ? btRun : running;
+    const tgtB = Number(mbps) || 0;
+    const sub = via === "navegador" ? bt?.up ?? 0 : st?.tx_mbps ?? 0;
+    const baj = via === "navegador" ? bt?.down ?? 0 : st?.rx_mbps ?? 0;
+    const pc = (v: number) => (tgtB > 0 ? Math.min(100, Math.round((v / tgtB) * 100)) : 0);
+    const b = "rounded border border-slate-300 bg-white px-2 py-0.5 text-[11px] text-slate-700 hover:bg-sky-50 disabled:opacity-40";
+    const inp = "rounded border border-slate-300 bg-white px-1.5 py-0.5 text-xs";
+    const canStart = via === "navegador" || (res?.kind === "ok" && !!st?.icmp && !!dest.trim() && tgtB > 0);
     return (
-      <div className="flex min-h-0 flex-1 flex-col gap-2">
-        <div className="flex items-center gap-2">
-          <span className={`rounded-full px-3 py-1 text-xs font-medium ${on ? "bg-green-100 text-green-700" : "bg-slate-200 text-slate-600"}`}>{on ? "Saturando" : "Detenida"}</span>
-          {on && <button className="btn-secondary text-xs" onClick={via === "navegador" ? stopBr : stop}>Detener</button>}
+      <div className="flex min-h-0 flex-1 flex-col">
+        <div className="flex flex-wrap items-center gap-1.5 border-b border-slate-200 bg-slate-50 px-2 py-1.5">
+          <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-medium ${on ? "bg-green-100 text-green-700" : "bg-slate-200 text-slate-600"}`}>{on ? "● Saturando" : "Detenida"}</span>
+          {!on ? <button className="rounded bg-brand-600 px-3 py-0.5 text-[11px] font-semibold text-white disabled:opacity-40" disabled={!canStart} onClick={via === "navegador" ? startBr : start}>Iniciar</button>
+            : <button className="rounded bg-red-600 px-3 py-0.5 text-[11px] font-semibold text-white" onClick={via === "navegador" ? stopBr : stop}>Detener</button>}
+          <select className={inp} value={via} onChange={(e) => setVia(e.target.value as "agente" | "navegador")} disabled={on} aria-label="Modo">
+            <option value="agente">Agente</option><option value="navegador">Navegador</option>
+          </select>
+          {via === "agente" ? (
+            <>
+              <select className={inp} value={modo} onChange={(e) => setModo(e.target.value as "internet" | "rpv")} disabled={on} aria-label="Tipo"><option value="internet">Internet</option><option value="rpv">RPV</option></select>
+              <input className={`${inp} w-32`} value={dest} disabled={on} placeholder="IP destino" onChange={(e) => (modo === "internet" ? setDestInternet : setDestRpv)(e.target.value)} />
+              <input className={`${inp} w-24 font-mono uppercase`} value={code} placeholder="Código" onChange={(e) => setCode(e.target.value.trim().toUpperCase())} />
+              {res?.kind === "ok" && st?.icmp && <span className="text-[11px] text-green-700">agente conectado</span>}
+              {res?.kind === "ok" && !st?.icmp && <span className="text-[11px] text-amber-700">sin permisos ICMP</span>}
+              {res?.kind === "codigo" && <span className="text-[11px] text-amber-700">falta el código</span>}
+              {(!res || res.kind === "ausente") && <span className="text-[11px] text-slate-500">agente no detectado</span>}
+            </>
+          ) : (
+            <input className={`${inp} w-40`} value={navDest} disabled={on} placeholder="Destino (vacío = Cloudflare)" onChange={(e) => setNavDest(e.target.value)} />
+          )}
+          <label className="flex items-center gap-1 text-[11px] text-slate-600">Mbps <input className={`${inp} w-16`} inputMode="decimal" value={mbps} disabled={on} onChange={(e) => setMbps(e.target.value)} title="Mbps por cada sentido (subida y bajada a la vez)" /></label>
+          <label className="flex items-center gap-1 text-[11px] text-slate-600">Seg <input className={`${inp} w-16`} inputMode="numeric" value={seg} disabled={on} onChange={(e) => setSeg(e.target.value)} title="0 = hasta detener" /></label>
+          {manual !== undefined && <label className="flex items-center gap-1 text-[11px] text-slate-600"><input type="checkbox" checked={manual} onChange={(e) => onManual?.(e.target.checked)} /> Otra herramienta</label>}
+          <span className="ml-auto flex gap-1.5">
+            <button className={b} onClick={copyLog}>Copiar</button>
+            <button className={b} onClick={saveLog}>⬇ .txt</button>
+            <button className={b} onClick={() => setBtLog([])} disabled={on}>Limpiar</button>
+          </span>
         </div>
-        {logPane}
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-slate-200 px-2 py-1 text-[11px]">
+          {[["Subida", sub, "bg-blue-500"], ["Bajada", baj, "bg-emerald-500"]].map(([l, v, c]) => (
+            <span key={l as string} className="flex items-center gap-1.5">
+              <span className="w-12 text-slate-500">{l}</span>
+              <span className="inline-block h-1.5 w-24 overflow-hidden rounded bg-slate-200"><span className={`block h-full ${c}`} style={{ width: `${pc(v as number)}%` }} /></span>
+              <span className="font-mono">{(v as number).toFixed(1)} Mbps{tgtB > 0 ? ` · ${pc(v as number)}%` : ""}</span>
+            </span>
+          ))}
+          {error && <span className="text-red-600">{error}</span>}
+        </div>
+        <pre ref={logBox} className="min-h-0 flex-1 overflow-auto bg-black p-2 font-mono text-[12px] text-emerald-300" style={{ lineHeight: 1.45, fontVariantLigatures: "none" }} aria-live="off">{btLog.length ? btLog.join("\n") : ""}</pre>
       </div>
     );
   }
