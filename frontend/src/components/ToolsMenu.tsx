@@ -34,8 +34,8 @@ export default function ToolsMenu() {
       </button>
       {open && (
         <div role="menu" className="card absolute right-0 z-40 mt-1 w-64 space-y-0.5 p-2">
-          {item("terminal", "Terminal", t.connected, t.connected ? t.label : "Consola o SSH como MobaXterm")}
-          {item("sat", "Saturación", dock.satRunning || dock.manualSat, dock.satRunning ? "Saturando ahora" : "Saturar el enlace y ver el registro")}
+          {item("terminal", "Terminal", t.connected, t.connected ? t.label : "Sin conexión")}
+          {item("sat", "Saturación", dock.satRunning || dock.manualSat, dock.satRunning ? "Saturando ahora" : "Detenida")}
         </div>
       )}
     </div>
