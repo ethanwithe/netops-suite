@@ -17,7 +17,6 @@ import { syncClient, useSotSync } from "../store/clients";
 import { useWorkspace } from "../store/workspaces";
 import WorkspaceBar from "../components/WorkspaceBar";
 import type { ClientRecord } from "../store/clients";
-import { SerialSession, webSerialSupported } from "../utils/webSerial";
 import type { ConsoleSession } from "../utils/webSerial";
 import { getSession, openWindow, setSetupCommands, useDock, useTerminal } from "../store/terminal";
 import {
@@ -261,26 +260,6 @@ function Inner({ type }: { type: CkType }) {
     <div className="space-y-5">
       <div>
         <h2 className="page-title">CheckList — {type.nombre}</h2>
-        <p className="text-sm text-slate-500">
-          Servicio <b>{data.servicio === "rpv" ? "RPV" : "Internet"}</b> · {data.vendor.toUpperCase()}. Se conecta a la
-          consola desde tu navegador, ejecuta los comandos y arma el PDF.
-        </p>
-        <details className="mt-2 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
-          <summary className="cursor-pointer font-medium text-slate-700">Cómo se usa (tutorial)</summary>
-          <ol className="mt-2 list-decimal space-y-1 pl-5">
-            <li>Llena <b>SOT, CID, Cliente</b> y la <b>fecha</b> (se elige en el calendario). Elige el logo.</li>
-            <li>Completa los <b>parámetros</b> (interfaz WAN/LAN, IP del siguiente salto, IP remota…). Los comandos los usan solos.</li>
-            <li>
-              Abre el <b>puente</b> en tu laptop y conecta por <b>consola</b> (el puerto se detecta solo) o por <b>SSH</b> a un equipo de tu red. Luego ejecuta{" "}
-              <b>un ítem</b>, <b>una sección</b> o <b>todo</b>. Puedes repetir los que quieras las veces que quieras.
-            </li>
-            <li>El <b>modelo</b> y el <b>ancho de banda</b> se leen solos de la configuración; si no, escríbelos.</li>
-            <li>Los ítems de <b>TEXTO</b> salen como texto en el PDF; los de <b>FOTO</b> con tus capturas (pega con Ctrl+V o sube la imagen). Speedtest e iperf van como captura.</li>
-            <li>Sin cable de consola, pega la salida del comando a mano en el cuadro de cada ítem.</li>
-            <li>Pulsa <b>Generar PDF</b> (o <b>Generar Word</b> para tenerlo editable). El archivo se llama <i>checklist_sot_&lt;sot&gt;-&lt;cliente&gt;.pdf</i>.</li>
-            <li>En <b>Estructura</b> puedes agregar, quitar o reordenar secciones, ítems y comandos.</li>
-          </ol>
-        </details>
       </div>
 
       <WorkspaceBar ws={ws} />
@@ -369,31 +348,6 @@ function Inner({ type }: { type: CkType }) {
             </p>
           </div>
 
-          <details className="card text-sm text-slate-600">
-            <summary className="cursor-pointer font-medium text-slate-700">Permisos que necesita (qué te va a pedir el navegador y tu laptop)</summary>
-            <ul className="mt-2 list-disc space-y-2 pl-5">
-              <li>
-                <b>Puente de tu laptop (recomendado, consola y SSH):</b> como la página está en la nube, no puede ver tu cable de consola ni los equipos de tu red.
-                <code>puente.py</code> corre en tu laptop, detecta solo los puertos COM y abre el SSH desde tu red local. La página solo se comunica con él en{" "}
-                <code>127.0.0.1</code> y con su código. Chrome/Edge pueden preguntar si permites a este sitio conectarse a dispositivos de tu red local: acepta.
-                Safari no lo permite; usa Chrome, Edge o Firefox.
-              </li>
-              <li>
-                <b>Consola con el navegador (alternativa sin el puente):</b> al pulsar «Conectar consola» el navegador te muestra una lista de puertos y tú eliges el del cable; ese es el
-                permiso. Hace falta <b>Chrome o Edge</b> en computadora y la página en <b>https</b> (Railway ya lo es).{" "}
-                <span className={webSerialSupported() && window.isSecureContext ? "text-green-700" : "text-red-600"}>
-                  {webSerialSupported() && window.isSecureContext ? "Sí: este navegador lo permite." : "No: este navegador/página no lo permite."}
-                </span>{" "}
-                Si no ves tu puerto, instala el driver del adaptador (CP210x, FTDI o CH340) y revisa que ningún otro programa (PuTTY, SecureCRT…) lo tenga abierto.
-              </li>
-              <li>
-                <b>Saturación:</b> el tráfico lo genera un pequeño programa en tu laptop (<i>saturador.py --agente</i>), porque la nube no puede saturar el enlace
-                del cliente ni enviar ping desde tu red. En Linux/Mac se abre con <code>sudo</code>; en Windows no necesita administrador (el firewall puede pedirte
-                permitir Python). La página solo se comunica con él en <code>127.0.0.1</code> y con el código que te muestra.
-              </li>
-              <li><b>Cámara y ubicación</b> (reporte fotográfico): el navegador las pide la primera vez que tomas una foto.</li>
-            </ul>
-          </details>
 
           {data.sections.map((sec) => (
             <div key={sec.id} className="card space-y-3">
