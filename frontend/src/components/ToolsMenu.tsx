@@ -1,0 +1,43 @@
+import { useEffect, useRef, useState } from "react";
+import { openWindow, setDock, useDock, useTerminal } from "../store/terminal";
+
+/** Botón «Herramientas» (al lado de Tema): abre las ventanas flotantes Terminal y Saturación. */
+export default function ToolsMenu() {
+  const [open, setOpen] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+  const dock = useDock();
+  const t = useTerminal();
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => { if (!box.current?.contains(e.target as Node)) setOpen(false); };
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => { document.removeEventListener("mousedown", onDown); document.removeEventListener("keydown", onKey); };
+  }, [open]);
+
+  const item = (w: "terminal" | "sat", label: string, on: boolean, hint: string) => (
+    <button type="button" role="menuitem" className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-slate-100"
+      onClick={() => { if (dock[w]) setDock({ [w]: false } as never); else openWindow(w); setOpen(false); }}>
+      <span className={`h-2 w-2 shrink-0 rounded-full ${on ? "bg-green-500" : "bg-slate-300"}`} />
+      <span className="flex-1">{label}<span className="block text-[11px] text-slate-400">{hint}</span></span>
+      <span className="text-[11px] text-slate-400">{dock[w] ? "cerrar" : "abrir"}</span>
+    </button>
+  );
+
+  return (
+    <div className="relative" ref={box}>
+      <button type="button" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}
+        className="lg rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 transition-colors hover:border-cyan2-500 hover:bg-slate-50">
+        Herramientas ▾
+      </button>
+      {open && (
+        <div role="menu" className="card absolute right-0 z-40 mt-1 w-64 space-y-0.5 p-2">
+          {item("terminal", "Terminal", t.connected, t.connected ? t.label : "Consola o SSH como MobaXterm")}
+          {item("sat", "Saturación", dock.satRunning || dock.manualSat, dock.satRunning ? "Saturando ahora" : "Saturar el enlace y ver el registro")}
+        </div>
+      )}
+    </div>
+  );
+}

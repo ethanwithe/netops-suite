@@ -10,9 +10,11 @@ import type { BrowserSat, SatTick } from "../utils/browserSaturate";
  * iniciar/detener y ver en vivo cuántos Mbps salen y regresan.
  */
 export default function SaturadorPanel({
-  defaultMbps, onRunning,
+  defaultMbps, onRunning, big,
 }: {
   defaultMbps?: string;
+  /** En la ventana flotante el registro ocupa el espacio libre (como una consola). */
+  big?: boolean;
   /** Avisa si la saturación está en marcha (para permitir las capturas de saturación). */
   onRunning?: (running: boolean) => void;
 }) {
@@ -61,6 +63,28 @@ export default function SaturadorPanel({
   const HEAD = "[ ID] Intervalo        ↓ Bajada: transferencia / velocidad      ↑ Subida: transferencia / velocidad      Retr";
   const pushLog = (...l: string[]) => setBtLog((o) => [...o, ...l].slice(-4000));
   const stamp = () => new Date().toLocaleTimeString("es-PE");
+
+  // Con el agente también se ve cómo va saturando, como iperf: una línea por segundo y el resumen al terminar
+  const agentSeen = useRef<{ run: boolean; sec: number }>({ run: false, sec: -1 });
+  useEffect(() => {
+    if (via !== "agente" || !st) return;
+    const seen = agentSeen.current;
+    const AH = "[ ID] Intervalo        ↑ Subida (Mbits/sec)   ↓ Bajada (Mbits/sec)   Pérdida";
+    if (st.corriendo) {
+      if (!seen.run) {
+        seen.run = true; seen.sec = -1;
+        setBtLog((o) => [...o, `${stamp()}  Saturando ${st.destino} · objetivo ${st.mbps} Mbps por sentido · ${st.duracion ? `${st.duracion} s` : "hasta detener"}`, AH].slice(-4000));
+      }
+      if (st.segundos !== seen.sec && st.segundos > 0) {
+        seen.sec = st.segundos;
+        const ln = `[ SUM] ${(st.segundos - 1).toFixed(2).padStart(6)}-${st.segundos.toFixed(2).padEnd(6)} sec  ↑ ${st.tx_mbps.toFixed(1).padStart(8)} Mbits/sec  ↓ ${st.rx_mbps.toFixed(1).padStart(8)} Mbits/sec  ${String(st.perdida).padStart(5)}%`;
+        setBtLog((o) => [...o, ln, ...(st.segundos % 10 === 0 ? [AH] : [])].slice(-4000));
+      }
+    } else if (seen.run) {
+      seen.run = false;
+      setBtLog((o) => [...o, "- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -", `Picos: subida ${st.pico_tx} · bajada ${st.pico_rx} Mbits/sec · pérdida ${st.perdida}%`, `${stamp()}  Terminado.`].slice(-4000));
+    }
+  }, [st?.corriendo, st?.segundos, via]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function startBr() {
     setError(null); setBt(null); setBtRun(true); lastTick.current = null;
@@ -127,10 +151,24 @@ export default function SaturadorPanel({
     </div>
   );
 
+  const logPane = (btLog.length > 0 || big) ? (
+    <div className={`space-y-1 ${big ? "flex min-h-0 flex-1 flex-col" : ""}`}>
+      <div className="flex items-center gap-2">
+        <span className="text-xs font-medium text-slate-500">Registro de la saturación (en vivo)</span>
+        <span className="ml-auto flex gap-1">
+          <button type="button" className="btn-secondary text-xs" onClick={copyLog}>Copiar</button>
+          <button type="button" className="btn-secondary text-xs" onClick={saveLog}>Descargar .txt</button>
+          <button type="button" className="btn-secondary text-xs" onClick={() => setBtLog([])} disabled={btRun || running}>Limpiar</button>
+        </span>
+      </div>
+      <pre ref={logBox} className={`overflow-auto rounded-lg bg-black p-3 font-mono text-[11px] leading-snug text-emerald-300 ${big ? "min-h-[8rem] flex-1" : "max-h-72"}`} aria-live="off">{btLog.length ? btLog.join("\n") : "(esperando… inicia la saturación y aquí verás cómo va, como iperf)"}</pre>
+    </div>
+  ) : null;
+
   if (via === "navegador") {
     const tgt = Number(mbps) || 0;
     return (
-      <div className="space-y-3">
+      <div className={big ? "flex min-h-0 flex-1 flex-col gap-3" : "space-y-3"}>
         {modeSwitch}
         <p className="text-xs text-slate-500">
           Satura el enlace de Internet de esta PC descargando y subiendo datos en paralelo desde el navegador: no necesita instalar nada ni código.
@@ -179,25 +217,13 @@ export default function SaturadorPanel({
             <p className="text-xs text-slate-500">Picos: subida {bt.peakUp.toFixed(1)} / bajada {bt.peakDown.toFixed(1)} Mbps{!bt.downMeasured ? " · la bajada no se puede medir en este destino (sin CORS), pero sí se está generando" : ""}</p>
           </div>
         )}
-        {btLog.length > 0 && (
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-medium text-slate-500">Registro de la saturación</span>
-              <span className="ml-auto flex gap-1">
-                <button type="button" className="btn-secondary text-xs" onClick={copyLog}>Copiar</button>
-                <button type="button" className="btn-secondary text-xs" onClick={saveLog}>Descargar .txt</button>
-                <button type="button" className="btn-secondary text-xs" onClick={() => setBtLog([])} disabled={btRun}>Limpiar</button>
-              </span>
-            </div>
-            <pre ref={logBox} className="max-h-72 overflow-auto rounded-lg bg-slate-900 p-3 font-mono text-[11px] leading-snug text-emerald-300" aria-live="off">{btLog.join("\n")}</pre>
-          </div>
-        )}
+        {logPane}
       </div>
     );
   }
 
   return (
-    <div className="space-y-3">
+    <div className={big ? "flex min-h-0 flex-1 flex-col gap-3" : "space-y-3"}>
       {modeSwitch}
       <div className="flex flex-wrap items-center gap-2">
         {res?.kind === "ok" && st?.icmp && <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-700">Agente conectado</span>}
@@ -262,6 +288,7 @@ export default function SaturadorPanel({
           </p>
         </div>
       )}
+      {logPane}
     </div>
   );
 }
