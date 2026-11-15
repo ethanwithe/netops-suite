@@ -1,19 +1,16 @@
 import { useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { openWindow, setDock, useDock, useTerminal } from "../store/terminal";
 
 /** Botón «Herramientas» (al lado de Tema): abre las ventanas flotantes Terminal y Saturación. */
 export default function ToolsMenu() {
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
-  const menu = useRef<HTMLDivElement>(null);
-  const [pos, setPos] = useState({ top: 0, right: 0 });
   const dock = useDock();
   const t = useTerminal();
 
   useEffect(() => {
     if (!open) return;
-    const onDown = (e: MouseEvent) => { const n = e.target as Node; if (!box.current?.contains(n) && !menu.current?.contains(n)) setOpen(false); };
+    const onDown = (e: MouseEvent) => { if (!box.current?.contains(e.target as Node)) setOpen(false); };
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
     document.addEventListener("mousedown", onDown);
     document.addEventListener("keydown", onKey);
@@ -31,16 +28,15 @@ export default function ToolsMenu() {
 
   return (
     <div className="relative" ref={box}>
-      <button type="button" aria-haspopup="menu" aria-expanded={open} onClick={() => { const r = box.current?.getBoundingClientRect(); if (r) setPos({ top: r.bottom + 4, right: Math.max(8, window.innerWidth - r.right) }); setOpen(!open); }}
+      <button type="button" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}
         className="lg rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 transition-colors hover:border-cyan2-500 hover:bg-slate-50">
         Herramientas ▾
       </button>
-      {open && createPortal(
-        <div ref={menu} role="menu" className="card z-[100] w-64 space-y-0.5 p-2" style={{ position: "fixed", top: pos.top, right: pos.right, zIndex: 100 }}>
+      {open && (
+        <div role="menu" className="absolute right-0 top-full z-50 mt-2 w-64 animate-pop rounded-xl border border-slate-200 bg-white p-1 shadow-soft">
           {item("terminal", "Terminal", t.connected, t.connected ? t.label : "Sin conexión")}
           {item("sat", "Saturación", dock.satRunning || dock.manualSat, dock.satRunning ? "Saturando ahora" : "Detenida")}
-        </div>,
-        document.body
+        </div>
       )}
     </div>
   );
