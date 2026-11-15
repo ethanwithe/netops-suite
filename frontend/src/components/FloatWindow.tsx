@@ -22,7 +22,7 @@ export default function FloatWindow({ id, title, onClose, children, front, onFoc
     w: Math.min(Math.max(320, g.w), window.innerWidth - 8),
     h: Math.min(Math.max(220, g.h), window.innerHeight - 8),
     x: Math.min(Math.max(0, g.x), Math.max(0, window.innerWidth - 120)),
-    y: Math.min(Math.max(0, g.y), Math.max(0, window.innerHeight - 40)),
+    y: Math.min(Math.max(56, g.y), Math.max(56, window.innerHeight - 40)),
   });
 
   useEffect(() => {
@@ -47,7 +47,7 @@ export default function FloatWindow({ id, title, onClose, children, front, onFoc
 
   const g = clamp(geo);
   const style: React.CSSProperties = small || max
-    ? { left: small ? 4 : 8, top: small ? 56 : 8, width: `calc(100vw - ${small ? 8 : 16}px)`, height: min ? "auto" : `calc(100dvh - ${small ? 64 : 16}px)` }
+    ? { left: small ? 4 : 8, top: 56, width: `calc(100vw - ${small ? 8 : 16}px)`, height: min ? "auto" : `calc(100dvh - ${small ? 64 : 64}px)` }
     : { left: g.x, top: g.y, width: g.w, height: min ? "auto" : g.h, resize: min ? "none" : "both" };
 
   return (
@@ -55,7 +55,7 @@ export default function FloatWindow({ id, title, onClose, children, front, onFoc
       ref={box}
       role="dialog" aria-label={title}
       onPointerDown={onFocus}
-      className={`fixed flex flex-col overflow-hidden rounded-xl border border-slate-300 bg-white shadow-2xl dark:border-slate-600 ${front ? "z-[70]" : "z-[60]"}`}
+      className={`fixed flex flex-col overflow-hidden rounded-xl border border-slate-300 bg-white shadow-2xl dark:border-slate-600 ${front ? "z-[16]" : "z-[15]"}`}
       style={{ ...style, minWidth: 300, minHeight: min ? 0 : 200 }}
     >
       <div
