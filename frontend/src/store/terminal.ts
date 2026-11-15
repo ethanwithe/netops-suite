@@ -43,6 +43,8 @@ export const getSession = () => session;
 export const termLog = () => fullLog;
 export function termClear() { vt.clear(); bump(); }
 export function termForget() { fullLog = ""; vt.clear(); bump(); }
+let idleHook: (() => void) | null = null;
+export function setIdleHook(f: () => void) { idleHook = f; }
 export function setSetupCommands(c: string[]) { setupCmds = c; }
 export function sendRaw(s: string) { void session?.raw(s); }
 
@@ -58,6 +60,7 @@ export async function connectTerminal(o: ConnectOpts): Promise<void> {
   const ssh = o.via === "ssh" && o.mode === "puente";
   const label = ssh ? `SSH ${o.user}@${o.host}` : o.mode === "navegador" ? "Consola (navegador)" : `Consola ${o.puerto}`;
   bump({ status: ssh ? "Conectando por SSH desde tu laptop…" : "Abriendo la consola…", label });
+  feed(`Conectando: ${label}…\r\n`);
   try {
     let sess: ConsoleSession;
     if (o.mode === "navegador") {
@@ -73,7 +76,7 @@ export async function connectTerminal(o: ConnectOpts): Promise<void> {
         : { kind: "serial", port: o.puerto, baud: o.baud });
       sess = ps;
     }
-    sess.onClose = (why) => { session = null; mark("Conexión cerrada: " + why); bump({ connected: false, status: why }); };
+    sess.onClose = (why) => { session = null; mark("Conexión cerrada: " + why); bump({ connected: false, status: why }); idleHook?.(); };
     session = sess;
     mark(`Conectado: ${label}`);
     bump({ connected: true, status: "Conectado. Preparando el equipo…" });
@@ -93,6 +96,7 @@ export async function disconnectTerminal(): Promise<void> {
   session = null;
   await s?.close();
   bump({ connected: false, status: "Desconectado." });
+  idleHook?.();
 }
 
 export function useTerminal() {

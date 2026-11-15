@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { lineHtml } from "../utils/vt";
 import { sendRaw, useTerminal, vt } from "../store/terminal";
+import { shellInit, shellKey } from "../store/localShell";
 
 /** Convierte una tecla del navegador en lo que enviaría una terminal real. */
 export function keyToSeq(e: React.KeyboardEvent): string | null {
@@ -68,6 +69,9 @@ export default function TerminalView({ connected, theme, fontSize, hl, onSearchK
     return () => ro.disconnect();
   }, [fontSize]);
 
+  // al abrir la terminal sin conexión aparece el indicador de comandos y el cursor ya está dentro de la pantalla
+  useEffect(() => { shellInit(); box.current?.focus(); }, []);
+
   const html = useMemo(() => {
     const out: string[] = [];
     for (let y = 0; y < vt.lines.length; y++) {
@@ -85,7 +89,7 @@ export default function TerminalView({ connected, theme, fontSize, hl, onSearchK
   }, [hl]);
 
   const paste = async () => {
-    try { const txt = await navigator.clipboard.readText(); if (txt && connected) sendRaw(txt.replace(/\r?\n/g, "\r")); } catch { /* sin permiso */ }
+    try { const txt = await navigator.clipboard.readText(); if (txt) { if (connected) sendRaw(txt.replace(/\r?\n/g, "\r")); else shellKey(txt.split(/\r?\n/)[0]); } } catch { /* sin permiso */ }
   };
 
   return (
@@ -103,14 +107,13 @@ export default function TerminalView({ connected, theme, fontSize, hl, onSearchK
         if (e.ctrlKey && e.key.toLowerCase() === "c" && String(window.getSelection()).length > 0) return; // con texto marcado, Ctrl+C copia
         if (e.ctrlKey && e.key === "Insert") return;
         if (e.shiftKey && e.key === "Insert") { e.preventDefault(); void paste(); return; }
-        if (!connected) return;
         const seq = keyToSeq(e);
         if (seq == null) return;
         e.preventDefault();
         stick.current = true;
-        sendRaw(seq);
+        if (connected) sendRaw(seq); else shellKey(seq);
       }}
-      onPaste={(e) => { if (connected) { e.preventDefault(); sendRaw(e.clipboardData.getData("text").replace(/\r?\n/g, "\r")); } }}
+      onPaste={(e) => { e.preventDefault(); const tx = e.clipboardData.getData("text").replace(/\r?\n/g, "\r"); if (connected) sendRaw(tx); else shellKey(tx.split("\r")[0]); }}
       // clic derecho: copia lo marcado o, si no hay nada marcado, pega (como PuTTY/MobaXterm)
       onContextMenu={(e) => {
         e.preventDefault();

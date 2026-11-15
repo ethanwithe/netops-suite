@@ -325,27 +325,12 @@ function Inner({ type }: { type: CkType }) {
             <LogoPicker posicion="izq" label="Logo del CheckList (independiente del reporte fotográfico)" value={logo} onChange={setLogo} />
           </div>
 
-          <div className="card space-y-2">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className={`rounded-full px-3 py-1 text-xs font-medium ${connected ? "bg-green-100 text-green-700" : "bg-slate-200 text-slate-600"}`}>{connected ? `Terminal conectado · ${term.label}` : "Terminal sin conexión"}</span>
-              <button className="btn-secondary text-xs" onClick={() => openWindow("terminal")}>{connected ? "Abrir terminal" : "Conectar (Terminal)"}</button>
-              <span className={`rounded-full px-3 py-1 text-xs font-medium ${saturando ? "bg-green-100 text-green-700" : "bg-slate-200 text-slate-600"}`}>
-                {saturando ? "Saturando: ya puedes capturar las interfaces" : "Sin saturar: las capturas de interfaz están bloqueadas"}
-              </span>
-              <button className="btn-secondary text-xs" onClick={() => openWindow("sat")}>Abrir saturación</button>
-              <div className="ml-auto flex gap-2">
-                <button className="btn-primary text-sm" disabled={!connected || !!busy} onClick={() => runItems(allItems, "all")}>Ejecutar todo</button>
-                {busy && busy !== "pdf" && (
-                  <button className="btn-secondary text-sm" onClick={() => { if (session.current) session.current.stopRequested = true; }}>Detener</button>
-                )}
-              </div>
-            </div>
-            {log && <p className="font-mono text-xs text-slate-600 break-all">{log}</p>}
-            <p className="text-xs text-slate-500">
-              La consola/SSH y la saturación están en <b>Herramientas</b> (arriba, junto a Tema): se abren como ventanas flotantes y siguen activas aunque cambies de página.
-              Las estadísticas de la interfaz solo valen con el enlace saturado: inicia la saturación, espera a que el contador del router suba (Huawei y Cisco promedian los
-              últimos 5 min o 30 s) y recién ahí ejecuta esos ítems.
-            </p>
+          <div className="card flex flex-wrap items-center gap-2">
+            <button className="btn-primary text-sm" disabled={!connected || !!busy} onClick={() => runItems(allItems, "all")}>Ejecutar todo</button>
+            {busy && busy !== "pdf" && (
+              <button className="btn-secondary text-sm" onClick={() => { if (session.current) session.current.stopRequested = true; }}>Detener</button>
+            )}
+            {log && <span className="font-mono text-xs text-slate-600 break-all">{log}</span>}
           </div>
 
 

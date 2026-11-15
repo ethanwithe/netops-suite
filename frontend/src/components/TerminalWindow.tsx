@@ -63,7 +63,7 @@ export default function TerminalWindow() {
     return () => window.clearInterval(i);
   }, [connected, keep]);
 
-  useEffect(() => { if (connected) setPanel((p) => (p === "conn" ? "" : p)); else setPanel("conn"); }, [connected]);
+  useEffect(() => { if (connected) setPanel((p) => (p === "conn" ? "" : p)); }, [connected]);
 
   const conn = (mode: "puente" | "navegador", v = via, extra: Partial<{ host: string; port: number; user: string; puerto: string; baud: number }> = {}) =>
     void connectTerminal({ mode, via: v, code, puerto: extra.puerto ?? puerto, baud: extra.baud ?? baud, host: extra.host ?? ssh.host, port: extra.port ?? ssh.port, user: extra.user ?? ssh.user, pass });
@@ -200,7 +200,7 @@ export default function TerminalWindow() {
                 <button className="border-l px-1.5 text-slate-400 hover:text-red-600" title="Quitar" onClick={() => setSesiones((l) => l.filter((x) => x.id !== s.id))}>×</button>
               </span>
             ))}
-            <span className="text-[11px] text-slate-400">La contraseña no se guarda. Todo sale desde tu laptop.</span>
+            
           </div>
           {t.status && <p className="font-mono text-[11px] text-slate-500">{t.status}</p>}
         </div>
@@ -253,7 +253,6 @@ export default function TerminalWindow() {
         <label className="ml-auto flex items-center gap-1 text-[11px] text-slate-600" title="Envía un Enter cada 4 minutos para que el equipo no cierre la sesión">
           <input type="checkbox" checked={keep} onChange={(e) => setKeep(e.target.checked)} /> Mantener activa
         </label>
-        <span className="text-[10px] text-slate-400">Haz clic en la pantalla y escribe · Tab, ?, flechas y Ctrl+C van al equipo · clic derecho copia/pega</span>
       </div>
     </div>
   );
