@@ -8,6 +8,8 @@ import NewChecklistModal from "./NewChecklistModal";
 import { checklistRoute, createChecklistType, useChecklistTypes } from "../store/checklistTypes";
 import { usePersistentState } from "../store/persistentState";
 import ThemeSwitcher from "./ThemeSwitcher";
+import ToolsMenu from "./ToolsMenu";
+import FloatingTools from "./FloatingTools";
 // Bit se carga aparte, después de que la pantalla ya apareció
 const Mascot = lazy(() => import("../mascot/Mascot"));
 import AnnouncementBar from "./AnnouncementBar";
@@ -161,6 +163,7 @@ export default function Layout() {
   return (
     <div className="relative flex h-[100dvh] overflow-hidden">
       <Backdrop />
+      {can(me, "checklist") && <FloatingTools />}
       {open && <div className="fixed inset-0 z-30 bg-black/50 backdrop-blur-sm lg:hidden" onClick={() => setOpen(false)} aria-hidden="true" />}
 
       <aside
@@ -239,6 +242,7 @@ export default function Layout() {
           </button>
           <span className="truncate font-display text-sm font-semibold text-slate-800">{titles[pathname] ?? "NetOps Suite"}</span>
           <div className="flex-1" />
+          {can(me, "checklist") && <ToolsMenu />}
           <ThemeSwitcher />
           {me && (
             <div className="relative">

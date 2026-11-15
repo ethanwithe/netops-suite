@@ -635,3 +635,8 @@ html[data-scrolling] .lg-wave { display: none; }
 [data-dnd][data-dragging] { opacity: .45; }
 [data-dnd][data-over="before"] { box-shadow: 0 -3px 0 0 #2563eb; }
 [data-dnd][data-over="after"] { box-shadow: 0 3px 0 0 #2563eb; }
+
+/* Terminal propia (ventana flotante) */
+.vt-cur { background: #e5e7eb; color: #111827; animation: vt-blink 1.1s steps(1) infinite; }
+.vt-focus .vt-cur { background: #4ade80; color: #052e16; }
+@keyframes vt-blink { 50% { opacity: .35; } }
