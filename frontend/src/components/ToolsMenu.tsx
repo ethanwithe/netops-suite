@@ -36,7 +36,7 @@ export default function ToolsMenu() {
         Herramientas ▾
       </button>
       {open && createPortal(
-        <div ref={menu} role="menu" className="card fixed z-[100] w-64 space-y-0.5 p-2" style={{ top: pos.top, right: pos.right }}>
+        <div ref={menu} role="menu" className="card z-[100] w-64 space-y-0.5 p-2" style={{ position: "fixed", top: pos.top, right: pos.right, zIndex: 100 }}>
           {item("terminal", "Terminal", t.connected, t.connected ? t.label : "Sin conexión")}
           {item("sat", "Saturación", dock.satRunning || dock.manualSat, dock.satRunning ? "Saturando ahora" : "Detenida")}
         </div>,
