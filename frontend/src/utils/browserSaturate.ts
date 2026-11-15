@@ -28,12 +28,18 @@ export function normalizeTarget(t: string): string {
 
 const sleep = (ms: number, sig: AbortSignal) => new Promise<void>((res) => { const h = window.setTimeout(res, ms); sig.addEventListener("abort", () => { window.clearTimeout(h); res(); }, { once: true }); });
 
-export function startBrowserSat(o: { seconds: number; streams?: number; target?: string; onTick: (t: SatTick) => void; onEnd: (error?: string) => void }): BrowserSat {
+export function startBrowserSat(o: { seconds: number; mbps?: number; streams?: number; target?: string; onTick: (t: SatTick) => void; onEnd: (error?: string) => void }): BrowserSat {
   const ctl = new AbortController();
   const n = Math.max(2, Math.min(12, o.streams ?? 6));
   const custom = normalizeTarget(o.target ?? "");
   let down = 0, up = 0, ok = false, ended = false, errors = 0, measured = true, lastErr = "";
-  const chunk = new Blob([new Uint8Array(2_000_000)]);
+  // Objetivo por sentido (Mbps): bajada y subida se controlan por separado y a la vez. 0 = lo máximo posible.
+  const rate = Math.max(0, o.mbps ?? 0) * 1e6 / 8; // bytes por segundo en cada sentido
+  const nUp = Math.max(2, Math.ceil(n / 2) + 1);
+  // con objetivo, las subidas son trozos chicos para poder dosificarlas; sin objetivo, trozos grandes
+  const chunkSize = rate > 0 ? Math.max(131072, Math.min(4_000_000, Math.round(rate / nUp / 4))) : 4_000_000;
+  const chunk = new Blob([new Uint8Array(chunkSize)]);
+  let allowDown = rate * 0.5, allowUp = rate * 0.5;
   const url = (base: string) => base + (base.includes("?") ? "&" : "?") + "_=" + Math.random().toString(36).slice(2);
 
   const downOnce = async () => {
@@ -42,7 +48,7 @@ export function startBrowserSat(o: { seconds: number; streams?: number; target?:
       const rd = r.body?.getReader();
       if (!rd) throw new Error("El navegador no permite leer la descarga.");
       ok = true;
-      for (;;) { const { done, value } = await rd.read(); if (done) break; down += value.byteLength; }
+      for (;;) { await waitDown(); const { done, value } = await rd.read(); if (done) break; down += value.byteLength; }
       return;
     }
     try {
@@ -50,7 +56,7 @@ export function startBrowserSat(o: { seconds: number; streams?: number; target?:
       const rd = r.body?.getReader();
       ok = true;
       if (!rd) return;
-      for (;;) { const { done, value } = await rd.read(); if (done) break; down += value.byteLength; }
+      for (;;) { await waitDown(); const { done, value } = await rd.read(); if (done) break; down += value.byteLength; }
     } catch (e) {
       if (ctl.signal.aborted) return;
       // sin CORS: se manda igual la petición (genera tráfico) pero la respuesta es opaca y no se puede medir
@@ -59,9 +65,25 @@ export function startBrowserSat(o: { seconds: number; streams?: number; target?:
       void e;
     }
   };
+  const waitDown = async () => { while (rate > 0 && down >= allowDown && !ctl.signal.aborted) await sleep(15, ctl.signal); };
+  const waitUp = async () => { while (rate > 0 && up >= allowUp && !ctl.signal.aborted) await sleep(15, ctl.signal); };
+  /** Subida con avance en vivo (XMLHttpRequest): los bytes se cuentan mientras salen, no al terminar el trozo. */
+  const xhrUp = (target: string) => new Promise<void>((res, rej) => {
+    const x = new XMLHttpRequest();
+    let last = 0;
+    x.open("POST", target);
+    x.upload.onprogress = (e) => { up += e.loaded - last; last = e.loaded; };
+    x.onload = () => { up += chunk.size - last; ok = true; res(); };
+    x.onerror = () => rej(new Error("Error de red al subir"));
+    x.onabort = () => res();
+    ctl.signal.addEventListener("abort", () => x.abort(), { once: true });
+    x.send(chunk);
+  });
   const upOnce = async () => {
-    const target = custom || CF_UP;
-    await fetch(custom ? url(target) : target, { method: "POST", body: chunk, cache: "no-store", mode: custom ? "no-cors" : "cors", signal: ctl.signal });
+    await waitUp();
+    if (ctl.signal.aborted) return;
+    if (!custom) { await xhrUp(CF_UP); return; }
+    await fetch(url(custom), { method: "POST", body: chunk, cache: "no-store", mode: "no-cors", signal: ctl.signal });
     ok = true;
     up += chunk.size;
   };
@@ -78,9 +100,17 @@ export function startBrowserSat(o: { seconds: number; streams?: number; target?:
       }
     }
   };
-  for (let i = 0; i < n; i++) { void loop(downOnce); if (i < Math.ceil(n / 2)) void loop(upOnce); }
+  // bajada y subida arrancan juntas y siguen a la vez
+  for (let i = 0; i < n; i++) void loop(downOnce);
+  for (let i = 0; i < nUp; i++) void loop(upOnce);
+  // reparto del presupuesto de bytes cada 100 ms (con un colchón de 0,5 s para no cortar el tráfico)
+  const pace = window.setInterval(() => {
+    if (rate <= 0) return;
+    allowDown = Math.min(allowDown + rate * 0.1, down + rate * 0.5);
+    allowUp = Math.min(allowUp + rate * 0.1, up + rate * 0.5);
+  }, 100);
 
-  const finish = (err?: string) => { if (ended) return; ended = true; window.clearInterval(tick); ctl.abort(); o.onEnd(err); };
+  const finish = (err?: string) => { if (ended) return; ended = true; window.clearInterval(tick); window.clearInterval(pace); ctl.abort(); o.onEnd(err); };
   let sec = 0, ld = 0, lu = 0, pd = 0, pu = 0;
   const tick = window.setInterval(() => {
     sec += 1;
