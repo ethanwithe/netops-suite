@@ -246,7 +246,7 @@ function ClientEditor({ initial, defaultDate, onClose, onSaved }: {
     if (!f.sot.trim()) { setError("La SOT es obligatoria."); return; }
     setBusy(true);
     setError(null);
-    const body = { ...f, datos: { ...Object.fromEntries(Object.entries(fijos).filter(([, v]) => v.trim())), ...Object.fromEntries(datos.filter(([k]) => k.trim())) } };
+    const body = { ...f, datos: { ...Object.fromEntries(Object.entries(fijos).filter(([, v]) => String(v).trim())), ...Object.fromEntries(datos.filter(([k]) => k.trim())) } };
     try {
       if (initial) await updateClient(initial.id, body);
       else await createClient(body);
