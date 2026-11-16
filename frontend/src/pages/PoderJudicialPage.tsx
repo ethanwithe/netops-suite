@@ -78,6 +78,8 @@ export default function PoderJudicialPage() {
   const ws = useWorkspace({
     key: "pj", label: "Poder Judicial", sot: f.sot, nombre: f.sede,
     state: f,
+    clear: () => { setF({ ...INITIAL }); setResult(null); setError(null); },
+    clientData: { sot: f.sot, nombre: f.sede },
     apply: (saved) => setF({ ...INITIAL, ...saved }),
   });
 

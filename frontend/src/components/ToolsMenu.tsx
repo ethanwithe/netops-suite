@@ -6,7 +6,23 @@ export default function ToolsMenu() {
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
   const dock = useDock();
+  const dockRef = useRef(dock);
+  dockRef.current = dock;
   const t = useTerminal();
+
+  // Atajos: Alt+Mayús+T abre/cierra la Terminal y Alt+Mayús+S la Saturación (funcionan aunque el cursor esté en la terminal)
+  useEffect(() => {
+    const k = (e: KeyboardEvent) => {
+      if (!e.altKey || !e.shiftKey || e.ctrlKey || e.metaKey) return;
+      const key = e.key.toLowerCase();
+      const w = key === "t" ? "terminal" : key === "s" ? "sat" : null;
+      if (!w) return;
+      e.preventDefault(); e.stopPropagation();
+      if (dockRef.current[w]) setDock({ [w]: false } as never); else openWindow(w);
+    };
+    window.addEventListener("keydown", k, true);
+    return () => window.removeEventListener("keydown", k, true);
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -22,7 +38,7 @@ export default function ToolsMenu() {
       onClick={() => { if (dock[w]) setDock({ [w]: false } as never); else openWindow(w); setOpen(false); }}>
       <span className={`h-2 w-2 shrink-0 rounded-full ${on ? "bg-green-500" : "bg-slate-300"}`} />
       <span className="flex-1">{label}<span className="block text-[11px] text-slate-400">{hint}</span></span>
-      <span className="text-[11px] text-slate-400">{dock[w] ? "cerrar" : "abrir"}</span>
+      <span className="text-[11px] text-slate-400">{w === "terminal" ? "Alt+Mayús+T" : "Alt+Mayús+S"}</span>
     </button>
   );
 

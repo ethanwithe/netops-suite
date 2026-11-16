@@ -126,6 +126,8 @@ export interface Cell {
   incluir: boolean;
   /** Bloque dentro de la sección («EQUIPOS INSTALADOS ACCESO», «ETIQUETADO»…). Solo organiza la pantalla. */
   bloque?: string;
+  /** Archivos de esta celda que ya se copiaron a la carpeta de evidencia (la carpeta es independiente del PDF). */
+  mp?: string[];
 }
 
 /** Sección = un título del reporte («INSTALACION EN SITE», «INSTALACION EN CLIENTE»…) con sus celdas. */
@@ -335,6 +337,7 @@ function loadSections(v: unknown): Section[] | null {
       stampPos: loadStampPos(c.stampPos),
 
           incluir: c.incluir === true,
+          mp: Array.isArray(c.mp) ? c.mp.filter((l): l is string => typeof l === "string") : undefined,
           bloque: typeof c.bloque === "string" ? c.bloque : undefined,   // sin bloque = reporte del formato anterior (se actualiza solo)
         });
       }
@@ -386,6 +389,40 @@ function loadExtras(v: unknown): ExtraPhoto[] {
 
 export function addExtra(tipo: FotoTipo, extra: ExtraPhoto): void {
   setState(tipo, { extras: [...storeOf(tipo).state.extras, extra] });
+}
+/**
+ * La carpeta de evidencia es independiente del PDF: cada foto que entra a una celda (la que se tomó o subió, sin editar)
+ * se copia a la carpeta, y cada versión editada se agrega como otra foto. Quitar la foto o la celda del PDF no la quita de la carpeta.
+ */
+export function syncCarpeta(tipo: FotoTipo): void {
+  const { sections, extras } = storeOf(tipo).state;
+  if (!sections) return;
+  const add: ExtraPhoto[] = [];
+  let changed = false;
+  const next = sections.map((sec) => ({
+    ...sec,
+    cells: sec.cells.map((c) => {
+      if (!c.imagePath) return c;
+      const have = new Set([...(c.mp ?? []), ...extras.map((e) => e.path), ...add.map((e) => e.path)]);
+      const nombre = c.descripcion || "foto";
+      const want: { path: string; url: string; nombre: string }[] = [];
+      if (c.originalPath) want.push({ path: c.originalPath, url: c.originalUrl || "", nombre });
+      want.push({ path: c.imagePath, url: c.imageUrl, nombre: c.originalPath ? `${nombre} (editada)` : nombre });
+      const mp = [...(c.mp ?? [])];
+      for (const w of want) {
+        if (!w.path || mp.includes(w.path)) continue;
+        mp.push(w.path);
+        if (!have.has(w.path)) {
+          add.push({ id: `e${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, nombre: w.nombre, path: w.path, url: w.url, lado: sec.lado });
+          have.add(w.path);
+        }
+      }
+      if (mp.length === (c.mp ?? []).length) return c;
+      changed = true;
+      return { ...c, mp };
+    }),
+  }));
+  if (changed) setState(tipo, { sections: next, extras: [...extras, ...add] });
 }
 export function updateExtra(tipo: FotoTipo, id: string, patch: Partial<ExtraPhoto>): void {
   setState(tipo, { extras: storeOf(tipo).state.extras.map((e) => (e.id === id ? { ...e, ...patch } : e)) });

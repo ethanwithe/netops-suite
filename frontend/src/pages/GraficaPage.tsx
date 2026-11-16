@@ -14,7 +14,8 @@ import type { Fields } from "../diagram/templates";
 import type { Doc } from "../diagram/types";
 import { useUndo } from "../diagram/useUndo";
 import { useAuth } from "../store/auth";
-import { toISODate, useSotSync } from "../store/clients";
+import { attachFile, toISODate, useSotSync } from "../store/clients";
+import { expandDatos } from "../store/clientLink";
 import type { ClientRecord } from "../store/clients";
 import { usePersistentState } from "../store/persistentState";
 import { useWorkspace } from "../store/workspaces";
@@ -78,25 +79,19 @@ function GraficaInner({ info, options, remote, reload }: { info: OptionInfo; opt
 
   const fromClient = useCallback((c: ClientRecord, onlyEmpty: boolean, replace = false) => {
     const patch: Fields = { sot: c.sot, cliente: c.nombre, cid: c.cid, proyecto: c.proy, empresa: c.contrata, fecha: dmy(c.fecha) };
-    const norm = (s: string) => s.trim().toUpperCase();
-    const datos = Object.fromEntries(Object.entries(c.datos ?? {}).map(([k, v]) => [norm(k), v]));
+    const datos = expandDatos(c.datos);
     for (const [key, name] of Object.entries(DATOS_KEYS)) if (datos[name]) patch[key] = datos[name];
     setMany(patch, onlyEmpty, replace);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const clearAll = () => { setData((p) => ({ fields: { realizado: myName, fecha: today() }, doc: null, groups: p.groups })); hist.clear(); };
   async function pickClient(c: ClientRecord) {
+    if (!(await ws.confirmReplace())) return;
+    ws.open(c.sot); // si ya había un diagrama guardado de este cliente, se trae solo
+    setData((p) => ({ fields: {}, doc: null, groups: p.groups })); hist.clear();   // se parte de cero: nada del cliente anterior
     fromClient(c, false, true);
     try { const { data: full } = await api.get<ClientRecord>(`/clients/by-sot/${encodeURIComponent(c.sot)}`); fromClient(full, false); } catch { /* ya se usó lo básico */ }
   }
-
-  // Lo que se guarda por cliente: todo el diagrama (datos + lienzo editable).
-  const wsState = useMemo(() => ({ fields, doc: data.doc, groups: data.groups }), [fields, data.doc, data.groups]);
-  const ws = useWorkspace({
-    key: `grafica:${tpl.id}`, label: `Gráfica · ${tpl.label}`, sot: fields.sot ?? "", nombre: fields.cliente, fecha: toISODate(fields.fecha ?? ""),
-    state: wsState,
-    apply: (saved: Saved) => { setData({ fields: saved?.fields ?? {}, doc: saved?.doc ?? null, groups: saved?.groups }); hist.clear(); },
-    fill: (c) => fromClient(c, true),
-  });
 
   // Los datos del diagrama también enriquecen al cliente en «Mis clientes».
   const datos = useMemo(() => {
@@ -104,6 +99,18 @@ function GraficaInner({ info, options, remote, reload }: { info: OptionInfo; opt
     for (const [key, name] of Object.entries(DATOS_KEYS)) if (fields[key]?.trim()) o[name] = fields[key].trim();
     return o;
   }, [fields]);
+
+  // Lo que se guarda por cliente: todo el diagrama (datos + lienzo editable).
+  const wsState = useMemo(() => ({ fields, doc: data.doc, groups: data.groups }), [fields, data.doc, data.groups]);
+  const ws = useWorkspace({
+    key: `grafica:${tpl.id}`, label: `Gráfica · ${tpl.label}`, sot: fields.sot ?? "", nombre: fields.cliente, fecha: toISODate(fields.fecha ?? ""),
+    state: wsState,
+    clear: () => clearAll(),
+    clientData: { sot: fields.sot ?? "", nombre: fields.cliente ?? "", fecha: fields.fecha ?? "", cid: fields.cid ?? "", proy: fields.proyecto ?? "", contrata: fields.empresa ?? "", datos },
+    apply: (saved: Saved) => { setData({ fields: saved?.fields ?? {}, doc: saved?.doc ?? null, groups: saved?.groups }); hist.clear(); },
+    fill: (c) => fromClient(c, true),
+  });
+
   useSotSync({ sot: fields.sot ?? "", nombre: fields.cliente ?? "", fecha: fields.fecha ?? "", cid: fields.cid ?? "", proy: fields.proyecto ?? "", contrata: fields.empresa ?? "", datos });
 
   const baseName = `DIAGRAMA-SOT-${(fields.sot || "SIN-SOT").trim()}${fields.cliente ? "_" + fields.cliente.trim().replace(/[^A-Za-z0-9ÁÉÍÓÚÑáéíóúñ]+/g, "_").replace(/^_|_$/g, "") : ""}`;
@@ -114,6 +121,8 @@ function GraficaInner({ info, options, remote, reload }: { info: OptionInfo; opt
       const url = URL.createObjectURL(r.data as Blob);
       const a = document.createElement("a");
       a.href = url; a.download = `${baseName}.${kind}`; document.body.appendChild(a); a.click(); a.remove();
+      // También queda en los reportes del cliente (para la carpeta del cliente)
+      if ((fields.sot ?? "").trim()) void attachFile(fields.sot, "grafica", `${tpl.label} (${kind.toUpperCase()})`, `${baseName}.${kind}`, r.data as Blob).catch(() => undefined);
       setTimeout(() => URL.revokeObjectURL(url), 5000);
     } catch (e) {
       // con responseType "blob" el mensaje del servidor llega dentro de un Blob: se lee para mostrarlo

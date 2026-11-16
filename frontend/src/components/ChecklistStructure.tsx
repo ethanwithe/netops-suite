@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { apiErrorMessage } from "../api/client";
 import { Grip } from "../utils/dragSort";
 import type { CkData, CkItem, CkParam, CkSection, CkType } from "../store/checklistTypes";
@@ -60,6 +60,15 @@ export default function ChecklistStructure({
   const [d, setD] = useState<CkData>(() => JSON.parse(JSON.stringify(type.data)));
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // aviso de cambios sin guardar (y Ctrl+S para guardar)
+  const [orig, setOrig] = useState(() => JSON.stringify([type.nombre, type.data]));
+  const dirty = JSON.stringify([nombre.trim() || type.nombre, d]) !== orig;
+  useEffect(() => {
+    if (!dirty) return;
+    const h = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ""; };
+    window.addEventListener("beforeunload", h);
+    return () => window.removeEventListener("beforeunload", h);
+  }, [dirty]);
 
   const setSec = (si: number, fn: (s: CkSection) => CkSection) =>
     setD((p) => ({ ...p, sections: p.sections.map((s, i) => (i === si ? fn(s) : s)) }));
@@ -81,7 +90,12 @@ export default function ChecklistStructure({
     }
   }
   const nm = () => nombre.trim() || type.nombre;
-  const save = () => run(() => onSave(nm(), d), "Guardado (solo en tu cuenta)", "No se pudo guardar.");
+  const save = () => run(async () => { await onSave(nm(), d); setOrig(JSON.stringify([nm(), d])); }, "Guardado (solo en tu cuenta)", "No se pudo guardar.");
+  useEffect(() => {
+    const k = (e: KeyboardEvent) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") { e.preventDefault(); if (dirty && !busy) void save(); } };
+    window.addEventListener("keydown", k);
+    return () => window.removeEventListener("keydown", k);
+  });
   const publish = () => confirm("¿Actualizar este checklist para TODOS los usuarios con lo que ves ahora?") &&
     run(() => onPublish!(nm(), d), "Actualizado para todos", "No se pudo actualizar para todos.");
   const setBase = () => confirm("¿Poner esto como diseño base? También pasa a ser la versión de todos, y «Restaurar» volverá a esto.") &&
@@ -197,7 +211,8 @@ export default function ChecklistStructure({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <button className="btn-secondary text-sm" onClick={() => setD({ ...d, sections: [...d.sections, { id: uid(), titulo: "NUEVA SECCIÓN", items: [] }] })}>+ Sección</button>
         <div className="flex items-center gap-3">
-          {msg && <span className="text-sm text-slate-600">{msg}</span>}
+          {dirty && <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-700">Cambios sin guardar · Ctrl+S</span>}
+          {msg && !dirty && <span className="text-sm text-slate-600">{msg}</span>}
           <button
             className="text-sm text-red-500 hover:underline"
             disabled={busy}

@@ -43,7 +43,7 @@ import type { ImportedProject } from "../components/ImportPdfButton";
 import { savePjForm } from "../store/pjForm";
 import { useNavigate } from "react-router-dom";
 import type { FotoTipo } from "../store/photoReportStore";
-import { resolveOpcion, updateExtra, useOpciones } from "../store/photoReportStore";
+import { addExtra, resolveOpcion, syncCarpeta, useOpciones } from "../store/photoReportStore";
 import { useWorkspace } from "../store/workspaces";
 import WorkspaceBar from "../components/WorkspaceBar";
 import ClientPicker from "../components/ClientPicker";
@@ -424,6 +424,8 @@ function RunTab({
   const ws = useWorkspace({
     key: `foto:${tipo}`, label: `Fotos · ${nombre}`, sot: s.sot, nombre: s.cliente, fecha: toISODate(s.fecha),
     state: wsState,
+    clear: () => resetReport(tipo),
+    clientData: { sot: s.sot, nombre: s.cliente, fecha: s.fecha, cid: s.cid, proy: s.proy, contrata: s.contrata },
     apply: (saved) => importReport(tipo, saved),
     // Lo que necesita esta ventana de un cliente que ya existe: sus datos base (solo en campos vacíos).
     fill: (c) => {
@@ -433,7 +435,10 @@ function RunTab({
       if (!s.contrata && c.contrata) setField(tipo, "contrata", c.contrata);
     },
   });
-  function pickClient(c: { sot: string; nombre: string; fecha: string; cid: string; proy: string; contrata: string }) {
+  async function pickClient(c: { sot: string; nombre: string; fecha: string; cid: string; proy: string; contrata: string }) {
+    if (!(await ws.confirmReplace())) return;
+    ws.open(c.sot); // si ya había fotos guardadas de este cliente, se traen solas
+    resetReport(tipo); // se parte de cero: nada de fotos ni datos del cliente anterior
     setField(tipo, "sot", c.sot);
     setField(tipo, "cliente", c.nombre);
     setField(tipo, "cid", c.cid);
@@ -444,12 +449,7 @@ function RunTab({
 
   /** Carpeta de evidencia: fotos finales + originales sin editar, con subcarpeta por opción si hay varias. */
   async function makeZip() {
-    const rowsIn = (s.sections ?? []).flatMap((sec) => {
-      const op = resolveOpcion(sec.lado, manager.opciones);
-      return sec.cells.flatMap((c) => (c.imagePath
-        ? [{ nombre: c.descripcion || "foto", path: c.imagePath, original_path: c.originalPath || "", lado_label: op.label }]
-        : []));
-    });
+    const rowsIn: { nombre: string; path: string; original_path: string; lado_label: string }[] = [];  // la carpeta es independiente del PDF: solo sus fotos
     const extrasIn = s.extras.filter((e) => !e.trashed).map((e) => ({
       nombre: e.nombre || "foto extra", path: e.path, original_path: e.originalPath || "",
       lado_label: resolveOpcion(e.lado, manager.opciones).label,
@@ -467,6 +467,8 @@ function RunTab({
       setZip({ busy: false, error: apiErrorMessage(e, "No se pudo crear la carpeta.") });
     }
   }
+  // Cada foto que entra al reporte también queda en la carpeta (independiente del PDF).
+  useEffect(() => { syncCarpeta(tipo); }, [tipo, s.sections]);
   const groups = useMemo(() => groupByCategory(items), [items]);
   const ordered = useMemo(() => groups.flatMap((g) => g.items), [groups]);
   const [onlyUsed, setOnlyUsed] = useState(false);
@@ -528,7 +530,7 @@ function RunTab({
           </p>
           <div className="w-full"><WorkspaceBar ws={ws} /></div>
 
-          <ClientPicker onPick={pickClient} />
+          <ClientPicker onPick={(c) => void pickClient(c)} />
 
           <ImportPdfButton onLoaded={openPdf} />
 
@@ -819,7 +821,8 @@ function RunTab({
             } : {};
             if (editing.extra) {
               const e = s.extras.find((x) => x.id === editing.id);
-              updateExtra(tipo, editing.id, { path: p, url: u, originalPath: e?.originalPath || e?.path, originalUrl: e?.originalUrl || e?.url, ...st });
+              // La foto de la carpeta se conserva; la editada se agrega como otra foto.
+              if (e) addExtra(tipo, { ...e, id: `e${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`, nombre: `${(e.nombre || "foto").replace(/ \(editada\)$/, "")} (editada)`, path: p, url: u, originalPath: "", originalUrl: "", rawPath: "", rawUrl: "", stampLines: undefined, stampPos: undefined, trashed: undefined, ...st });
             } else {
               const cell = sections.find((x) => x.id === editing.sid)?.cells.find((x) => x.id === editing.id);
               if (editing.sid) patchCell(tipo, editing.sid, editing.id, { imagePath: p, imageUrl: u, originalPath: cell?.originalPath || cell?.imagePath, originalUrl: cell?.originalUrl || cell?.imageUrl, ...st });

@@ -9,7 +9,7 @@ import re
 
 import json
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -373,3 +373,159 @@ def sync_client(payload: schemas.ClientSync, request: Request, user: models.User
     db.commit()
     db.refresh(row)
     return ca.client_out(db, row, user.id)
+
+
+# ---------------------------------------------------------------
+# Carpeta del cliente: un ZIP con el PDF de fotos, las fotos, el CheckList y las gráficas.
+# Cada vez que se arma queda como una versión nueva; las anteriores se pueden descargar.
+# ---------------------------------------------------------------
+
+_LADOS = {"cliente": "Cliente", "site": "Site", "pop": "POP", "pdi": "PDI"}
+
+
+def _add_reporte(row: models.Client, user: models.User, rep: dict) -> None:
+    rep = {k: str(v)[:300] for k, v in rep.items() if k in ("tipo", "nombre", "filename", "url", "utc")}
+    rep["generado"] = dt.datetime.now().strftime("%Y-%m-%d %H:%M")
+    rep["por"] = user.username
+    reportes = [r for r in (row.reportes or []) if r.get("filename") != rep.get("filename")]
+    reportes.append(rep)
+    row.reportes = reportes[-150:]
+
+
+@router.post("/attach-file")
+async def attach_file(request: Request, sot: str = Form(...), tipo: str = Form("grafica"), nombre: str = Form(""), filename: str = Form(...),
+                      file: UploadFile = File(...), user: models.User = Depends(current_user), db: Session = Depends(get_db)):
+    """Guarda un archivo generado en el navegador (p. ej. la gráfica) en los reportes del cliente."""
+    import os
+    from urllib.parse import quote
+    from app.config import OUTPUTS_DIR
+    from app.services import filestore
+
+    s = norm_sot(sot)
+    if not s:
+        raise HTTPException(400, "La SOT es obligatoria.")
+    data = await file.read()
+    if len(data) > 40 * 1024 * 1024:
+        raise HTTPException(413, "El archivo es demasiado grande.")
+    base, ext = os.path.splitext(os.path.basename(filename))
+    safe = (clean_part(base) or "archivo")[:90] + (ext[:6] if re.fullmatch(r"\.[A-Za-z0-9]{1,5}", ext or "") else "")
+    out = OUTPUTS_DIR / safe
+    out.write_bytes(data)
+    filestore.save_output(out)
+    row = _find(db, user, s, request) or _mine_or_restore(db, user, s, "")
+    url = f"/api/files/outputs/{quote(safe)}"
+    _add_reporte(row, user, {"tipo": tipo, "nombre": nombre or safe, "filename": safe, "url": url})
+    db.commit()
+    return {"filename": safe, "url": url}
+
+
+def _pack_sources(db: Session, row: models.Client):
+    """Qué entra en la carpeta: últimos reportes por tipo y fotos de la carpeta de evidencia de cada ventana de fotos."""
+    latest: dict = {}
+    for r in row.reportes or []:
+        if r.get("tipo") == "carpeta" or not r.get("filename"):
+            continue
+        latest[(r.get("tipo") or "", r.get("nombre") or "")] = r
+    wss = db.query(models.ClientWorkspace).filter(models.ClientWorkspace.sot == row.sot, models.ClientWorkspace.key.like("foto:%")).all()
+    return list(latest.values()), wss
+
+
+@router.get("/{client_id}/package-status")
+def package_status(client_id: str, user: models.User = Depends(current_user), db: Session = Depends(get_db)):
+    """Versión actual de la carpeta y si hay cambios nuevos desde que se armó."""
+    row = _own_or_404(db, user, client_id)
+    reps = list(row.reportes or [])
+    pk = [i for i, r in enumerate(reps) if r.get("tipo") == "carpeta"]
+    if not pk:
+        return {"version": 0, "stale": True, "built": ""}
+    last = reps[pk[-1]]
+    stale = any(r.get("tipo") != "carpeta" for r in reps[pk[-1] + 1:])
+    built = last.get("utc", "")
+    if built and not stale:
+        for w in db.query(models.ClientWorkspace).filter(models.ClientWorkspace.sot == row.sot).all():
+            if w.updated_at and w.updated_at.isoformat() > built:
+                stale = True
+                break
+    return {"version": len(pk), "stale": stale, "built": last.get("generado", "")}
+
+
+@router.post("/{client_id}/package")
+def build_package(client_id: str, user: models.User = Depends(current_user), db: Session = Depends(get_db)):
+    """Arma «SOT <sot> <cliente>.zip» como una versión nueva (las anteriores siguen en la lista de reportes)."""
+    import os
+    import zipfile
+    from urllib.parse import quote
+    from app.config import OUTPUTS_DIR
+    from app.routers.photos import _resolve_upload_path, _safe_name
+    from app.services import filestore
+
+    row = _own_or_404(db, user, client_id)
+    root = f"SOT {clean_part(row.sot)}" + (f" {clean_part(row.nombre)}" if row.nombre else "")
+    reps, wss = _pack_sources(db, row)
+    version = sum(1 for r in (row.reportes or []) if r.get("tipo") == "carpeta") + 1
+    out_name = f"{root} v{version}.zip"
+    out_path = OUTPUTS_DIR / out_name
+    tmp = OUTPUTS_DIR / f".{out_name}.{os.getpid()}.tmp"
+    used: set = set()
+    counts = {"pdf": 0, "checklist": 0, "graficas": 0, "fotos": 0}
+
+    def uniq(folder: str, name: str) -> str:
+        base, ext = os.path.splitext(name)
+        cand, n = name, 2
+        while (folder, cand) in used:
+            cand = f"{base} ({n}){ext}"
+            n += 1
+        used.add((folder, cand))
+        return cand
+
+    try:
+        with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as z:
+            for r in reps:
+                p = filestore.ensure_output(os.path.basename(r["filename"]))
+                if not p or not os.path.isfile(p):
+                    continue
+                tipo = r.get("tipo") or ""
+                nm = r["filename"]
+                if tipo == "checklist":
+                    folder, k = "CheckList", "checklist"
+                elif tipo == "grafica":
+                    folder, k = "Gráficas", "graficas"
+                elif nm.lower().endswith(".zip"):
+                    continue  # la carpeta de fotos se arma abajo desde lo guardado en cada ventana
+                else:
+                    folder, k = "Reporte fotográfico", "pdf"
+                z.write(p, f"{root}/{folder}/{uniq(folder, nm)}")
+                counts[k] += 1
+            multi = len(wss) > 1
+            for w in wss:
+                st = w.state if isinstance(w.state, dict) else {}
+                ventana = _safe_name((w.label or w.key).replace("Fotos ·", "").strip(), "Fotos")
+                n = 0
+                for e in st.get("extras") or []:
+                    if not isinstance(e, dict) or e.get("trashed") or not e.get("path"):
+                        continue
+                    p = _resolve_upload_path(e["path"])
+                    if not p or not os.path.isfile(p):
+                        continue
+                    lado = _LADOS.get(str(e.get("lado") or ""), str(e.get("lado") or "General").replace("_", " ").title())
+                    folder = f"Fotos/{ventana}/{lado}" if multi else f"Fotos/{lado}"
+                    n += 1
+                    nm = f"{n:02d} {_safe_name(e.get('nombre') or 'foto')}{os.path.splitext(p)[1] or '.jpg'}"
+                    z.write(p, f"{root}/{folder}/{uniq(folder, nm)}")
+                    counts["fotos"] += 1
+            info = [f"SOT: {row.sot}", f"Cliente: {row.nombre}", f"CID: {row.cid}", f"Fecha: {row.fecha}", f"Proyecto: {row.proy}", f"Contrata: {row.contrata}", ""]
+            info += [f"{k}: {v}" for k, v in sorted((row.datos or {}).items())]
+            z.writestr(f"{root}/Datos del cliente.txt", "\n".join(info))
+        if not any(counts.values()):
+            raise HTTPException(400, "Todavía no hay nada para guardar: genera el PDF de fotos, el CheckList o la gráfica, o agrega fotos a la carpeta.")
+        os.replace(tmp, out_path)
+        filestore.save_output(out_path)
+    finally:
+        if tmp.exists():
+            tmp.unlink()
+    url = f"/api/files/outputs/{quote(out_name)}"
+    _add_reporte(row, user, {"tipo": "carpeta", "nombre": f"Carpeta v{version}", "filename": out_name, "url": url,
+                             "utc": dt.datetime.utcnow().isoformat()})
+    log_activity(db, user, "carpeta_armada", f"SOT {row.sot} · v{version}", row.id)
+    db.commit()
+    return {"version": version, "filename": out_name, "url": url, "counts": counts}

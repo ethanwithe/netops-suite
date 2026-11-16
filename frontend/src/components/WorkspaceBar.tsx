@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { setAutosave } from "../store/autosave";
 import type { VersionInfo, WsApi } from "../store/workspaces";
 
 /** Aviso y estado del guardado automático por SOT (ver store/workspaces.ts). */
@@ -18,14 +19,24 @@ export default function WorkspaceBar({ ws }: { ws: WsApi }) {
     );
   }
   const txt = !ws.hasSot
-    ? "Escribe la SOT y todo lo de esta ventana se guarda solo en «Datos de cliente» (fotos, textos y PDF)."
+    ? "Escribe la SOT para poder guardar lo de esta ventana en «Datos de cliente» (fotos, textos y PDF)."
     : ws.status?.kind === "saving" ? "Guardando…"
-    : ws.status?.kind === "saved" ? `Guardado automático en Datos de cliente · ${ws.status.at}`
+    : ws.dirty ? (ws.autosave ? "Guardando en unos segundos…" : "Cambios sin guardar")
+    : ws.status?.kind === "saved" ? `Guardado en Datos de cliente · ${ws.status.at}`
     : ws.status?.kind === "error" ? "No se pudo guardar (sin conexión). Se reintenta con el próximo cambio."
-    : "Guardado automático activado para esta SOT.";
+    : ws.autosave ? "Guardado automático activado para esta SOT." : "Guardado automático apagado: usa «Guardar».";
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-      <p className={`text-[11px] ${ws.status?.kind === "error" ? "text-red-600" : "text-slate-500"}`} aria-live="polite">☁ {txt}</p>
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+      <label className="flex cursor-pointer select-none items-center gap-1.5 text-[11px] text-slate-600" title="Si lo apagas, solo se guarda cuando pulses «Guardar» o aceptes guardar al cambiar de cliente o de ventana">
+        <button type="button" role="switch" aria-checked={ws.autosave} onClick={() => setAutosave(!ws.autosave)}
+          className={`relative h-4 w-7 shrink-0 rounded-full transition-colors ${ws.autosave ? "bg-emerald-500" : "bg-slate-300"}`}>
+          <span className={`absolute top-0.5 h-3 w-3 rounded-full bg-white shadow transition-all ${ws.autosave ? "left-3.5" : "left-0.5"}`} />
+        </button>
+        Guardar en automático: <b>{ws.autosave ? "Sí" : "No"}</b>
+      </label>
+      <button type="button" className="btn-secondary !px-2.5 !py-1 text-xs" disabled={!ws.hasSot} onClick={() => void ws.save()}>Guardar</button>
+      <button type="button" className="btn-secondary !px-2.5 !py-1 text-xs" onClick={() => void ws.clear()} title="Vacía la pantalla para otro cliente; lo guardado no se borra">Limpiar</button>
+      <p className={`text-[11px] ${ws.status?.kind === "error" ? "text-red-600" : ws.dirty && !ws.autosave ? "font-medium text-amber-600" : "text-slate-500"}`} aria-live="polite">☁ {txt}</p>
       {ws.hasSot && <Versions ws={ws} />}
     </div>
   );

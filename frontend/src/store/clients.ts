@@ -1,6 +1,8 @@
 /** Datos de clientes por SOT (año/mes según la fecha de los datos). Cualquier ventana puede sumar lo que sabe. */
 import { useEffect, useRef } from "react";
 import { api } from "../api/client";
+import { useAutosave } from "./autosave";
+import { expandDatos } from "./clientLink";
 
 export interface ClientRecord {
   id: string;
@@ -47,6 +49,17 @@ export interface SyncInput extends ClientInput {
 }
 export const syncClient = (c: SyncInput) => api.post<ClientRecord>("/clients/sync", c).then((r) => r.data);
 
+/** Carpeta del cliente (ZIP con PDF de fotos, fotos, CheckList y gráficas); cada vez que se arma es una versión nueva. */
+export const packageStatus = (id: string) => api.get<{ version: number; stale: boolean; built: string }>(`/clients/${id}/package-status`).then((r) => r.data);
+export const buildPackage = (id: string) =>
+  api.post<{ version: number; filename: string; url: string; counts: Record<string, number> }>(`/clients/${id}/package`, {}, { timeout: 180000 }).then((r) => r.data);
+/** Guarda en los reportes del cliente un archivo generado en el navegador (p. ej. la gráfica). */
+export function attachFile(sot: string, tipo: string, nombre: string, filename: string, blob: Blob) {
+  const f = new FormData();
+  f.append("sot", sot); f.append("tipo", tipo); f.append("nombre", nombre); f.append("filename", filename); f.append("file", blob, filename);
+  return api.post("/clients/attach-file", f, { headers: { "Content-Type": "multipart/form-data" } });
+}
+
 /** "31/10/2026" o "2026-10-31" -> "2026-10-31" ('' si no se entiende). */
 export function toISODate(f: string): string {
   const s = (f || "").trim();
@@ -63,16 +76,17 @@ export function toISODate(f: string): string {
  */
 export function useSotSync(data: ClientInput, enabled = true): void {
   const last = useRef("");
-  const json = JSON.stringify({ ...data, datos: data.datos ?? {} });
+  const auto = useAutosave();
+  const json = JSON.stringify({ ...data, datos: expandDatos(data.datos) });
   useEffect(() => {
-    if (!enabled || !data.sot?.trim()) return;
+    if (!auto || !enabled || !data.sot?.trim()) return;
     if (json === last.current) return;
     const t = window.setTimeout(() => {
       last.current = json;
-      syncClient({ ...data, fecha: toISODate(data.fecha ?? "") }).catch(() => {
+      syncClient({ ...data, datos: expandDatos(data.datos), fecha: toISODate(data.fecha ?? "") }).catch(() => {
         last.current = ""; // se reintenta con el próximo cambio
       });
     }, 1500);
     return () => window.clearTimeout(t);
-  }, [json, enabled]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [json, enabled, auto]); // eslint-disable-line react-hooks/exhaustive-deps
 }
