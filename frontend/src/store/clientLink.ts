@@ -22,3 +22,11 @@ export function expandDatos(d: Record<string, string> | undefined | null): Recor
   }
   return o;
 }
+
+/** Datos conocidos que se pueden editar en «Mis clientes» aunque estén vacíos (los que no estén aquí salen como «otros datos»). */
+export const CAMPOS_DATOS: { titulo: string; campos: string[] }[] = [
+  { titulo: "Servicio y sede", campos: ["SERVICIO", "SEDE", "DIRECCION", "CONTACTO"] },
+  { titulo: "Red del proveedor y cliente", campos: ["POP", "OLT", "IP WAN CLARO", "IP WAN CPE", "RED WAN", "RED LAN", "VLAN", "SUB INTERFACE", "PUERTO RJ45", "IP LAN GW", "IP LAN SW"] },
+  { titulo: "Equipo", campos: ["MODELO ROUTER", "MARCA ONT", "MODELO", "ANCHO_MBPS"] },
+  { titulo: "CheckList (parámetros de los comandos)", campos: ["WAN", "LAN", "NEXTHOP", "REMOTE", "INTERNET", "MRA", "BGP_PEER", "VRF"] },
+];

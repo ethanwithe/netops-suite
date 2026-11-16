@@ -166,6 +166,7 @@ export function useWorkspace(o: WsOptions): WsApi {
   const id = useRef(Symbol("ws"));
   useEffect(() => {
     const me = id.current;
+    const p0 = window.location.pathname;
     guards.set(me, {
       dirty: () => !getAutosave() && ref.current.enabled !== false && !!sotRef.current && modeRef.current === "free" && jsonRef.current !== last.current,
       save: async () => {
@@ -184,6 +185,8 @@ export function useWorkspace(o: WsOptions): WsApi {
           nombre: ref.current.nombre ?? "", fecha: ref.current.fecha ?? "",
         }).catch(() => undefined);
       }
+      // Al volver a esta ventana se muestra limpia, lista para otro cliente (o para elegir el mismo otra vez); lo guardado sigue en «Datos de cliente».
+      if (window.location.pathname !== p0) { try { ref.current.clear?.(); } catch { /* ignorar */ } }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

@@ -10,6 +10,7 @@ import { can, useAuth } from "../store/auth";
 import type { ClientInput, ClientRecord } from "../store/clients";
 import { deleteWorkspace, listWorkspaces, requestOpen } from "../store/workspaces";
 import type { WorkspaceInfo } from "../store/workspaces";
+import { CAMPOS_DATOS } from "../store/clientLink";
 
 const MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
 
@@ -230,7 +231,13 @@ function ClientEditor({ initial, defaultDate, onClose, onSaved }: {
     sot: initial?.sot ?? "", nombre: initial?.nombre ?? "", fecha: initial?.fecha ?? defaultDate,
     cid: initial?.cid ?? "", proy: initial?.proy ?? "", contrata: initial?.contrata ?? "",
   });
-  const [datos, setDatos] = useState<[string, string][]>(Object.entries(initial?.datos ?? {}));
+  const known = new Set(CAMPOS_DATOS.flatMap((g) => g.campos));
+  const [fijos, setFijos] = useState<Record<string, string>>(() => {
+    const o: Record<string, string> = {};
+    for (const [k, v] of Object.entries(initial?.datos ?? {})) if (known.has(k.trim().toUpperCase())) o[k.trim().toUpperCase()] = v;
+    return o;
+  });
+  const [datos, setDatos] = useState<[string, string][]>(() => Object.entries(initial?.datos ?? {}).filter(([k]) => !known.has(k.trim().toUpperCase())));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
@@ -239,7 +246,7 @@ function ClientEditor({ initial, defaultDate, onClose, onSaved }: {
     if (!f.sot.trim()) { setError("La SOT es obligatoria."); return; }
     setBusy(true);
     setError(null);
-    const body = { ...f, datos: Object.fromEntries(datos.filter(([k]) => k.trim())) };
+    const body = { ...f, datos: { ...Object.fromEntries(Object.entries(fijos).filter(([, v]) => v.trim())), ...Object.fromEntries(datos.filter(([k]) => k.trim())) } };
     try {
       if (initial) await updateClient(initial.id, body);
       else await createClient(body);
@@ -275,9 +282,22 @@ function ClientEditor({ initial, defaultDate, onClose, onSaved }: {
           {field("PROY", "proy")}
           {field("CONTRATA", "contrata", "text", "sm:col-span-2")}
         </div>
-        <div className="space-y-2">
+        {CAMPOS_DATOS.map((g) => (
+          <div key={g.titulo} className="space-y-1.5 border-t border-slate-100 pt-2">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-brand-600">{g.titulo}</p>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {g.campos.map((k) => (
+                <label key={k} className="block text-sm">
+                  <span className="mb-0.5 block text-[11px] font-medium text-slate-500">{k}</span>
+                  <input className="input w-full" value={fijos[k] ?? ""} onChange={(e) => setFijos({ ...fijos, [k]: e.target.value })} />
+                </label>
+              ))}
+            </div>
+          </div>
+        ))}
+        <div className="space-y-2 border-t border-slate-100 pt-2">
           <div className="flex items-center justify-between">
-            <p className="text-xs font-medium text-slate-500">Datos asociados (IPs, interfaces…)</p>
+            <p className="text-xs font-medium text-slate-500">Otros datos (nombre y valor)</p>
             <button className="btn-secondary text-xs" onClick={() => setDatos([...datos, ["", ""]])}>+ Dato</button>
           </div>
           {datos.map(([k, v], i) => (
