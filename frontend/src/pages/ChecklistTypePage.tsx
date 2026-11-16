@@ -21,7 +21,7 @@ import type { ClientRecord } from "../store/clients";
 import type { ConsoleSession } from "../utils/webSerial";
 import { getSession, openWindow, setSetupCommands, useDock, useTerminal } from "../store/terminal";
 import {
-  extractBandwidthMbps, extractModel, fechaLarga, fillCmd, hoyISO, isSatItem, parseRates, servicioLabel,
+  extractBandwidthMbps, extractModel, extractVlan, fechaLarga, fillCmd, hoyISO, isSatItem, parseRates, servicioLabel,
 } from "../utils/checklistInfo";
 
 interface Row {
@@ -38,12 +38,13 @@ interface RunState {
   fecha: string; // yyyy-mm-dd
   modelo: string;
   ancho: string;
+  vlan?: string;
   params: Record<string, string>;
   rows: Record<string, Row>;
 }
 
 const freshRun = (data: CkData): RunState => ({
-  sot: "", cid: "", cliente: "", fecha: hoyISO(), modelo: "", ancho: "",
+  sot: "", cid: "", cliente: "", fecha: hoyISO(), modelo: "", ancho: "", vlan: "",
   params: Object.fromEntries(data.params.map((p) => [p.key, p.default])),
   rows: {},
 });
@@ -111,8 +112,9 @@ function Inner({ type }: { type: CkType }) {
     for (const [k, v] of Object.entries(s.params)) if (v.trim()) d[k] = v.trim();
     if (s.modelo.trim()) d["MODELO"] = s.modelo.trim();
     if (s.ancho.trim()) d["ANCHO_MBPS"] = s.ancho.trim();
+    if (s.vlan?.trim()) d["VLAN"] = s.vlan.trim();
     return d;
-  }, [s.params, s.modelo, s.ancho]);
+  }, [s.params, s.modelo, s.ancho, s.vlan]);
   useSotSync({ sot: s.sot, nombre: s.cliente, fecha: s.fecha, cid: s.cid, datos: datosSot });
 
   // Deja la ventana vacía (datos, salidas, capturas) para otro cliente; el logo se conserva.
@@ -132,7 +134,7 @@ function Inner({ type }: { type: CkType }) {
       for (const prm of data.params) if (d[prm.key] && (params[prm.key] ?? "") === prm.default) params[prm.key] = d[prm.key];
       return {
         ...p, cid: p.cid || c.cid, cliente: p.cliente || c.nombre,
-        modelo: p.modelo || d.MODELO || "", ancho: p.ancho || d.ANCHO_MBPS || "", params,
+        modelo: p.modelo || d.MODELO || "", ancho: p.ancho || d.ANCHO_MBPS || "", vlan: p.vlan || d.VLAN || "", params,
       };
     }),
   });
@@ -148,7 +150,7 @@ function Inner({ type }: { type: CkType }) {
     const base = freshRun(data);
     const params = { ...base.params };
     for (const prm of data.params) if (d[prm.key]) params[prm.key] = d[prm.key];
-    setS({ ...base, sot: c.sot, cid: c.cid, cliente: c.nombre, fecha: c.fecha || base.fecha, modelo: d.MODELO || "", ancho: d.ANCHO_MBPS || "", params });
+    setS({ ...base, sot: c.sot, cid: c.cid, cliente: c.nombre, fecha: c.fecha || base.fecha, modelo: d.MODELO || "", ancho: d.ANCHO_MBPS || "", vlan: d.VLAN || "", params });
   }
 
   const allItems = useMemo(() => data.sections.flatMap((sec) => sec.items), [data]);
@@ -165,6 +167,10 @@ function Inner({ type }: { type: CkType }) {
       if (!p.ancho && isConfig) {
         const b = extractBandwidthMbps(data.vendor, text, p.params["WAN"] ?? "");
         if (b) next = { ...next, ancho: b };
+      }
+      if (!p.vlan && isConfig) {
+        const v = extractVlan(data.vendor, text, p.params["WAN"] ?? "");
+        if (v) next = { ...next, vlan: v };
       }
       return next;
     });
@@ -311,10 +317,11 @@ function Inner({ type }: { type: CkType }) {
               <Field label="CID" value={s.cid} onChange={(v) => setF("cid", v)} />
             </div>
 
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <Field label="Cliente (para el nombre del archivo)" value={s.cliente} onChange={(v) => setF("cliente", v)} />
               <Field label="Modelo del equipo (se lee solo)" value={s.modelo} onChange={(v) => setF("modelo", v)} />
               <Field label="Ancho de banda en Mbps (se lee solo)" value={s.ancho} onChange={(v) => setF("ancho", v)} />
+              <Field label="VLAN (encapsulation dot1q, se lee sola)" value={s.vlan ?? ""} onChange={(v) => setF("vlan", v)} />
             </div>
 
             {data.params.length > 0 && (

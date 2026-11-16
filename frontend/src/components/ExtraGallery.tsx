@@ -96,13 +96,7 @@ function restoreExtra(tipo: FotoTipo, e: ExtraPhoto, sections: Section[]) {
 export default function ExtraGallery({ tipo, extras, sections, opciones, cliente, sot = "", onEdit }: Props) {
   const items = useMemo<GalleryItem[]>(() => {
     const out: GalleryItem[] = [];
-    for (const sec of sections) {
-      const lado = resolveOpcion(sec.lado, opciones).id;
-      for (const c of sec.cells) {
-        if (!c.imagePath) continue;
-        out.push({ key: `c:${sec.id}:${c.id}`, kind: "cell", id: c.id, sid: sec.id, nombre: c.descripcion, url: c.imageUrl, originalUrl: c.originalUrl || undefined, edited: !!c.originalPath, lado });
-      }
-    }
+    // La carpeta es independiente del PDF: solo se listan sus fotos (las de las celdas se copian solas, ver syncCarpeta).
     for (const e of extras) {
       if (e.trashed) continue;
       out.push({ key: `e:${e.id}`, kind: "extra", id: e.id, nombre: e.nombre, url: e.url, originalUrl: e.originalUrl || undefined, edited: !!e.originalPath, lado: resolveOpcion(e.lado, opciones).id });

@@ -57,6 +57,16 @@ function ifaceBlock(config: string, iface: string): string {
   return m ? m[1] : "";
 }
 
+/** VLAN de la sub-interfaz WAN: «encapsulation dot1Q N» (Cisco), «dot1q termination vid N» / «vlan-type dot1q N» (Huawei), «set vlanid N» (Fortinet). */
+export function extractVlan(vendor: string, config: string, wan: string): string {
+  const re = vendor === "huawei" ? /(?:dot1q\s+termination\s+vid|vlan-type\s+dot1q(?:\s+vid)?)\s+(\d{1,4})/i
+    : vendor === "fortinet" ? /set\s+vlanid\s+(\d{1,4})/i
+    : /encapsulation\s+dot1q\s+(\d{1,4})/i;
+  const blk = ifaceBlock(config, wan);
+  const m = (blk && re.exec(blk)) || (!wan.trim() ? re.exec(config) : null);
+  return m ? m[1] : "";
+}
+
 /** Ancho de banda en Mbps: descripción de la sub-interfaz ("200 MBPS"), bandwidth, shape o gts/car. */
 export function extractBandwidthMbps(vendor: string, config: string, wan: string): string {
   const block = ifaceBlock(config, wan);

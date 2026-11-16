@@ -20,9 +20,5 @@ export function expandDatos(d: Record<string, string> | undefined | null): Recor
     if (o[a] && !o[b]) o[b] = o[a];
     else if (o[b] && !o[a]) o[a] = o[b];
   }
-  // La VLAN sale de la sub-interfaz (…0/0.300 → 300)
-  const sub = o["SUB INTERFACE"] ?? "";
-  const m = /\.(\d{1,4})\s*$/.exec(sub);
-  if (m && !o["VLAN"]) o["VLAN"] = m[1];
   return o;
 }

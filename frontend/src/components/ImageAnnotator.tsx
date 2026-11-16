@@ -22,6 +22,8 @@ interface Props {
 }
 
 
+import { getEditState, setEditState } from "../utils/annotState";
+
 // ============================================================
 // MODELO
 //  Todas las marcas de línea (línea, flecha, rectángulo, óvalo) son una misma
@@ -538,8 +540,18 @@ export default function ImageAnnotator({ imageUrl, baseUrl, stamp, onClose, onSa
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const base = await loadBase(stamp ? baseUrl || imageUrl : imageUrl);
+      // Si esta foto ya se editó antes: se parte de la imagen sin marcas y se devuelven las marcas editables.
+      const es = getEditState(imageUrl);
+      let base: HTMLCanvasElement | null = null;
       const objects: Obj[] = [];
+      if (es) {
+        try {
+          base = await loadBase(es.baseUrl);
+          const k = base.width / es.w;
+          for (const o of es.objects as Obj[]) objects.push(mapObj({ ...o, id: newId() } as Obj, (p) => ({ x: p.x * k, y: p.y * k })));
+        } catch { base = null; objects.length = 0; }
+      }
+      if (!base) base = await loadBase(stamp ? baseUrl || imageUrl : imageUrl);
       if (stamp && stamp.lines.length) {
         const ss = getStampStyle();
         const font = stamp.font ?? ss.font, color = stamp.color ?? ss.color;
@@ -558,7 +570,8 @@ export default function ImageAnnotator({ imageUrl, baseUrl, stamp, onClose, onSa
       }
       if (cancelled) return;
       setDoc({ base, objects });
-      if (objects.length) { setTool("select"); setSelId(objects[0].id); setTextInput(objects[0].k === "text" ? objects[0].text : ""); }
+      if (objects.length) { setTool("select"); }
+      if (stampId.current != null) { const so = objects.find((o) => o.id === stampId.current); if (so) { setSelId(so.id); setTextInput(so.k === "text" ? so.text : ""); } }
     })().catch((e) => !cancelled && setLoadError(e.message));
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1135,7 +1148,23 @@ export default function ImageAnnotator({ imageUrl, baseUrl, stamp, onClose, onSa
       const form = new FormData();
       form.append("file", blob, "editada.jpg");
       const { data } = await api.post("/files/upload", form, { headers: { "Content-Type": "multipart/form-data" } });
-      if (!stamp) { onSaved(data.path, data.url); onClose(); return; }
+      // Imagen sin marcas (recortes y ajustes ya aplicados) + marcas: así al volver a editar todo se puede mover o cambiar.
+      const plain = objs.filter((o) => !(o.k === "text" && o.stamp));
+      const keepMarks = async (cleanUrl?: string) => {
+        try {
+          let baseUrl2 = cleanUrl || (plain.length ? "" : data.url);
+          if (!baseUrl2) {
+            const bb: Blob | null = await new Promise((res) => full.toBlob(res, "image/jpeg", 0.92));
+            if (bb) {
+              const fb = new FormData();
+              fb.append("file", bb, "base.jpg");
+              baseUrl2 = (await api.post("/files/upload", fb, { headers: { "Content-Type": "multipart/form-data" } })).data.url;
+            }
+          }
+          if (baseUrl2) setEditState(data.url, { baseUrl: baseUrl2, w: full.width, h: full.height, objects: plain });
+        } catch { /* si falla, la foto queda guardada igual (solo sin marcas editables) */ }
+      };
+      if (!stamp) { await keepMarks(); onSaved(data.path, data.url); onClose(); return; }
 
       // Con sello libre: además se guarda la foto SIN sello (con el resto de marcas), para poder volver a moverlo.
       const st = objs.find((o): o is Extract<Obj, { k: "text" }> => o.k === "text" && !!o.stamp);
@@ -1153,6 +1182,7 @@ export default function ImageAnnotator({ imageUrl, baseUrl, stamp, onClose, onSa
         const r2 = await api.post("/files/upload", f2, { headers: { "Content-Type": "multipart/form-data" } });
         clean = { path: r2.data.path, url: r2.data.url };
       }
+      await keepMarks(st && !plain.length ? clean.url : undefined);
       onSaved(data.path, data.url, {
         cleanPath: clean.path, cleanUrl: clean.url,
         stamp: st ? { lines: st.text.split("\n"), fx: st.p.x / full.width, fy: st.p.y / full.height, size: st.size, font: st.font, color: st.color, align: st.align } : null,
