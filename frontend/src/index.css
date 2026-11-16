@@ -663,3 +663,32 @@ main :is(img, video) { max-width: 100%; height: auto; }
   [data-compact] .input { min-height: 32px; font-size: 14px; }
   [data-compact] button { min-height: 30px; }
 }
+
+/* ============ Celulares: nada se desborda (botones, filas, tablas) ============ */
+@media (max-width: 639px) {
+  /* los botones con texto largo se parten en dos líneas en vez de salirse */
+  .btn, .btn-primary, .btn-secondary, .btn-danger { max-width: 100%; white-space: normal; text-align: center; line-height: 1.2; }
+  main button { max-width: 100%; }
+  /* cualquier fila de botones pasa a la línea siguiente cuando no cabe */
+  main .flex:has(> :is(.btn, .btn-primary, .btn-secondary, .btn-danger, button)):not(.flex-col):not(.flex-nowrap):not(.overflow-x-auto):not(.no-wrap) { flex-wrap: wrap; row-gap: .4rem; }
+  /* columnas de cuadrícula y filas flex pueden encogerse (evita que un campo ancho empuje la página) */
+  main .grid > *, main .flex > :is(input, select, textarea, label) { min-width: 0; }
+  main :is(input, select, textarea).input { max-width: 100%; }
+  /* tablas anchas: se deslizan dentro de su tarjeta */
+  main .card table { display: block; max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+}
+
+/* ============ Elegancia: movimiento suave y detalles finos ============ */
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes page-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+  main > * { animation: page-in .38s cubic-bezier(.2, .7, .2, 1) both; }
+  .card { transition: box-shadow .25s ease, transform .25s ease, border-color .25s ease; }
+}
+input, select, textarea, .font-mono, td { font-variant-numeric: tabular-nums; }
+/* barras de desplazamiento finas y discretas (solo con mouse) */
+@media (hover: hover) and (pointer: fine) {
+  * { scrollbar-width: thin; scrollbar-color: rgb(var(--s300)) transparent; }
+  *::-webkit-scrollbar { width: 9px; height: 9px; }
+  *::-webkit-scrollbar-thumb { background: rgb(var(--s300)); border-radius: 999px; border: 2px solid transparent; background-clip: content-box; }
+  *::-webkit-scrollbar-thumb:hover { background: rgb(var(--s400, var(--s300))); background-clip: content-box; }
+}
