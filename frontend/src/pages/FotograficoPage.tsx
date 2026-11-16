@@ -424,6 +424,8 @@ function RunTab({
   const ws = useWorkspace({
     key: `foto:${tipo}`, label: `Fotos · ${nombre}`, sot: s.sot, nombre: s.cliente, fecha: toISODate(s.fecha),
     state: wsState,
+    clear: () => resetReport(tipo),
+    clientData: { sot: s.sot, nombre: s.cliente, fecha: s.fecha, cid: s.cid, proy: s.proy, contrata: s.contrata },
     apply: (saved) => importReport(tipo, saved),
     // Lo que necesita esta ventana de un cliente que ya existe: sus datos base (solo en campos vacíos).
     fill: (c) => {
@@ -433,7 +435,10 @@ function RunTab({
       if (!s.contrata && c.contrata) setField(tipo, "contrata", c.contrata);
     },
   });
-  function pickClient(c: { sot: string; nombre: string; fecha: string; cid: string; proy: string; contrata: string }) {
+  async function pickClient(c: { sot: string; nombre: string; fecha: string; cid: string; proy: string; contrata: string }) {
+    if (!(await ws.confirmReplace())) return;
+    ws.open(c.sot); // si ya había fotos guardadas de este cliente, se traen solas
+    resetReport(tipo); // se parte de cero: nada de fotos ni datos del cliente anterior
     setField(tipo, "sot", c.sot);
     setField(tipo, "cliente", c.nombre);
     setField(tipo, "cid", c.cid);
@@ -528,7 +533,7 @@ function RunTab({
           </p>
           <div className="w-full"><WorkspaceBar ws={ws} /></div>
 
-          <ClientPicker onPick={pickClient} />
+          <ClientPicker onPick={(c) => void pickClient(c)} />
 
           <ImportPdfButton onLoaded={openPdf} />
 

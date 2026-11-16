@@ -1,6 +1,8 @@
 /** Datos de clientes por SOT (año/mes según la fecha de los datos). Cualquier ventana puede sumar lo que sabe. */
 import { useEffect, useRef } from "react";
 import { api } from "../api/client";
+import { useAutosave } from "./autosave";
+import { expandDatos } from "./clientLink";
 
 export interface ClientRecord {
   id: string;
@@ -63,16 +65,17 @@ export function toISODate(f: string): string {
  */
 export function useSotSync(data: ClientInput, enabled = true): void {
   const last = useRef("");
-  const json = JSON.stringify({ ...data, datos: data.datos ?? {} });
+  const auto = useAutosave();
+  const json = JSON.stringify({ ...data, datos: expandDatos(data.datos) });
   useEffect(() => {
-    if (!enabled || !data.sot?.trim()) return;
+    if (!auto || !enabled || !data.sot?.trim()) return;
     if (json === last.current) return;
     const t = window.setTimeout(() => {
       last.current = json;
-      syncClient({ ...data, fecha: toISODate(data.fecha ?? "") }).catch(() => {
+      syncClient({ ...data, datos: expandDatos(data.datos), fecha: toISODate(data.fecha ?? "") }).catch(() => {
         last.current = ""; // se reintenta con el próximo cambio
       });
     }, 1500);
     return () => window.clearTimeout(t);
-  }, [json, enabled]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [json, enabled, auto]); // eslint-disable-line react-hooks/exhaustive-deps
 }

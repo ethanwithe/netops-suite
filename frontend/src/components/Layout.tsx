@@ -10,6 +10,8 @@ import { usePersistentState } from "../store/persistentState";
 import ThemeSwitcher from "./ThemeSwitcher";
 import ToolsMenu from "./ToolsMenu";
 import FloatingTools from "./FloatingTools";
+import DialogHost from "./DialogHost";
+import NavGuard from "./NavGuard";
 // Bit se carga aparte, después de que la pantalla ya apareció
 const Mascot = lazy(() => import("../mascot/Mascot"));
 import AnnouncementBar from "./AnnouncementBar";
@@ -164,6 +166,8 @@ export default function Layout() {
     <div className="relative flex h-[100dvh] overflow-hidden">
       <Backdrop />
       {can(me, "checklist") && <FloatingTools />}
+      <NavGuard />
+      <DialogHost />
       {open && <div className="fixed inset-0 z-30 bg-black/50 backdrop-blur-sm lg:hidden" onClick={() => setOpen(false)} aria-hidden="true" />}
 
       <aside

@@ -14,6 +14,7 @@ import { deleteChecklistType, publishChecklistType, restoreChecklistBase, setChe
 import type { CkData, CkItem, CkType } from "../store/checklistTypes";
 import ClientPicker from "../components/ClientPicker";
 import { syncClient, useSotSync } from "../store/clients";
+import { expandDatos } from "../store/clientLink";
 import { useWorkspace } from "../store/workspaces";
 import WorkspaceBar from "../components/WorkspaceBar";
 import type { ClientRecord } from "../store/clients";
@@ -114,31 +115,40 @@ function Inner({ type }: { type: CkType }) {
   }, [s.params, s.modelo, s.ancho]);
   useSotSync({ sot: s.sot, nombre: s.cliente, fecha: s.fecha, cid: s.cid, datos: datosSot });
 
+  // Deja la ventana vacía (datos, salidas, capturas) para otro cliente; el logo se conserva.
+  const clearAll = () => { setS(freshRun(data)); setPdf(null); setWord(null); setPdfError(null); setLog(""); setReadings({}); };
+
   // Todo lo de esta ventana (datos, salidas de comandos, capturas) se guarda solo por SOT y se puede traer de vuelta.
   const ws = useWorkspace({
     key: `checklist:${type.id}`, label: `CheckList · ${type.nombre}`, sot: s.sot, nombre: s.cliente, fecha: s.fecha,
     state: s,
+    clear: clearAll,
+    clientData: { sot: s.sot, nombre: s.cliente, fecha: s.fecha, cid: s.cid, datos: datosSot },
     apply: (saved) => setS((p) => ({ ...p, ...saved, params: { ...p.params, ...(saved?.params ?? {}) } })),
     // Lo que necesita esta ventana de un cliente que ya existe: CID, nombre, modelo, ancho y sus parámetros (IPs, interfaces).
     fill: (c) => setS((p) => {
+      const d = expandDatos(c.datos);
       const params = { ...p.params };
-      for (const prm of data.params) if (c.datos?.[prm.key] && params[prm.key] === prm.default) params[prm.key] = c.datos[prm.key];
+      for (const prm of data.params) if (d[prm.key] && (params[prm.key] ?? "") === prm.default) params[prm.key] = d[prm.key];
       return {
         ...p, cid: p.cid || c.cid, cliente: p.cliente || c.nombre,
-        modelo: p.modelo || c.datos?.MODELO || "", ancho: p.ancho || c.datos?.ANCHO_MBPS || "", params,
+        modelo: p.modelo || d.MODELO || "", ancho: p.ancho || d.ANCHO_MBPS || "", params,
       };
     }),
   });
 
-  function pickClient(c: ClientRecord) {
-    setS((p) => {
-      const params = { ...p.params };
-      for (const prm of data.params) if (c.datos?.[prm.key]) params[prm.key] = c.datos[prm.key];
-      return {
-        ...p, sot: c.sot, cid: c.cid || p.cid, cliente: c.nombre || p.cliente, fecha: c.fecha || p.fecha,
-        modelo: c.datos?.MODELO || p.modelo, ancho: c.datos?.ANCHO_MBPS || p.ancho, params,
-      };
-    });
+  async function pickClient(c: ClientRecord) {
+    if (!(await ws.confirmReplace())) return;
+    let full = c;
+    try { full = (await api.get<ClientRecord>(`/clients/by-sot/${encodeURIComponent(c.sot)}`)).data; } catch { /* se usa lo de la lista */ }
+    const d = expandDatos(full.datos);
+    ws.open(c.sot); // si ya había algo guardado de este cliente en esta ventana, se trae solo
+    setPdf(null); setWord(null); setPdfError(null); setLog(""); setReadings({});
+    // Se parte de una ventana vacía: lo que el cliente no tenga queda en blanco
+    const base = freshRun(data);
+    const params = { ...base.params };
+    for (const prm of data.params) if (d[prm.key]) params[prm.key] = d[prm.key];
+    setS({ ...base, sot: c.sot, cid: c.cid, cliente: c.nombre, fecha: c.fecha || base.fecha, modelo: d.MODELO || "", ancho: d.ANCHO_MBPS || "", params });
   }
 
   const allItems = useMemo(() => data.sections.flatMap((sec) => sec.items), [data]);
@@ -286,7 +296,7 @@ function Inner({ type }: { type: CkType }) {
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="text-xs text-slate-400">Tu avance se guarda solo en este navegador; los datos de la SOT, en «Datos de cliente».</p>
               <div className="flex flex-wrap items-center gap-2">
-                <ClientPicker onPick={pickClient} />
+                <ClientPicker onPick={(c) => void pickClient(c)} />
                 <button type="button" className="btn-secondary text-xs" onClick={newReport} disabled={!!busy}>Nuevo checklist</button>
               </div>
             </div>
