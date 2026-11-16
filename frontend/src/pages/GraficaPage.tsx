@@ -14,7 +14,7 @@ import type { Fields } from "../diagram/templates";
 import type { Doc } from "../diagram/types";
 import { useUndo } from "../diagram/useUndo";
 import { useAuth } from "../store/auth";
-import { toISODate, useSotSync } from "../store/clients";
+import { attachFile, toISODate, useSotSync } from "../store/clients";
 import { expandDatos } from "../store/clientLink";
 import type { ClientRecord } from "../store/clients";
 import { usePersistentState } from "../store/persistentState";
@@ -121,6 +121,8 @@ function GraficaInner({ info, options, remote, reload }: { info: OptionInfo; opt
       const url = URL.createObjectURL(r.data as Blob);
       const a = document.createElement("a");
       a.href = url; a.download = `${baseName}.${kind}`; document.body.appendChild(a); a.click(); a.remove();
+      // También queda en los reportes del cliente (para la carpeta del cliente)
+      if ((fields.sot ?? "").trim()) void attachFile(fields.sot, "grafica", `${tpl.label} (${kind.toUpperCase()})`, `${baseName}.${kind}`, r.data as Blob).catch(() => undefined);
       setTimeout(() => URL.revokeObjectURL(url), 5000);
     } catch (e) {
       // con responseType "blob" el mensaje del servidor llega dentro de un Blob: se lee para mostrarlo

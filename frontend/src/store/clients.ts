@@ -49,6 +49,17 @@ export interface SyncInput extends ClientInput {
 }
 export const syncClient = (c: SyncInput) => api.post<ClientRecord>("/clients/sync", c).then((r) => r.data);
 
+/** Carpeta del cliente (ZIP con PDF de fotos, fotos, CheckList y gráficas); cada vez que se arma es una versión nueva. */
+export const packageStatus = (id: string) => api.get<{ version: number; stale: boolean; built: string }>(`/clients/${id}/package-status`).then((r) => r.data);
+export const buildPackage = (id: string) =>
+  api.post<{ version: number; filename: string; url: string; counts: Record<string, number> }>(`/clients/${id}/package`, {}, { timeout: 180000 }).then((r) => r.data);
+/** Guarda en los reportes del cliente un archivo generado en el navegador (p. ej. la gráfica). */
+export function attachFile(sot: string, tipo: string, nombre: string, filename: string, blob: Blob) {
+  const f = new FormData();
+  f.append("sot", sot); f.append("tipo", tipo); f.append("nombre", nombre); f.append("filename", filename); f.append("file", blob, filename);
+  return api.post("/clients/attach-file", f, { headers: { "Content-Type": "multipart/form-data" } });
+}
+
 /** "31/10/2026" o "2026-10-31" -> "2026-10-31" ('' si no se entiende). */
 export function toISODate(f: string): string {
   const s = (f || "").trim();

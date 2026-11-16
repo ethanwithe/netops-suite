@@ -11,6 +11,7 @@ import type { ClientInput, ClientRecord } from "../store/clients";
 import { deleteWorkspace, listWorkspaces, requestOpen } from "../store/workspaces";
 import type { WorkspaceInfo } from "../store/workspaces";
 import { CAMPOS_DATOS } from "../store/clientLink";
+import { buildPackage, packageStatus } from "../store/clients";
 
 const MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
 
@@ -165,6 +166,7 @@ function ClientCard({ c, onEdit, showMonth, all, trash, users, onChanged, twins 
               </ul>
             </div>
           )}
+          {!trash && <PackageBox c={c} onChanged={onChanged} />}
           <div>
             <p className="text-xs font-medium text-slate-500">Trabajo guardado (fotos, textos, opciones) — ábrelo para seguir editando</p>
             {wins.length === 0 ? (
@@ -220,6 +222,50 @@ function ClientCard({ c, onEdit, showMonth, all, trash, users, onChanged, twins 
         </div>
       )}
       {assoc && <AssocEditor c={c} users={users} onClose={() => setAssoc(false)} onSaved={() => { setAssoc(false); onChanged(); }} />}
+    </div>
+  );
+}
+
+/** Carpeta del cliente: ZIP «SOT … nombre» con el PDF de fotos, las fotos, el CheckList y las gráficas. Cada vez que se arma es una versión; las anteriores se pueden bajar. */
+function PackageBox({ c, onChanged }: { c: ClientRecord; onChanged: () => void }) {
+  const [st, setSt] = useState<{ version: number; stale: boolean; built: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [old, setOld] = useState(false);
+  const versions = (c.reportes ?? []).filter((r) => r.tipo === "carpeta").reverse();
+  useEffect(() => { packageStatus(c.id).then(setSt).catch(() => setSt(null)); }, [c.id, c.reportes?.length]);
+  async function build() {
+    setBusy(true); setMsg("");
+    try {
+      const r = await buildPackage(c.id);
+      const n = r.counts ?? {};
+      setMsg(`Carpeta v${r.version} lista: ${n.pdf ?? 0} PDF de fotos, ${n.fotos ?? 0} fotos, ${n.checklist ?? 0} CheckList, ${n.graficas ?? 0} gráficas.`);
+      const a = document.createElement("a"); a.href = r.url; a.download = r.filename; document.body.appendChild(a); a.click(); a.remove();
+      onChanged();
+    } catch (e) { setMsg(apiErrorMessage(e, "No se pudo armar la carpeta.")); }
+    finally { setBusy(false); }
+  }
+  const cur = versions[0];
+  return (
+    <div className="space-y-2 rounded-lg border border-brand-200 bg-brand-50/40 p-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <p className="flex-1 text-sm font-semibold text-slate-800">📁 Carpeta del cliente <span className="font-normal text-slate-500">(ZIP con PDF de fotos, fotos, CheckList y gráficas)</span></p>
+        {cur && st?.stale && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-700">Hay cambios nuevos</span>}
+        {cur && st && !st.stale && <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-medium text-emerald-700">Al día</span>}
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <button className="btn-primary text-xs" onClick={() => void build()} disabled={busy}>{busy ? "Armando…" : cur ? "Actualizar y descargar" : "Armar y descargar"}</button>
+        {cur?.url && <a className="btn-secondary text-xs" href={cur.url} download={cur.filename}>Descargar v{versions.length} ({cur.generado})</a>}
+        {versions.length > 1 && <button className="text-xs text-brand-600 hover:underline" onClick={() => setOld(!old)}>{old ? "Ocultar versiones" : `Versiones anteriores (${versions.length - 1})`}</button>}
+      </div>
+      {msg && <p className="text-xs text-slate-600">{msg}</p>}
+      {old && (
+        <ul className="space-y-0.5">
+          {versions.slice(1).map((r, i) => (
+            <li key={i} className="text-xs"><span className="text-slate-400">v{versions.length - 1 - i} · {r.generado} · </span>{r.url ? <a className="text-brand-600 hover:underline break-all" href={r.url} download={r.filename}>{r.filename}</a> : r.filename}</li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
