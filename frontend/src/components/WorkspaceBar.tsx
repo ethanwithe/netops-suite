@@ -5,15 +5,25 @@ import type { VersionInfo, WsApi } from "../store/workspaces";
 /** Aviso y estado del guardado automático por SOT (ver store/workspaces.ts). */
 export default function WorkspaceBar({ ws }: { ws: WsApi }) {
   if (ws.conflict) {
-    const when = ws.conflict.updated_at ? new Date(ws.conflict.updated_at + (ws.conflict.updated_at.endsWith("Z") ? "" : "Z")).toLocaleString("es-PE", { dateStyle: "short", timeStyle: "short" }) : "";
+    const c = ws.conflict;
+    const fmt = (iso: string) => new Date(iso + (iso.endsWith("Z") ? "" : "Z")).toLocaleString("es-PE", { dateStyle: "short", timeStyle: "short" });
+    const when = c.updated_at ? fmt(c.updated_at) : "";
+    const hasSaved = !!c.updated_at;
+    const hasTemp = c.temp !== undefined;
+    const tempWhen = c.tempAt ? new Date(c.tempAt).toLocaleString("es-PE", { dateStyle: "short", timeStyle: "short" }) : "";
     return (
       <div className="card space-y-2 border-amber-300 bg-amber-50 text-sm text-amber-900" role="alert">
         <p>
-          <b>Hay datos guardados de la SOT {ws.conflict.sot} en esta ventana</b>{when ? ` (${when})` : ""}: fotos, textos y opciones. ¿Quieres traerlos para seguir editando?
+          {c.shrink
+            ? <><b>Lo que tienes en pantalla tiene mucho menos que lo ya guardado de la SOT {c.sot}.</b> No se guardó para no perder datos. Elige con cuál seguir (lo otro queda en «Recuperar copias anteriores»).</>
+            : hasTemp
+              ? <><b>Quedaron cambios sin subir de la SOT {c.sot}</b> guardados temporalmente en este equipo{tempWhen ? ` (${tempWhen})` : ""}{hasSaved ? `, y en el servidor hay otra versión${when ? ` (${when})` : ""}` : ""}. Elige con cuál seguir.</>
+              : <><b>Hay datos guardados de la SOT {c.sot} en esta ventana</b>{when ? ` (${when})` : ""}: fotos, textos y opciones. ¿Quieres traerlos para seguir editando?</>}
         </p>
         <div className="flex flex-wrap gap-2">
-          <button type="button" className="btn-primary text-xs" onClick={ws.load}>Cargar lo guardado</button>
-          <button type="button" className="btn-secondary text-xs" onClick={ws.keepMine} title="Lo que tienes en pantalla reemplazará lo guardado para esta SOT">Seguir con lo que tengo</button>
+          {hasTemp && <button type="button" className="btn-primary text-xs" onClick={ws.loadTemp}>{c.shrink ? "Seguir con lo de pantalla" : "Recuperar lo temporal"}</button>}
+          {hasSaved && <button type="button" className={hasTemp ? "btn-secondary text-xs" : "btn-primary text-xs"} onClick={ws.load}>Cargar lo guardado</button>}
+          {!hasTemp && <button type="button" className="btn-secondary text-xs" onClick={ws.keepMine} title="Lo que tienes en pantalla reemplazará lo guardado para esta SOT (lo anterior queda en copias anteriores)">Seguir con lo que tengo</button>}
         </div>
       </div>
     );
@@ -23,7 +33,7 @@ export default function WorkspaceBar({ ws }: { ws: WsApi }) {
     : ws.status?.kind === "saving" ? "Guardando…"
     : ws.dirty ? (ws.autosave ? "Guardando en unos segundos…" : "Cambios sin guardar")
     : ws.status?.kind === "saved" ? `Guardado en Datos de cliente · ${ws.status.at}`
-    : ws.status?.kind === "error" ? "No se pudo guardar (sin conexión). Se reintenta con el próximo cambio."
+    : ws.offline || ws.status?.kind === "error" ? "Sin conexión: todo queda guardado temporal en este equipo y se sube solo al volver Internet."
     : ws.autosave ? "Guardado automático activado para esta SOT." : "Guardado automático apagado: usa «Guardar».";
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
@@ -36,7 +46,7 @@ export default function WorkspaceBar({ ws }: { ws: WsApi }) {
       </label>
       <button type="button" className="btn-secondary !px-2.5 !py-1 text-xs" disabled={!ws.hasSot} onClick={() => void ws.save()}>Guardar</button>
       <button type="button" className="btn-secondary !px-2.5 !py-1 text-xs" onClick={() => void ws.clear()} title="Vacía la pantalla para otro cliente; lo guardado no se borra">Limpiar</button>
-      <p className={`text-[11px] ${ws.status?.kind === "error" ? "text-red-600" : ws.dirty && !ws.autosave ? "font-medium text-amber-600" : "text-slate-500"}`} aria-live="polite">☁ {txt}</p>
+      <p className={`text-[11px] ${ws.offline || ws.status?.kind === "error" ? "text-amber-600" : ws.dirty && !ws.autosave ? "font-medium text-amber-600" : "text-slate-500"}`} aria-live="polite">☁ {txt}</p>
       {ws.hasSot && <Versions ws={ws} />}
     </div>
   );

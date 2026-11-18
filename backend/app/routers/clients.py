@@ -169,10 +169,11 @@ class WorkspaceIn(BaseModel):
     state: dict
     nombre: str = ""
     fecha: str = ""
+    force: bool = False   # reemplazar aunque lo guardado tenga mucho más (el usuario ya lo decidió)
 
 
 VERSION_EVERY = dt.timedelta(minutes=2)
-VERSION_KEEP = 25
+VERSION_KEEP = 40
 
 
 def _ws_out(w: models.UserWorkspace, sot: str, with_state: bool = True) -> dict:
@@ -220,7 +221,12 @@ def save_workspace(payload: WorkspaceIn, request: Request, user: models.User = D
         w = models.UserWorkspace(client_id=row.id, key=payload.key, state={})
         db.add(w)
     else:
-        _snapshot(db, row.id, w, user)
+        old_n, new_n = len(json.dumps(w.state or {})), len(json.dumps(payload.state))
+        # Protección: si lo que llega tiene mucho menos que lo guardado (pantalla vacía o incompleta), no se pisa sin que el usuario lo decida.
+        if old_n > 1500 and new_n < old_n * 0.5 and not payload.force:
+            raise HTTPException(409, "shrink")
+        # Lo anterior siempre queda como copia cuando lo nuevo trae bastante menos o el usuario forzó el reemplazo
+        _snapshot(db, row.id, w, user, force=payload.force or new_n < old_n * 0.8)
     w.label, w.route, w.state = payload.label, payload.route, payload.state
     w.updated_at, w.updated_by = dt.datetime.utcnow(), user.username
     row.updated_at = dt.datetime.utcnow()
@@ -430,7 +436,7 @@ def _pack_sources(db: Session, row: models.Client):
         if r.get("tipo") == "carpeta" or not r.get("filename"):
             continue
         latest[(r.get("tipo") or "", r.get("nombre") or "")] = r
-    wss = db.query(models.ClientWorkspace).filter(models.ClientWorkspace.sot == row.sot, models.ClientWorkspace.key.like("foto:%")).all()
+    wss = db.query(models.UserWorkspace).filter(models.UserWorkspace.client_id == row.id, models.UserWorkspace.key.like("foto:%")).all()
     return list(latest.values()), wss
 
 
@@ -446,7 +452,7 @@ def package_status(client_id: str, user: models.User = Depends(current_user), db
     stale = any(r.get("tipo") != "carpeta" for r in reps[pk[-1] + 1:])
     built = last.get("utc", "")
     if built and not stale:
-        for w in db.query(models.ClientWorkspace).filter(models.ClientWorkspace.sot == row.sot).all():
+        for w in db.query(models.UserWorkspace).filter(models.UserWorkspace.client_id == row.id).all():
             if w.updated_at and w.updated_at.isoformat() > built:
                 stale = True
                 break

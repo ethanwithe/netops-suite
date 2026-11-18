@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, apiErrorMessage } from "../api/client";
 import ImageAnnotator from "../components/ImageAnnotator";
@@ -75,12 +75,17 @@ export default function PoderJudicialPage() {
   const navigate = useNavigate();
 
   // Todo lo del informe (textos, fotos, secciones) se guarda solo por SOT y se puede traer de vuelta.
+  const wsState = useMemo(() => ({ ...f, logo }), [f, logo]);
   const ws = useWorkspace({
     key: "pj", label: "Poder Judicial", sot: f.sot, nombre: f.sede,
-    state: f,
+    state: wsState,
     clear: () => { setF({ ...INITIAL }); setResult(null); setError(null); },
     clientData: { sot: f.sot, nombre: f.sede },
-    apply: (saved) => setF({ ...INITIAL, ...saved }),
+    apply: (saved) => {
+      const { logo: lg, ...rest } = (saved ?? {}) as Record<string, unknown>;
+      if (lg && typeof lg === "object") setLogo(lg as LogoSel);
+      setF({ ...INITIAL, ...rest });
+    },
   });
 
   // Edición de fotos (líneas, flechas, texto, recorte, mejora...), igual que en el resto de reportes.

@@ -121,12 +121,17 @@ function Inner({ type }: { type: CkType }) {
   const clearAll = () => { setS(freshRun(data)); setPdf(null); setWord(null); setPdfError(null); setLog(""); setReadings({}); };
 
   // Todo lo de esta ventana (datos, salidas de comandos, capturas) se guarda solo por SOT y se puede traer de vuelta.
+  const wsState = useMemo(() => ({ ...s, logo }), [s, logo]);
   const ws = useWorkspace({
     key: `checklist:${type.id}`, label: `CheckList · ${type.nombre}`, sot: s.sot, nombre: s.cliente, fecha: s.fecha,
-    state: s,
+    state: wsState,
     clear: clearAll,
     clientData: { sot: s.sot, nombre: s.cliente, fecha: s.fecha, cid: s.cid, datos: datosSot },
-    apply: (saved) => setS((p) => ({ ...p, ...saved, params: { ...p.params, ...(saved?.params ?? {}) } })),
+    apply: (saved) => {
+      const { logo: lg, ...rest } = (saved ?? {}) as Record<string, unknown>;
+      if (lg && typeof lg === "object") setLogo(lg as LogoSel);
+      setS((p) => ({ ...p, ...rest, params: { ...p.params, ...((rest as { params?: Record<string, string> }).params ?? {}) } }));
+    },
     // Lo que necesita esta ventana de un cliente que ya existe: CID, nombre, modelo, ancho y sus parámetros (IPs, interfaces).
     fill: (c) => setS((p) => {
       const d = expandDatos(c.datos);
