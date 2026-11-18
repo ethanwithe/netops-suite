@@ -55,11 +55,15 @@ export function snapAt(els: El[], p: Pt, tol: number, skip: string[] = []): Snap
     if (e.type === "line" || skip.includes(e.id)) continue;
     const inside = p.x >= e.x - tol && p.x <= e.x + e.w + tol && p.y >= e.y - tol && p.y <= e.y + e.h + tol;
     if (!inside) continue;
+    let cand: Snap | null = null, cd = Infinity;
     for (const side of SIDES) {
       const pt = anchorPoint(e as Shaped, side);
       const d = Math.hypot(pt.x - p.x, pt.y - p.y);
-      if (d < bestD) { bestD = d; best = { id: e.id, side, pt }; }
+      if (d < cd) { cd = d; cand = { id: e.id, side, pt }; }
     }
+    // los fondos y marcos grandes solo se pegan cerca de un punto de unión; los iconos y cuadros chicos, desde cualquier parte de ellos
+    const small = e.w <= 420 && e.h <= 420;
+    if (cand && (small || cd <= tol * 1.5)) { best = cand; bestD = cd; }
     if (best) return best;   // el de más arriba gana
   }
   return null;

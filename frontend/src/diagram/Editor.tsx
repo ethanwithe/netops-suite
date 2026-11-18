@@ -24,7 +24,7 @@ type G =
   | { k: "rotate"; id: string; cx: number; cy: number; orig: El; moved: boolean }
   | { k: "end"; id: string; which: 1 | 2; sx: number; sy: number; orig: LineEl; moved: boolean }
   | { k: "marquee"; sx: number; sy: number; add: boolean; base: string[] }
-  | { k: "draw"; tool: Tool; sx: number; sy: number; id: string | null; a: Snap | null; moved: boolean };
+  | { k: "draw"; tool: Tool; sx: number; sy: number; id: string | null; a: Snap | null; moved: boolean; base?: Doc };
 
 type Tool = "select" | "text" | "rect" | "round" | "ellipse" | "diamond" | "triangle" | "line" | "arrow" | "icon";
 const SHAPE_TOOLS: Tool[] = ["rect", "round", "ellipse", "diamond", "triangle"];
@@ -422,13 +422,11 @@ export default function Editor({ doc, fields, hist }: { doc: Doc; fields: Fields
       if (isLineTool(s.tool)) setHover(to);
       if (!s.moved) {
         if (Math.hypot(p.x - s.sx, p.y - s.sy) * scaleRef.current < 4) return;
-        s.moved = true; s.id = uid(); hist.begin();
-        const el = makeEl(s.tool, { x: s.sx, y: s.sy }, p, false, ev.shiftKey, s.id, s.a, to);
-        if (el) { hist.live({ ...docRef.current, elements: resolveLines([...docRef.current.elements, el]) }); setSel([s.id]); }
-        return;
+        s.moved = true; s.id = uid(); s.base = docRef.current; hist.begin();
+        setSel([s.id]);
       }
       const el = makeEl(s.tool, { x: s.sx, y: s.sy }, p, false, ev.shiftKey, s.id!, s.a, to);
-      if (el) hist.live({ ...docRef.current, elements: resolveLines(docRef.current.elements.map((e) => (e.id === s.id ? el : e))) });
+      if (el && s.base) hist.live({ ...s.base, elements: resolveLines([...s.base.elements, el]) });
       return;
     }
     if (s.k === "marquee") {

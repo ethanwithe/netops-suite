@@ -1,6 +1,7 @@
 import type { Cell, Dash, El, Head, ImgEl, LineEl, RectEl, Shape, TableEl, TextEl } from "./types";
 import { iconUrl, useIcons } from "./icons";
 import { FONTS, TEXT_PRESETS } from "./fonts";
+import { useVariables } from "../store/diagramVars";
 
 type Patch = (p: Partial<El> | Record<string, unknown>) => void;
 
@@ -82,6 +83,20 @@ function TextStyle({ e, p, vDefault = "t", cell }: { cell?: boolean; e: { font?:
   );
 }
 
+/** «Insertar variable»: agrega {{clave}} al texto; en el lienzo se cambia solo por el dato del cliente. */
+function VarPicker({ text, set }: { text: string; set: (t: string) => void }) {
+  const vars = useVariables();
+  return (
+    <Row label="Insertar variable">
+      <select className="input w-36 px-2 py-1 text-xs" value="" onChange={(e) => { if (e.target.value) set(`${text}{{${e.target.value}}}`); }}>
+        <option value="">Elegir…</option>
+        <optgroup label="De fábrica">{vars.filter((v) => v.builtin).map((v) => <option key={v.key} value={v.key}>{v.label}</option>)}</optgroup>
+        {vars.some((v) => !v.builtin) && <optgroup label="Datos de clientes">{vars.filter((v) => !v.builtin).map((v) => <option key={v.key} value={v.key}>{v.label}</option>)}</optgroup>}
+      </select>
+    </Row>
+  );
+}
+
 export default function PropsPanel({ el, p, selCell, setSelCell, onReplaceIcon }: {
   el: El | null; p: Patch; selCell: { r: number; c: number } | null; setSelCell: (c: { r: number; c: number } | null) => void; onReplaceIcon: (id: string) => void;
 }) {
@@ -105,6 +120,7 @@ export default function PropsPanel({ el, p, selCell, setSelCell, onReplaceIcon }
         return (
           <>
             <textarea className="input text-sm" rows={3} value={t.text} onChange={(e) => p({ text: e.target.value })} aria-label="Texto" />
+            <VarPicker text={t.text} set={(x) => p({ text: x })} />
             <TextStyle e={t} p={p} vDefault={t.fill ? "m" : "t"} />
             <Row label="Fondo"><ColorInput v={t.fill} on={(c) => p({ fill: c })} none /></Row>
             <Row label="Sin saltos"><input type="checkbox" className="ios" checked={!!t.nowrap} onChange={(e) => p({ nowrap: e.target.checked })} /></Row>
@@ -129,6 +145,7 @@ export default function PropsPanel({ el, p, selCell, setSelCell, onReplaceIcon }
               <select className="input w-36 px-2 py-1 text-xs" value={r.dash ?? ""} onChange={(e) => p({ dash: e.target.value as Dash })}>{DASHES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
             </Row>
             <textarea className="input text-sm" rows={2} placeholder="Texto dentro de la forma" value={r.text ?? ""} onChange={(e) => p({ text: e.target.value })} />
+            <VarPicker text={r.text ?? ""} set={(x) => p({ text: x })} />
             {(r.text ?? "") !== "" && <TextStyle e={{ font: r.font, size: r.size ?? 16, bold: r.bold, italic: r.italic, color: r.color ?? "#000000", align: r.align ?? "c", valign: r.valign }} p={p} vDefault="m" />}
           </>
         );
@@ -199,6 +216,7 @@ export default function PropsPanel({ el, p, selCell, setSelCell, onReplaceIcon }
               <>
                 <p className="text-xs font-semibold text-slate-600">Celda fila {selCell!.r + 1}, columna {selCell!.c + 1}</p>
                 <textarea className="input text-sm" rows={3} value={cell.text} onChange={(e) => set({ text: e.target.value })} aria-label="Texto de la celda" />
+                <VarPicker text={cell.text} set={(x) => set({ text: x })} />
                 <TextStyle cell e={cell} p={set as Patch} vDefault="m" />
                 <Row label="Fondo"><ColorInput v={cell.fill} on={(c) => set({ fill: c, grad: c ? null : cell.grad })} none /></Row>
               </>

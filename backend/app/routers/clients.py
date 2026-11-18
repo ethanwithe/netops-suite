@@ -17,6 +17,7 @@ from app import models, schemas
 from app.auth import current_user, log_activity
 from app.database import get_db
 from app.services import client_access as ca
+from app.services import diagram_vars
 from app.services import security
 from app.services.naming import clean_part
 
@@ -300,6 +301,7 @@ def create_client(payload: schemas.ClientIn, user: models.User = Depends(current
         raise HTTPException(409, f"La SOT {sot} está en tu papelera: recupérala desde ahí.")
     row = _new_client(db, user, sot, payload.fecha)
     _apply(row, payload.model_dump(), True)
+    diagram_vars.ensure_variables(db, row.datos)
     db.commit()
     log_activity(db, user, "cliente_creado", f"SOT {sot}", row.id)
     return ca.client_out(db, row, user.id)
@@ -323,6 +325,7 @@ def update_client(client_id: str, payload: schemas.ClientIn, user: models.User =
     row.fecha = norm_fecha(payload.fecha) or row.fecha or _today()
     row.datos = {str(k).strip()[:40]: str(v)[:300] for k, v in payload.datos.items() if str(k).strip()}
     row.updated_at = dt.datetime.utcnow()
+    diagram_vars.ensure_variables(db, row.datos)
     db.commit()
     log_activity(db, user, "cliente_editado", f"SOT {sot}", row.id)
     return ca.client_out(db, row, user.id)
@@ -370,6 +373,7 @@ def sync_client(payload: schemas.ClientSync, request: Request, user: models.User
         reportes.append(rep)
         row.reportes = reportes[-100:]
         log_activity(db, user, "reporte_generado", f"SOT {sot} · {rep.get('nombre') or rep.get('filename', '')}", row.id)
+    diagram_vars.ensure_variables(db, row.datos)
     db.commit()
     db.refresh(row)
     return ca.client_out(db, row, user.id)

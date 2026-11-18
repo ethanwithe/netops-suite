@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from app import models
 from app.auth import current_user, log_activity
 from app.database import get_db
-from app.services import filestore, security
+from app.services import diagram_vars, filestore, security
 from app.services.diagram_pptx import build_pptx
 
 router = APIRouter(prefix="/api/diagrams", tags=["diagrams"])
@@ -144,3 +144,58 @@ def export_pdf(p: ExportIn, user: models.User = Depends(current_user), db: Sessi
     filestore.archive(f"{_safe(p.filename)}.pdf", data)
     return Response(content=data, media_type="application/pdf",
                     headers={"Content-Disposition": f'attachment; filename="{_safe(p.filename)}.pdf"'})
+
+
+# ---------------------------------------------------------------
+# Variables: se crean solas con los datos de los clientes; el superadmin las puede renombrar, crear y borrar.
+# ---------------------------------------------------------------
+
+class VarIn(BaseModel):
+    label: str
+
+
+@router.get("/variables")
+def list_variables(user: models.User = Depends(current_user), db: Session = Depends(get_db)):
+    diagram_vars.backfill(db)
+    return diagram_vars.catalog(db)
+
+
+def _super(user: models.User) -> None:
+    if user.role != "superadmin":
+        raise HTTPException(403, "Solo el superadmin puede editar las variables.")
+
+
+@router.post("/variables")
+def create_variable(p: VarIn, user: models.User = Depends(current_user), db: Session = Depends(get_db)):
+    _super(user)
+    name = p.label.strip()[:40]
+    if not name:
+        raise HTTPException(400, "Escribe el nombre de la variable.")
+    diagram_vars.ensure_variables(db, {name: ""})
+    db.commit()
+    for v in diagram_vars.catalog(db):
+        if v["dato"].upper() == name.upper() or v["label"].upper() == name.upper():
+            return v
+    raise HTTPException(409, "Ese nombre ya es una variable de fábrica.")
+
+
+@router.put("/variables/{key}")
+def rename_variable(key: str, p: VarIn, user: models.User = Depends(current_user), db: Session = Depends(get_db)):
+    _super(user)
+    row = db.get(models.DiagramVariable, key)
+    if not row:
+        raise HTTPException(404, "Esa variable es de fábrica o ya no existe.")
+    row.label = p.label.strip()[:60] or row.label
+    db.commit()
+    return {"ok": True}
+
+
+@router.delete("/variables/{key}")
+def delete_variable(key: str, user: models.User = Depends(current_user), db: Session = Depends(get_db)):
+    _super(user)
+    row = db.get(models.DiagramVariable, key)
+    if not row:
+        raise HTTPException(404, "Esa variable es de fábrica o ya no existe.")
+    db.delete(row)
+    db.commit()
+    return {"ok": True}
