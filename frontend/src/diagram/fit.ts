@@ -6,6 +6,7 @@
  * Solo agranda (nunca achica) y es idempotente.
  */
 import type { TextEl } from "./types";
+import { fontCss } from "./fonts";
 
 export const PT = 1.2698;   // px por punto de fuente
 export const PAD_X = 8;     // aire a los lados del texto dentro del color
@@ -13,10 +14,10 @@ export const PAD_Y = 4;
 const MARK = /\*\*|~~/g;
 
 let ctx: CanvasRenderingContext2D | null = null;
-function widthOf(text: string, bold: boolean, italic: boolean, fpx: number): number {
+function widthOf(text: string, bold: boolean, italic: boolean, fpx: number, font?: string): number {
   if (!ctx) ctx = document.createElement("canvas").getContext("2d");
   if (!ctx) return text.length * fpx * 0.55;
-  ctx.font = `${italic ? "italic " : ""}${bold ? "bold " : ""}${fpx}px Arial, Helvetica, sans-serif`;
+  ctx.font = `${italic ? "italic " : ""}${bold ? "bold " : ""}${fpx}px ${fontCss(font)}`;
   return ctx.measureText(text).width;
 }
 
@@ -35,7 +36,7 @@ export function fitText(el: TextEl): TextEl {
   let { x, y, w, h } = e;
   h = h ?? 20;
   if (e.nowrap || lines.length === 1) {
-    const widest = Math.max(...lines.map((l) => widthOf(l.replace(MARK, ""), !!e.bold, !!e.italic, fpx)));
+    const widest = Math.max(...lines.map((l) => widthOf(l.replace(MARK, ""), !!e.bold, !!e.italic, fpx, e.font)));
     let needW = widest + 2 * PAD_X + 2;
     if (!e.nowrap) needW = Math.min(needW, w);
     if (needW > w) {

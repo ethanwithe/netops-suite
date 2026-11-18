@@ -122,6 +122,17 @@ class ChecklistBase(Base):
     updated_at = Column(DateTime, default=dt.datetime.utcnow)
 
 
+class DiagramVariable(Base):
+    """Variable de la Gráfica (p. ej. «ip_gestion»): se crea sola cuando aparece un dato nuevo en «Datos de cliente».
+    Es la misma para todos los clientes: `dato` es el nombre con el que se guarda en los datos del cliente."""
+    __tablename__ = "diagram_variables"
+
+    key = Column(String, primary_key=True)
+    label = Column(String, nullable=False, default="")
+    dato = Column(String, nullable=False, default="", index=True)
+    created_at = Column(DateTime, default=dt.datetime.utcnow)
+
+
 class DiagramDesign(Base):
     """Opción de Gráfica (p. ej. «Cisco · Internet GPON con ONT»): su diseño publicado para todos.
 

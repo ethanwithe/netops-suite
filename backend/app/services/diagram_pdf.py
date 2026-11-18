@@ -14,7 +14,7 @@ from reportlab.pdfgen import canvas
 
 K = 0.75          # puntos de PDF por px del lienzo
 PT = 1.2698       # px por punto de fuente (igual que en el PPTX)
-from app.services.diagram_fit import PAD_X  # noqa: E402
+from app.services.diagram_fit import PAD_X, _font as _pdf_font, process_icon  # noqa: E402
 _HEX = re.compile(r"^#?([0-9a-fA-F]{6})$")
 
 
@@ -23,15 +23,15 @@ def _col(c, default="#000000"):
     return HexColor("#" + (m.group(1) if m else default.lstrip("#")))
 
 
-def _font(bold, italic):
-    return "Helvetica" + ("-BoldOblique" if bold and italic else "-Bold" if bold else "-Oblique" if italic else "")
+def _font(bold, italic, fam=""):
+    return _pdf_font(bold, italic, fam)
 
 
 def _text(c: canvas.Canvas, el: dict, x, y, w, h, anchor_mid=False, inner_pad=0.0, fscale=1.0):
     """Texto dentro de la caja (x, y, w, h) en px del lienzo (y hacia abajo)."""
     size = float(el.get("size", 12) or 12) * fscale
     fpx = size * PT
-    font = _font(el.get("bold"), el.get("italic"))
+    font = _font(el.get("bold"), el.get("italic"), el.get("font"))
     fpt = fpx * K
     lead = (float(el["lineH"]) if el.get("lineH") else fpx * 1.17) * K
     spc = float(el.get("spcBef") or 0) * K
@@ -73,6 +73,27 @@ def _text(c: canvas.Canvas, el: dict, x, y, w, h, anchor_mid=False, inner_pad=0.
             c.drawRightString((x + w - inner_pad) * K, -base, ln)
         else:
             c.drawString((x + inner_pad) * K, -base, ln)
+
+
+def _shape(c, el, fill: bool, line: bool):
+    """Forma (rectángulo, redondeado, elipse, rombo, triángulo) en la caja del elemento."""
+    x, y, w, h = el["x"] * K, -(el["y"] + el["h"]) * K, el["w"] * K, el["h"] * K
+    kind = el.get("shape") or "rect"
+    if kind == "ellipse":
+        c.ellipse(x, y, x + w, y + h, fill=int(fill), stroke=int(line))
+    elif kind == "round":
+        r = float(el.get("radius") or min(w, h) / K * 0.18) * K
+        c.roundRect(x, y, w, h, max(0, min(r, min(w, h) / 2)), fill=int(fill), stroke=int(line))
+    elif kind in ("diamond", "triangle"):
+        p = c.beginPath()
+        pts = [(x + w / 2, y + h), (x + w, y + h / 2), (x + w / 2, y), (x, y + h / 2)] if kind == "diamond" else [(x + w / 2, y + h), (x + w, y), (x, y)]
+        p.moveTo(*pts[0])
+        for q in pts[1:]:
+            p.lineTo(*q)
+        p.close()
+        c.drawPath(p, fill=int(fill), stroke=int(line))
+    else:
+        c.rect(x, y, w, h, fill=int(fill), stroke=int(line))
 
 
 def _arrow(c, x, y, ang, kind, size):
@@ -134,13 +155,13 @@ def build_pdf(doc: dict, load_icon: Callable[[str], bytes | None]) -> bytes:
                 if line:
                     c.setStrokeColor(_col(el["stroke"])); c.setLineWidth(float(el.get("strokeW", 1)) * K); _dash(c, el.get("dash"))
                 if fill or line:
-                    c.rect(el["x"] * K, -(el["y"] + el["h"]) * K, el["w"] * K, el["h"] * K, fill=int(fill), stroke=int(line))
+                    _shape(c, el, fill, line)
                     c.setDash([])
                 if str(el.get("text", "")).strip():
                     _text(c, el, el["x"], el["y"], el["w"], el["h"], anchor_mid=True)
             rotated(el, draw)
         elif t == "image":
-            data = load_icon(el.get("icon", ""))
+            data = process_icon(load_icon(el.get("icon", "")), el)
             if data:
                 def draw(el=el, data=data):
                     c.drawImage(ImageReader(io.BytesIO(data)), el["x"] * K, -(el["y"] + el["h"]) * K, el["w"] * K, el["h"] * K, mask="auto")

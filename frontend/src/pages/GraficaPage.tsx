@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, useNavigate, useParams } from "react-router-dom";
 import { api, apiErrorMessage } from "../api/client";
 import ClientPicker from "../components/ClientPicker";
 import WorkspaceBar from "../components/WorkspaceBar";
 import Editor from "../diagram/Editor";
-import { DATOS_KEYS, resolveDoc } from "../diagram/templates";
+import { resolveDoc } from "../diagram/templates";
 import { fabricaOf, grupoOf, optId, storageId, templateFor } from "../diagram/groups";
 import type { OptionInfo } from "../diagram/groups";
 import Spinner from "../components/Spinner";
@@ -19,6 +19,8 @@ import { expandDatos } from "../store/clientLink";
 import type { ClientRecord } from "../store/clients";
 import { usePersistentState } from "../store/persistentState";
 import { useWorkspace } from "../store/workspaces";
+import { createVariable, datosFromFields, deleteVariable, renameVariable, useVariables, valuesFromClient } from "../store/diagramVars";
+import type { DiagramVar } from "../store/diagramVars";
 
 type FGroup = { title: string; fields: { key: string; label: string; hint?: string; multiline?: boolean }[] };
 interface Saved { fields: Fields; doc: Doc | null; groups?: FGroup[] }
@@ -51,8 +53,12 @@ function GraficaInner({ info, options, remote, reload }: { info: OptionInfo; opt
   const navigate = useNavigate();
   const [data, setData] = usePersistentState<Saved>(`grafica.${tpl.id}`, EMPTY);
   const fields = data.fields;
+  const fieldsRef = useRef(fields); fieldsRef.current = fields;
   const groups: FGroup[] = data.groups ?? tpl.groups;
   const [editFields, setEditFields] = useState(false);
+  const vars = useVariables();
+  const varsRef = useRef(vars); varsRef.current = vars;
+  const isSuper = me?.role === "superadmin";
   const setGroups = (fn: (g: FGroup[]) => FGroup[]) => setData((p) => ({ ...p, groups: fn(p.groups ?? tpl.groups) }));
   const patchField = (gi: number, fi: number, patch: Partial<FGroup["fields"][number]>) =>
     setGroups((gs) => gs.map((g, i) => (i === gi ? { ...g, fields: g.fields.map((f, j) => (j === fi ? { ...f, ...patch } : f)) } : g)));
@@ -78,12 +84,40 @@ function GraficaInner({ info, options, remote, reload }: { info: OptionInfo; opt
   useEffect(() => { if (fields.fecha === undefined) setField("fecha", today()); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fromClient = useCallback((c: ClientRecord, onlyEmpty: boolean, replace = false) => {
-    const patch: Fields = { sot: c.sot, cliente: c.nombre, cid: c.cid, proyecto: c.proy, empresa: c.contrata, fecha: dmy(c.fecha) };
-    const datos = expandDatos(c.datos);
-    for (const [key, name] of Object.entries(DATOS_KEYS)) if (datos[name]) patch[key] = datos[name];
-    setMany(patch, onlyEmpty, replace);
+    // Cada variable sabe qué dato del cliente jalar (los datos del CheckList también cuentan, ver clientLink.ts)
+    setMany(valuesFromClient(varsRef.current, c, expandDatos(c.datos)), onlyEmpty, replace);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const usedKeys = useMemo(() => new Set(groups.flatMap((g) => g.fields.map((f) => f.key))), [groups]);
+  /** Trae del cliente el dato de esa variable (si hay cliente y el campo está vacío). */
+  async function refill(key: string) {
+    const sot = (fieldsRef.current.sot ?? "").trim();
+    if (!sot || (fieldsRef.current[key] ?? "").trim()) return;
+    try {
+      const { data: c } = await api.get<ClientRecord>(`/clients/by-sot/${encodeURIComponent(sot)}`);
+      const v = valuesFromClient(varsRef.current, c, expandDatos(c.datos))[key];
+      if (v) setField(key, v);
+    } catch { /* no es cliente todavía */ }
+  }
+  function bindVar(gi: number, fi: number, key: string) {
+    const v: DiagramVar | undefined = vars.find((x) => x.key === key);
+    patchField(gi, fi, { key, label: v?.label ?? key });
+    void refill(key);
+  }
+  function addField(gi: number) {
+    const free = vars.find((v) => !usedKeys.has(v.key));
+    if (!free) { alert("Ya están todas las variables en la pantalla."); return; }
+    setGroups((gs) => gs.map((x, i) => (i === gi ? { ...x, fields: [...x.fields, { key: free.key, label: free.label }] } : x)));
+    void refill(free.key);
+  }
+  async function newVariable() {
+    const name = prompt("Nombre de la variable nueva (por ejemplo: IP GESTION).\nSe crea para todos los clientes y se guarda en sus datos con ese nombre:");
+    if (!name?.trim()) return;
+    try {
+      const v = await createVariable(name.trim());
+      setGroups((gs) => (gs.length ? gs.map((x, i) => (i === gs.length - 1 && !usedKeys.has(v.key) ? { ...x, fields: [...x.fields, { key: v.key, label: v.label }] } : x)) : gs));
+    } catch (e) { alert(apiErrorMessage(e, "No se pudo crear la variable.")); }
+  }
   const clearAll = () => { setData((p) => ({ fields: { realizado: myName, fecha: today() }, doc: null, groups: p.groups })); hist.clear(); };
   async function pickClient(c: ClientRecord) {
     if (!(await ws.confirmReplace())) return;
@@ -95,10 +129,8 @@ function GraficaInner({ info, options, remote, reload }: { info: OptionInfo; opt
 
   // Los datos del diagrama también enriquecen al cliente en «Mis clientes».
   const datos = useMemo(() => {
-    const o: Record<string, string> = {};
-    for (const [key, name] of Object.entries(DATOS_KEYS)) if (fields[key]?.trim()) o[name] = fields[key].trim();
-    return o;
-  }, [fields]);
+    return datosFromFields(vars, fields);
+  }, [fields, vars]);
 
   // Lo que se guarda por cliente: todo el diagrama (datos + lienzo editable).
   const wsState = useMemo(() => ({ fields, doc: data.doc, groups: data.groups }), [fields, data.doc, data.groups]);
@@ -160,7 +192,7 @@ function GraficaInner({ info, options, remote, reload }: { info: OptionInfo; opt
           <div className="space-y-4">
             {groups.map((g, gi) => (
               <div key={gi} className="border-t border-slate-200 pt-3 first:border-0 first:pt-0">
-                {editFields ? (
+                {editFields && isSuper ? (
                   <div className="mb-2 flex items-center gap-2">
                     <input className="input !py-1 flex-1 text-xs font-bold uppercase tracking-wider" value={g.title} aria-label="Título del grupo"
                       onChange={(e) => setGroups((gs) => gs.map((x, i) => (i === gi ? { ...x, title: e.target.value } : x)))} />
@@ -173,8 +205,14 @@ function GraficaInner({ info, options, remote, reload }: { info: OptionInfo; opt
                   {g.fields.map((f, fi) => (
                     <label key={f.key} className="block">
                       {editFields ? (
-                        <span className="mb-1 flex items-center gap-1">
-                          <input className="input !py-0.5 flex-1 text-xs" value={f.label} aria-label="Nombre del campo" onChange={(e) => patchField(gi, fi, { label: e.target.value })} />
+                        <span className="mb-1 flex flex-wrap items-center gap-1">
+                          {isSuper && <input className="input !py-0.5 min-w-0 flex-1 text-xs" value={f.label} aria-label="Nombre del campo" onChange={(e) => patchField(gi, fi, { label: e.target.value })} />}
+                          <select className="input !py-0.5 min-w-0 flex-1 text-xs" value={f.key} aria-label="Variable de este campo" title="Variable: de aquí jala el dato del cliente"
+                            onChange={(e) => bindVar(gi, fi, e.target.value)}>
+                            {!vars.some((v) => v.key === f.key) && <option value={f.key}>{`(sin variable) ${f.key}`}</option>}
+                            <optgroup label="De fábrica">{vars.filter((v) => v.builtin).map((v) => <option key={v.key} value={v.key} disabled={v.key !== f.key && usedKeys.has(v.key)}>{v.label}</option>)}</optgroup>
+                            {vars.some((v) => !v.builtin) && <optgroup label="Creadas con los datos de clientes">{vars.filter((v) => !v.builtin).map((v) => <option key={v.key} value={v.key} disabled={v.key !== f.key && usedKeys.has(v.key)}>{v.label}</option>)}</optgroup>}
+                          </select>
                           <button type="button" className="btn-secondary !px-2 !py-0.5 text-xs" title="Quitar este campo"
                             onClick={() => { setGroups((gs) => gs.map((x, i) => (i === gi ? { ...x, fields: x.fields.filter((_, j) => j !== fi) } : x))); setField(f.key, ""); }}>✕</button>
                         </span>
@@ -192,15 +230,37 @@ function GraficaInner({ info, options, remote, reload }: { info: OptionInfo; opt
                 </div>
                 {editFields && (
                   <button className="btn-secondary mt-2 !px-2 !py-1 text-xs"
-                    onClick={() => setGroups((gs) => gs.map((x, i) => (i === gi ? { ...x, fields: [...x.fields, { key: `c_${Math.random().toString(36).slice(2, 7)}`, label: "Nuevo campo" }] } : x)))}>+ Campo</button>
+                    onClick={() => addField(gi)}>+ Campo</button>
                 )}
               </div>
             ))}
             {editFields && (
-              <div className="flex flex-wrap items-center gap-2 border-t border-slate-200 pt-3">
-                <button className="btn-secondary text-xs" onClick={() => setGroups((gs) => [...gs, { title: "NUEVO GRUPO", fields: [] }])}>+ Grupo</button>
-                <button className="btn-secondary text-xs" onClick={() => confirm("¿Volver a los campos originales?") && setData((p) => ({ ...p, groups: undefined }))}>Restaurar campos originales</button>
-                <span className="text-[11px] text-slate-400">Cambia nombres, quita lo que no uses o agrega campos. Un campo nuevo se muestra en el lienzo escribiendo su código {"{{…}}"} dentro de un texto.</span>
+              <div className="space-y-2 border-t border-slate-200 pt-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  {isSuper && <button className="btn-secondary text-xs" onClick={() => setGroups((gs) => [...gs, { title: "NUEVO GRUPO", fields: [] }])}>+ Grupo</button>}
+                  {isSuper && <button className="btn-secondary text-xs" onClick={() => void newVariable()}>+ Variable nueva</button>}
+                  <button className="btn-secondary text-xs" onClick={() => confirm("¿Volver a los campos originales?") && setData((p) => ({ ...p, groups: undefined }))}>Restaurar campos originales</button>
+                </div>
+                <p className="text-[11px] text-slate-400">
+                  Cada campo tiene su <b>variable</b>: elígela en el desplegable y el dato se jala solo del cliente.
+                  Las variables se crean solas cuando aparece un dato nuevo en «Datos de cliente» y son las mismas para todos los clientes.
+                  Para verla en el lienzo, elige «Insertar variable» en las propiedades de un texto.
+                  {!isSuper && " Solo el superadmin puede crear o renombrar variables y cambiar los grupos."}
+                </p>
+                {isSuper && vars.some((v) => !v.builtin) && (
+                  <details className="text-xs">
+                    <summary className="cursor-pointer text-slate-600">Variables creadas por los datos de clientes ({vars.filter((v) => !v.builtin).length})</summary>
+                    <ul className="mt-1 space-y-1">
+                      {vars.filter((v) => !v.builtin).map((v) => (
+                        <li key={v.key} className="flex items-center gap-1">
+                          <input className="input !py-0.5 flex-1 text-xs" defaultValue={v.label} aria-label={`Nombre de ${v.key}`} onBlur={(e) => { if (e.target.value.trim() && e.target.value !== v.label) void renameVariable(v.key, e.target.value); }} />
+                          <code className="text-[10px] text-slate-400">{`{{${v.key}}}`}</code>
+                          <button className="btn-secondary !px-2 !py-0.5 text-xs" title="Borrar variable" onClick={() => confirm(`¿Borrar la variable «${v.label}»? Los clientes conservan su dato; si aparece de nuevo se vuelve a crear.`) && void deleteVariable(v.key)}>✕</button>
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                )}
               </div>
             )}
             <p className="text-[11px] text-slate-400">Los datos se escriben en el diagrama (y en «Mis clientes»). Si luego editas un texto directamente en el lienzo, ese texto ya no cambia con el formulario.</p>

@@ -641,7 +641,7 @@ function projectOf(tipo: FotoTipo) {
 export function importReport(tipo: FotoTipo, saved: unknown): void {
   const x = (saved ?? {}) as Record<string, unknown>;
   setState(tipo, {
-    titulo: DEFAULT_TITULO,
+    titulo: str(x.titulo, "") || DEFAULT_TITULO,
     proy: str(x.proy, ""),
     cliente: str(x.cliente, ""),
     sot: str(x.sot, ""),

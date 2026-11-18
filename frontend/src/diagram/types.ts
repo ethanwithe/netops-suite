@@ -4,6 +4,9 @@ export type Dash = "" | "dash" | "lgDash" | "sysDash" | "dot" | "sysDot" | "dash
 export type Head = "none" | "triangle" | "arrow" | "stealth" | "oval" | "diamond";
 export type HAlign = "l" | "c" | "r" | "j";
 export type VAlign = "t" | "m" | "b";
+export type Shape = "rect" | "round" | "ellipse" | "diamond" | "triangle";
+/** Extremo de una línea pegado a un elemento (conector): sigue al elemento cuando se mueve. */
+export interface Anchor { id: string; side: "auto" | "t" | "r" | "b" | "l" }
 
 interface Base { id: string; name?: string; locked?: boolean }
 
@@ -12,6 +15,7 @@ export interface TextEl extends Base {
   x: number; y: number; w: number; h: number; rot?: number;
   text: string;                    // admite {{campo}}
   size: number;                    // puntos
+  font?: string;                   // tipo de letra
   bold?: boolean; italic?: boolean;
   color: string; align: HAlign; valign?: VAlign;
   fill: string | null;             // fondo del cuadro
@@ -23,17 +27,23 @@ export interface RectEl extends Base {
   type: "rect";
   x: number; y: number; w: number; h: number; rot?: number;
   fill: string | null; stroke: string | null; strokeW: number; dash?: Dash;
+  shape?: Shape; radius?: number;
+  font?: string;
   text?: string; size?: number; bold?: boolean; italic?: boolean; color?: string; align?: HAlign; valign?: VAlign;
 }
 export interface LineEl extends Base {
   type: "line";
   x1: number; y1: number; x2: number; y2: number;
   stroke: string; strokeW: number; dash?: Dash; head?: Head; tail?: Head;
+  a?: Anchor; b?: Anchor;          // extremos pegados a elementos (inicio / final)
 }
 export interface ImgEl extends Base {
   type: "image";
   x: number; y: number; w: number; h: number; rot?: number;
   icon: string;                    // id de la pestaña Iconos
+  fill?: string | null; stroke?: string | null; strokeW?: number; radius?: number; pad?: number;   // fondo, borde y margen del icono
+  tint?: string | null;            // pinta el icono de un solo color
+  flipX?: boolean; flipY?: boolean;
 }
 export interface Cell {
   text: string; align: HAlign; valign?: VAlign; size: number; bold: boolean; italic: boolean; color: string;

@@ -4,8 +4,12 @@ import { iconSize, iconUrl, uploadIcon, useIcons } from "./icons";
 import PropsPanel from "./Props";
 import { fill, resolveDoc } from "./templates";
 import { PAD_X } from "./fit";
+import { autoSide, anchorPoint, resolveLines, snapAt, SIDES } from "./connect";
+import type { Pt, Snap } from "./connect";
+import { fontCss } from "./fonts";
+import StyleBar from "./StyleBar";
 import type { Fields } from "./templates";
-import type { Cell, Doc, El, ImgEl, LineEl, TableEl, TextEl } from "./types";
+import type { Cell, Dash, Doc, El, Head, ImgEl, LineEl, RectEl, Shape, TableEl, TextEl } from "./types";
 import { bbox, isLine } from "./types";
 import type { useUndo } from "./useUndo";
 
@@ -19,7 +23,23 @@ type G =
   | { k: "resize"; id: string; hx: number; hy: number; sx: number; sy: number; orig: El; moved: boolean }
   | { k: "rotate"; id: string; cx: number; cy: number; orig: El; moved: boolean }
   | { k: "end"; id: string; which: 1 | 2; sx: number; sy: number; orig: LineEl; moved: boolean }
-  | { k: "marquee"; sx: number; sy: number; add: boolean; base: string[] };
+  | { k: "marquee"; sx: number; sy: number; add: boolean; base: string[] }
+  | { k: "draw"; tool: Tool; sx: number; sy: number; id: string | null; a: Snap | null; moved: boolean; base?: Doc };
+
+type Tool = "select" | "text" | "rect" | "round" | "ellipse" | "diamond" | "triangle" | "line" | "arrow" | "icon";
+const SHAPE_TOOLS: Tool[] = ["rect", "round", "ellipse", "diamond", "triangle"];
+const isLineTool = (t: Tool) => t === "line" || t === "arrow";
+const TOOL_NAME: Record<string, string> = { text: "Texto", rect: "Rectángulo", round: "Rectángulo redondeado", ellipse: "Elipse", diamond: "Rombo", triangle: "Triángulo", line: "Línea", arrow: "Flecha", icon: "Icono" };
+interface Defs {
+  line: { stroke: string; strokeW: number; dash: Dash; head: Head; tail: Head };
+  shape: { fill: string | null; stroke: string | null; strokeW: number; dash: Dash };
+  text: { font: string; size: number; bold: boolean; italic: boolean; color: string; fill: string | null };
+}
+const DEFS: Defs = {
+  line: { stroke: "#000000", strokeW: 3, dash: "", head: "none", tail: "none" },
+  shape: { fill: null, stroke: "#4F81BD", strokeW: 2, dash: "" },
+  text: { font: "Arial", size: 20, bold: true, italic: false, color: "#000000", fill: null },
+};
 
 function shift(e: El, dx: number, dy: number): El {
   return isLine(e) ? { ...e, x1: e.x1 + dx, y1: e.y1 + dy, x2: e.x2 + dx, y2: e.y2 + dy } : { ...e, x: e.x + dx, y: e.y + dy };
@@ -39,10 +59,10 @@ const dashArray = (d: string | undefined, w: number) => {
   return d && m[d] ? m[d].map((n) => n * Math.max(1, w)).join(" ") : undefined;
 };
 
-function TextLines({ text, size, lineH, spcBef, bold, italic, color, align, nowrap, family }: { family?: string; text: string; size: number; lineH?: number | null; spcBef?: number; bold?: boolean; italic?: boolean; color?: string; align?: string; nowrap?: boolean }) {
+function TextLines({ text, size, lineH, spcBef, bold, italic, color, align, nowrap, family, font }: { font?: string; family?: string; text: string; size: number; lineH?: number | null; spcBef?: number; bold?: boolean; italic?: boolean; color?: string; align?: string; nowrap?: boolean }) {
   const f = size * PT;
   return (
-    <div style={{ fontFamily: family ?? "Arial, Helvetica, sans-serif", fontSize: f, fontWeight: bold ? 700 : 400, fontStyle: italic ? "italic" : "normal", color, textAlign: align === "c" ? "center" : align === "r" ? "right" : align === "j" ? "justify" : "left", whiteSpace: nowrap ? "pre" : "pre-wrap", wordBreak: "break-word", lineHeight: lineH ? `${lineH}px` : `${f * 1.17}px` }}>
+    <div style={{ fontFamily: family ?? fontCss(font), fontSize: f, fontWeight: bold ? 700 : 400, fontStyle: italic ? "italic" : "normal", color, textAlign: align === "c" ? "center" : align === "r" ? "right" : align === "j" ? "justify" : "left", whiteSpace: nowrap ? "pre" : "pre-wrap", wordBreak: "break-word", lineHeight: lineH ? `${lineH}px` : `${f * 1.17}px` }}>
       {text.split("\n").map((ln, i) => <div key={i} style={{ marginTop: i > 0 ? spcBef || 0 : 0, minHeight: lineH || f * 1.17 }}>{ln || " "}</div>)}
     </div>
   );
@@ -77,26 +97,46 @@ function ElView({ e, shown, icons }: { e: El; shown: El; icons: unknown }) {
     if (t.fill) return <div data-id={e.id} style={{ ...box, left: t.x, top: t.y, width: t.w, height: t.h, background: t.fill, boxSizing: "border-box", padding: `0 ${PAD_X}px`, display: "flex", alignItems: vAl(t.valign, "m") }}><div style={{ width: "100%" }}><TextLines {...t} /></div></div>;
     return <div data-id={e.id} style={{ ...box, background: "transparent", display: "flex", alignItems: vAl(t.valign, "t") }}><div style={{ width: "100%" }}><TextLines {...t} /></div></div>;
   }
-  if (e.type === "rect" && !e.fill && !e.text?.trim()) {
-    // Marco sin relleno: solo se puede elegir por el borde (así no tapa lo que hay debajo), como en PowerPoint.
-    const sw = e.stroke && e.strokeW ? e.strokeW : 0;
-    return (
-      <svg data-id={e.id} style={{ ...box, overflow: "visible", pointerEvents: "none" }} width={e.w} height={e.h}>
-        {sw > 0 && <rect x={sw / 2} y={sw / 2} width={Math.max(0, e.w - sw)} height={Math.max(0, e.h - sw)} fill="none" stroke={e.stroke!} strokeWidth={sw} strokeDasharray={dashArray(e.dash, sw)} />}
-        <rect data-id={e.id} x={0} y={0} width={e.w} height={e.h} fill="none" stroke="transparent" strokeWidth={Math.max(16, sw + 10)} style={{ pointerEvents: "stroke" }} />
-      </svg>
-    );
-  }
   if (e.type === "rect") {
-    const r = shown as typeof e;
+    const r = shown as RectEl;
+    const shape: Shape = r.shape ?? "rect";
+    const hasText = !!r.text?.trim();
+    const sw = r.stroke && r.strokeW ? r.strokeW : 0;
+    const vAl = r.valign === "b" ? "flex-end" : r.valign === "t" ? "flex-start" : "center";
+    const txt = hasText ? <div style={{ width: "100%" }}><TextLines text={r.text!} size={r.size ?? 16} bold={r.bold} italic={r.italic} color={r.color ?? "#000"} align={r.align ?? "c"} font={r.font} /></div> : null;
+    if (shape === "rect" && (r.fill || hasText)) {
+      return <div data-id={e.id} style={{ ...box, boxSizing: "border-box", background: r.fill ?? "transparent", border: sw ? `${sw}px ${dashCss(r.dash)} ${r.stroke}` : "none", display: "flex", alignItems: vAl }}>{txt}</div>;
+    }
+    // Formas (elipse, rombo, triángulo, redondeado) y marcos sin relleno: se dibujan en SVG y, si no tienen relleno, solo se eligen por el borde.
+    const w = e.w, h = e.h, o = sw / 2;
+    const common = { fill: r.fill ?? "none", stroke: sw ? r.stroke! : "none", strokeWidth: sw, strokeDasharray: dashArray(r.dash, sw) };
+    const hit = { fill: "none", stroke: "transparent", strokeWidth: Math.max(16, sw + 10), style: { pointerEvents: "stroke" as const } };
+    const pts = shape === "diamond" ? `${w / 2},${o} ${w - o},${h / 2} ${w / 2},${h - o} ${o},${h / 2}` : `${w / 2},${o} ${w - o},${h - o} ${o},${h - o}`;
+    const rr = shape === "round" ? Math.min(r.radius ?? Math.min(w, h) * 0.18, Math.min(w, h) / 2) : 0;
+    const fp = r.fill ? { "data-id": e.id, style: { pointerEvents: "visiblePainted" as const } } : { style: { pointerEvents: "none" as const } };
+    const body = shape === "ellipse" ? <ellipse cx={w / 2} cy={h / 2} rx={Math.max(0, w / 2 - o)} ry={Math.max(0, h / 2 - o)} {...common} {...fp} />
+      : shape === "diamond" || shape === "triangle" ? <polygon points={pts} {...common} {...fp} />
+      : <rect x={o} y={o} width={Math.max(0, w - sw)} height={Math.max(0, h - sw)} rx={rr} {...common} {...fp} />;
+    const hitEl = shape === "ellipse" ? <ellipse cx={w / 2} cy={h / 2} rx={w / 2} ry={h / 2} data-id={e.id} {...hit} />
+      : shape === "diamond" || shape === "triangle" ? <polygon points={pts} data-id={e.id} {...hit} />
+      : <rect x={0} y={0} width={w} height={h} rx={rr} data-id={e.id} {...hit} />;
     return (
-      <div data-id={e.id} style={{ ...box, boxSizing: "border-box", background: r.fill ?? "transparent", border: r.stroke && r.strokeW ? `${r.strokeW}px ${dashCss(r.dash)} ${r.stroke}` : "none", display: "flex", alignItems: r.valign === "b" ? "flex-end" : r.valign === "t" ? "flex-start" : "center" }}>
-        {r.text?.trim() ? <div style={{ width: "100%" }}><TextLines text={r.text} size={r.size ?? 16} bold={r.bold} italic={r.italic} color={r.color ?? "#000"} align={r.align ?? "c"} /></div> : null}
+      <div style={{ ...box, pointerEvents: "none" }}>
+        <svg width={w} height={h} style={{ position: "absolute", left: 0, top: 0, overflow: "visible", pointerEvents: "none" }}>{body}{!r.fill && hitEl}</svg>
+        {hasText && <div data-id={e.id} style={{ position: "absolute", inset: 0, display: "flex", alignItems: vAl, pointerEvents: "auto", padding: shape === "diamond" || shape === "triangle" ? "0 22%" : shape === "ellipse" ? "0 8%" : 0, boxSizing: "border-box" }}>{txt}</div>}
       </div>
     );
   }
   if (e.type === "image") {
-    return <img data-id={e.id} src={iconUrl((e as ImgEl).icon)} alt="" draggable={false} style={{ ...box, objectFit: "fill", userSelect: "none" }} />;
+    const im = e as ImgEl;
+    const sw = im.stroke && im.strokeW ? im.strokeW : 0;
+    const fid = `tn-${im.id}`;
+    return (
+      <div data-id={e.id} style={{ ...box, boxSizing: "border-box", background: im.fill ?? "transparent", border: sw ? `${sw}px solid ${im.stroke}` : "none", borderRadius: im.radius || 0, padding: im.pad || 0, userSelect: "none" }}>
+        {im.tint && <svg width="0" height="0" style={{ position: "absolute" }}><filter id={fid} colorInterpolationFilters="sRGB"><feFlood floodColor={im.tint} result="f" /><feComposite in="f" in2="SourceAlpha" operator="in" /></filter></svg>}
+        <img src={iconUrl(im.icon)} alt="" draggable={false} style={{ width: "100%", height: "100%", objectFit: "fill", display: "block", pointerEvents: "none", transform: `scale(${im.flipX ? -1 : 1}, ${im.flipY ? -1 : 1})`, filter: im.tint ? `url(#${fid})` : undefined }} />
+      </div>
+    );
   }
   const t = shown as TableEl;
   return (
@@ -128,6 +168,19 @@ export default function Editor({ doc, fields, hist }: { doc: Doc; fields: Fields
   const [q, setQ] = useState("");
   const [marquee, setMarquee] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   const [fit, setFit] = useState(0.5);
+  const [tool, setToolRaw] = useState<Tool>("select");
+  const [pendingIcon, setPendingIcon] = useState<{ id: string; w: number; h: number } | null>(null);
+  const [defs, setDefs] = useState<Defs>(DEFS);
+  const [hover, setHover] = useState<Snap | null>(null);
+  const toolRef = useRef(tool); toolRef.current = tool;
+  const defsRef = useRef(defs); defsRef.current = defs;
+  const pendingRef = useRef(pendingIcon); pendingRef.current = pendingIcon;
+  const setTool = (t: Tool) => {
+    setToolRaw(t); setHover(null);
+    if (t === "line") setDefs((d) => ({ ...d, line: { ...d.line, head: "none", tail: "none" } }));
+    if (t === "arrow") setDefs((d) => ({ ...d, line: { ...d.line, head: "none", tail: "triangle" } }));
+    if (t !== "select") setEditing(null);
+  };
   const wrap = useRef<HTMLDivElement>(null);
   const stage = useRef<HTMLDivElement>(null);
   const g = useRef<G | null>(null);
@@ -152,7 +205,7 @@ export default function Editor({ doc, fields, hist }: { doc: Doc; fields: Fields
 
   const els = doc.elements;
   const byId = (id: string) => els.find((e) => e.id === id);
-  const setEls = (next: El[], mode: "commit" | "live" = "commit") => (mode === "commit" ? hist.commit : hist.live)({ ...docRef.current, elements: next });
+  const setEls = (next: El[], mode: "commit" | "live" = "commit") => (mode === "commit" ? hist.commit : hist.live)({ ...docRef.current, elements: resolveLines(next) });
   const patchIds = (ids: string[], fn: (e: El) => El, mode: "commit" | "live" = "commit") => setEls(docRef.current.elements.map((e) => (ids.includes(e.id) && !e.locked ? fn(e) : e)), mode);
   const one = sel.length === 1 ? byId(sel[0]) ?? null : null;
 
@@ -162,9 +215,37 @@ export default function Editor({ doc, fields, hist }: { doc: Doc; fields: Fields
   };
 
   const add = (el: El) => { setEls([...docRef.current.elements, el]); setSel([el.id]); setSelCell(null); };
-  const addText = () => add({ id: uid(), type: "text", x: 760, y: 480, w: 400, h: 40, text: "Texto", align: "c", size: 20, bold: true, italic: false, color: "#000000", fill: null });
-  const addRect = () => add({ id: uid(), type: "rect", x: 700, y: 400, w: 500, h: 300, fill: null, stroke: "#4F81BD", strokeW: 2, dash: "" });
-  const addLine = (arrow: boolean) => add({ id: uid(), type: "line", x1: 760, y1: 540, x2: 1160, y2: 540, stroke: "#000000", strokeW: 3, dash: "", head: "none", tail: arrow ? "triangle" : "none" });
+  /** Crea el elemento de la herramienta entre dos puntos (arrastre) o con tamaño normal si solo se hizo clic. */
+  function makeEl(t: Tool, a: Pt, b: Pt, click: boolean, shiftKey: boolean, id: string, from: Snap | null, to: Snap | null): El | null {
+    const d = defsRef.current;
+    let x = Math.min(a.x, b.x), y = Math.min(a.y, b.y), w = Math.abs(b.x - a.x), h = Math.abs(b.y - a.y);
+    if (t === "text") {
+      if (click) { w = 400; h = 44; x = a.x - 200; y = a.y - 22; }
+      return { id, type: "text", x, y, w: Math.max(40, w), h: Math.max(d.text.size * 1.7, h), text: "Texto", align: "l", ...d.text } as TextEl;
+    }
+    if (SHAPE_TOOLS.includes(t)) {
+      if (click) { w = 240; h = t === "ellipse" || t === "round" || t === "rect" ? 140 : 200; x = a.x - w / 2; y = a.y - h / 2; }
+      else if (shiftKey) { const m = Math.max(w, h); w = h = m; x = b.x < a.x ? a.x - m : a.x; y = b.y < a.y ? a.y - m : a.y; }
+      return { id, type: "rect", shape: t as Shape, x, y, w: Math.max(8, w), h: Math.max(8, h), ...d.shape } as RectEl;
+    }
+    if (t === "icon" && pendingRef.current) {
+      const ic = pendingRef.current;
+      const k = click ? Math.min(1, 220 / Math.max(ic.w, ic.h)) : Math.max(w / ic.w, h / ic.h) || 1;
+      const iw = Math.max(24, Math.round(ic.w * k)), ih = Math.max(24, Math.round(ic.h * k));
+      const cx = click ? a.x - iw / 2 : (b.x < a.x ? a.x - iw : a.x), cy = click ? a.y - ih / 2 : (b.y < a.y ? a.y - ih : a.y);
+      return { id, type: "image", x: Math.round(cx), y: Math.round(cy), w: iw, h: ih, icon: ic.id };
+    }
+    if (isLineTool(t)) {
+      let ex = click ? a.x + 300 : b.x, ey = click ? a.y : b.y;
+      if (!click && shiftKey && !to) { const ang = Math.round(Math.atan2(ey - a.y, ex - a.x) / (Math.PI / 12)) * (Math.PI / 12), len = Math.hypot(ex - a.x, ey - a.y); ex = a.x + len * Math.cos(ang); ey = a.y + len * Math.sin(ang); }
+      return { id, type: "line", x1: a.x, y1: a.y, x2: to ? to.pt.x : ex, y2: to ? to.pt.y : ey, ...d.line, a: from ? { id: from.id, side: from.side } : undefined, b: to ? { id: to.id, side: to.side } : undefined } as LineEl;
+    }
+    return null;
+  }
+  async function armIcon(id: string) {
+    const s = await iconSize(id);
+    setPendingIcon({ id, w: s.w, h: s.h }); setToolRaw("icon"); setHover(null);
+  }
   async function addIcon(id: string, at?: { x: number; y: number }) {
     const s = await iconSize(id);
     const k = Math.min(1, 220 / Math.max(s.w, s.h)) || 1;
@@ -174,7 +255,7 @@ export default function Editor({ doc, fields, hist }: { doc: Doc; fields: Fields
   }
   async function upload(f: File | undefined) {
     if (!f) return;
-    try { const ic = await uploadIcon(f); await addIcon(ic.id); } catch { alert("No se pudo subir el icono (PNG, JPG, WEBP o GIF, máximo 4 MB)."); }
+    try { const ic = await uploadIcon(f); await armIcon(ic.id); } catch { alert("No se pudo subir el icono (PNG, JPG, WEBP o GIF, máximo 4 MB)."); }
   }
 
   const remove = () => { if (sel.length) { setEls(els.filter((e) => !sel.includes(e.id) || e.locked)); setSel([]); setSelCell(null); } };
@@ -192,6 +273,62 @@ export default function Editor({ doc, fields, hist }: { doc: Doc; fields: Fields
     if (how === "up") for (const i of [...idx].reverse()) { if (i < arr.length - 1 && !ids.includes(arr[i + 1].id)) [arr[i], arr[i + 1]] = [arr[i + 1], arr[i]]; }
     else for (const i of idx) { if (i > 0 && !ids.includes(arr[i - 1].id)) [arr[i], arr[i - 1]] = [arr[i - 1], arr[i]]; }
     setEls(arr);
+  };
+
+  // ---------- alinear, distribuir y unir ----------
+  const align = (how: "l" | "c" | "r" | "t" | "m" | "b" | "dh" | "dv") => {
+    const list = els.filter((e) => sel.includes(e.id) && !e.locked && e.type !== "line");
+    if (list.length < 2) return;
+    const bs = list.map((e) => ({ e, b: bbox(e) }));
+    const minX = Math.min(...bs.map(({ b }) => b.x)), maxX = Math.max(...bs.map(({ b }) => b.x + b.w));
+    const minY = Math.min(...bs.map(({ b }) => b.y)), maxY = Math.max(...bs.map(({ b }) => b.y + b.h));
+    const to = new Map<string, Pt>();
+    if (how === "dh" || how === "dv") {
+      if (list.length < 3) return;
+      const horiz = how === "dh";
+      const sorted = [...bs].sort((p, q) => (horiz ? p.b.x - q.b.x : p.b.y - q.b.y));
+      const total = sorted.reduce((a, { b }) => a + (horiz ? b.w : b.h), 0);
+      const gap = ((horiz ? maxX - minX : maxY - minY) - total) / (sorted.length - 1);
+      let cur = horiz ? minX : minY;
+      for (const { e, b } of sorted) { to.set(e.id, horiz ? { x: cur - b.x, y: 0 } : { x: 0, y: cur - b.y }); cur += (horiz ? b.w : b.h) + gap; }
+    } else {
+      for (const { e, b } of bs) {
+        to.set(e.id, {
+          x: how === "l" ? minX - b.x : how === "r" ? maxX - (b.x + b.w) : how === "c" ? (minX + maxX) / 2 - (b.x + b.w / 2) : 0,
+          y: how === "t" ? minY - b.y : how === "b" ? maxY - (b.y + b.h) : how === "m" ? (minY + maxY) / 2 - (b.y + b.h / 2) : 0,
+        });
+      }
+    }
+    patchIds([...to.keys()], (e) => { const d = to.get(e.id)!; return shift(e, d.x, d.y); });
+  };
+  /** Une dos elementos elegidos con una línea o flecha que los sigue cuando se mueven. */
+  const connect = (arrow: boolean) => {
+    const two = sel.map(byId).filter((e): e is Exclude<El, LineEl> => !!e && e.type !== "line");
+    if (two.length !== 2) return;
+    const d = defsRef.current.line;
+    add({ id: uid(), type: "line", x1: 0, y1: 0, x2: 0, y2: 0, ...d, head: arrow ? d.head : "none", tail: arrow ? (d.tail === "none" ? "triangle" : d.tail) : "none", a: { id: two[0].id, side: "auto" }, b: { id: two[1].id, side: "auto" } });
+  };
+  /** Estilo de línea / forma / texto: cambia lo elegido y queda como estilo para lo que se dibuje después. */
+  const styleKind: "line" | "shape" | "text" | null = (() => {
+    const picked = sel.map(byId).filter(Boolean) as El[];
+    if (tool !== "select") return isLineTool(tool) ? "line" : SHAPE_TOOLS.includes(tool) ? "shape" : tool === "text" ? "text" : null;
+    if (picked.length && picked.every((e) => e.type === "line")) return "line";
+    if (picked.length && picked.every((e) => e.type === "rect")) return "shape";
+    if (picked.length && picked.every((e) => e.type === "text")) return "text";
+    return null;
+  })();
+  const styleVals = (): Record<string, unknown> => {
+    if (!styleKind) return {};
+    const first = tool === "select" ? sel.map(byId).find((e) => e?.type === (styleKind === "shape" ? "rect" : styleKind)) : undefined;
+    return { ...defs[styleKind], ...(first ? (first as unknown as Record<string, unknown>) : {}) };
+  };
+  const applyStyle = (patch: Record<string, unknown>) => {
+    if (!styleKind) return;
+    setDefs((d) => ({ ...d, [styleKind]: { ...d[styleKind], ...patch } }));
+    if (tool === "select") {
+      const type = styleKind === "shape" ? "rect" : styleKind;
+      patchIds(sel.filter((id) => byId(id)?.type === type), (e) => ({ ...e, ...patch } as El));
+    }
   };
 
   // ---------- teclado ----------
@@ -214,7 +351,13 @@ export default function Editor({ doc, fields, hist }: { doc: Doc; fields: Fields
         hist.commit({ ...docRef.current, elements: [...docRef.current.elements, ...copies] }); setSel(copies.map((c) => c.id));
       }
       else if (k === "delete" || k === "backspace") { if (selRef.current.length) { ev.preventDefault(); remove(); } }
-      else if (k === "escape") { setSel([]); setSelCell(null); }
+      else if (k === "escape") { if (toolRef.current !== "select") setToolRaw("select"); else { setSel([]); setSelCell(null); } setHover(null); }
+      else if (!mod && !ev.altKey && k === "v") setTool("select");
+      else if (!mod && !ev.altKey && k === "t") setTool("text");
+      else if (!mod && !ev.altKey && k === "r") setTool("rect");
+      else if (!mod && !ev.altKey && k === "o") setTool("ellipse");
+      else if (!mod && !ev.altKey && k === "l") setTool("line");
+      else if (!mod && !ev.altKey && k === "a") setTool("arrow");
       else if (k.startsWith("arrow") && selRef.current.length) {
         ev.preventDefault();
         const s = ev.shiftKey ? 10 : 1;
@@ -234,6 +377,14 @@ export default function Editor({ doc, fields, hist }: { doc: Doc; fields: Fields
     const handle = t.closest("[data-handle]")?.getAttribute("data-handle");
     const id = t.closest("[data-id]")?.getAttribute("data-id") ?? null;
     (ev.currentTarget as HTMLElement).setPointerCapture(ev.pointerId);
+
+    // Herramienta elegida (texto, forma, línea, icono…): lo que se hace en el lienzo lo dibuja o lo coloca
+    if (toolRef.current !== "select" && !handle) {
+      let sx = p.x, sy = p.y, from: Snap | null = null;
+      if (isLineTool(toolRef.current)) { from = snapAt(docRef.current.elements, p, 18 / scaleRef.current); if (from) { sx = from.pt.x; sy = from.pt.y; } }
+      g.current = { k: "draw", tool: toolRef.current, sx, sy, id: null, a: from, moved: false };
+      return;
+    }
 
     if (handle && one) {
       if (handle === "rot") { const b = bbox(one); g.current = { k: "rotate", id: one.id, cx: b.x + b.w / 2, cy: b.y + b.h / 2, orig: one, moved: false }; }
@@ -259,8 +410,25 @@ export default function Editor({ doc, fields, hist }: { doc: Doc; fields: Fields
   }
 
   function onMove(ev: React.PointerEvent) {
-    const s = g.current; if (!s) return;
+    const s = g.current;
     const p = toStage(ev.clientX, ev.clientY);
+    if (!s) {
+      // con línea/flecha elegida: se muestran los puntos de unión del elemento que está debajo del cursor
+      if (isLineTool(toolRef.current)) setHover(snapAt(docRef.current.elements, p, 18 / scaleRef.current));
+      return;
+    }
+    if (s.k === "draw") {
+      const to = isLineTool(s.tool) ? snapAt(docRef.current.elements, p, 18 / scaleRef.current, s.a ? [] : []) : null;
+      if (isLineTool(s.tool)) setHover(to);
+      if (!s.moved) {
+        if (Math.hypot(p.x - s.sx, p.y - s.sy) * scaleRef.current < 4) return;
+        s.moved = true; s.id = uid(); s.base = docRef.current; hist.begin();
+        setSel([s.id]);
+      }
+      const el = makeEl(s.tool, { x: s.sx, y: s.sy }, p, false, ev.shiftKey, s.id!, s.a, to);
+      if (el && s.base) hist.live({ ...s.base, elements: resolveLines([...s.base.elements, el]) });
+      return;
+    }
     if (s.k === "marquee") {
       const r = { x: Math.min(s.sx, p.x), y: Math.min(s.sy, p.y), w: Math.abs(p.x - s.sx), h: Math.abs(p.y - s.sy) };
       setMarquee(r);
@@ -275,9 +443,21 @@ export default function Editor({ doc, fields, hist }: { doc: Doc; fields: Fields
     }
     const live = (fn: (e: El) => El, ids: string[]) => patchIds(ids, fn, "live");
     if (s.k === "move") {
-      live((e) => shift(s.orig.get(e.id) ?? e, dx, dy), [...s.orig.keys()]);
+      const moving = new Set(s.orig.keys());
+      live((e) => {
+        const o = s.orig.get(e.id) ?? e;
+        const m = shift(o, dx, dy);
+        // una línea pegada a algo que NO se mueve con ella se despega; si se mueven juntos, sigue unida
+        if (m.type === "line" && (m.a || m.b)) return { ...m, a: m.a && moving.has(m.a.id) ? m.a : undefined, b: m.b && moving.has(m.b.id) ? m.b : undefined };
+        return m;
+      }, [...s.orig.keys()]);
     } else if (s.k === "end") {
-      live(() => (s.which === 1 ? { ...s.orig, x1: s.orig.x1 + dx, y1: s.orig.y1 + dy } : { ...s.orig, x2: s.orig.x2 + dx, y2: s.orig.y2 + dy }), [s.id]);
+      const px = (s.which === 1 ? s.orig.x1 : s.orig.x2) + dx, py = (s.which === 1 ? s.orig.y1 : s.orig.y2) + dy;
+      const sn = snapAt(docRef.current.elements, { x: px, y: py }, 18 / scaleRef.current);
+      setHover(sn);
+      const bind = sn ? { id: sn.id, side: sn.side } : undefined;
+      const X = sn ? sn.pt.x : px, Y = sn ? sn.pt.y : py;
+      live(() => (s.which === 1 ? { ...s.orig, x1: X, y1: Y, a: bind } : { ...s.orig, x2: X, y2: Y, b: bind }), [s.id]);
     } else if (s.k === "rotate") {
       let a = (Math.atan2(p.y - s.cy, p.x - s.cx) * 180) / Math.PI + 90;
       if (ev.shiftKey) a = Math.round(a / 15) * 15;
@@ -298,7 +478,28 @@ export default function Editor({ doc, fields, hist }: { doc: Doc; fields: Fields
       }, [s.id]);
     }
   }
-  function onUp() { g.current = null; setMarquee(null); }
+  function onUp(ev?: React.PointerEvent) {
+    const s = g.current;
+    g.current = null; setMarquee(null);
+    if (s?.k === "end") setHover(null);
+    if (s?.k !== "draw") return;
+    setHover(null);
+    let id = s.id;
+    if (!s.moved) {
+      // clic sin arrastrar: se coloca con el tamaño normal, centrado donde se hizo clic
+      id = uid();
+      const el = makeEl(s.tool, { x: s.sx, y: s.sy }, { x: s.sx, y: s.sy }, true, false, id, s.a, null);
+      if (el) add(el);
+    } else if (id) {
+      // arrastre muy corto de una línea: no queda una línea diminuta
+      const el = docRef.current.elements.find((e) => e.id === id);
+      if (el && el.type === "line" && Math.hypot(el.x2 - el.x1, el.y2 - el.y1) < 8) { hist.undo(); id = null; }
+    }
+    void ev;
+    const t = s.tool;
+    setToolRaw("select");
+    if (id && t === "text") setEditing({ id });
+  }
 
   function onDbl(ev: React.MouseEvent) {
     const t = ev.target as Element;
@@ -376,6 +577,7 @@ export default function Editor({ doc, fields, hist }: { doc: Doc; fields: Fields
   const q2 = q.trim().toLowerCase();
   const cats = [...new Set(icons.map((i) => i.categoria))];
   const btn = "btn-secondary px-3 py-1.5 text-xs";
+  const tb = (t: Tool) => `${tool === t ? "btn-primary" : "btn-secondary"} px-3 py-1.5 text-xs`;
 
   return (
     <div className="grid grid-cols-1 gap-3 xl:grid-cols-[240px_1fr_270px]">
@@ -398,7 +600,7 @@ export default function Editor({ doc, fields, hist }: { doc: Doc; fields: Fields
                   <p className="mb-1 text-[11px] font-semibold text-slate-500">{c}</p>
                   <div className="grid grid-cols-3 gap-1.5">
                     {list.map((i) => (
-                      <button key={i.id} type="button" title={`${i.name} (clic o arrastra al lienzo)`} draggable onDragStart={(e) => e.dataTransfer.setData("text/icon-id", i.id)} onClick={() => void addIcon(i.id)} className="flex h-14 items-center justify-center rounded-lg bg-slate-100/70 p-1 hover:bg-slate-200/80">
+                      <button key={i.id} type="button" title={`${i.name}: clic para elegirlo y luego clic o arrastre en el lienzo (doble clic lo pone al centro)`} draggable onDragStart={(e) => e.dataTransfer.setData("text/icon-id", i.id)} onClick={() => void armIcon(i.id)} onDoubleClick={() => void addIcon(i.id)} className={`flex h-14 items-center justify-center rounded-lg p-1 hover:bg-slate-200/80 ${tool === "icon" && pendingIcon?.id === i.id ? "bg-brand-500/20 ring-2 ring-brand-500" : "bg-slate-100/70"}`}>
                         <img src={iconUrl(i.id)} alt={i.name} className="max-h-full max-w-full object-contain" draggable={false} />
                       </button>
                     ))}
@@ -423,10 +625,17 @@ export default function Editor({ doc, fields, hist }: { doc: Doc; fields: Fields
       {/* Centro: barra y lienzo */}
       <div className="min-w-0 space-y-2">
         <div className="card flex flex-wrap items-center gap-1.5 p-2">
-          <button className={btn} onClick={addText}>Texto</button>
-          <button className={btn} onClick={addRect} title="Forma (rectángulo)" aria-label="Forma"><ToolIcon name="rect" /></button>
-          <button className={btn} onClick={() => addLine(false)} title="Línea" aria-label="Línea"><ToolIcon name="line" /></button>
-          <button className={btn} onClick={() => addLine(true)} title="Flecha" aria-label="Flecha"><ToolIcon name="arrow" /></button>
+          <button className={tb("select")} onClick={() => setTool("select")} title="Seleccionar (V)" aria-label="Seleccionar"><ToolIcon name="select" /></button>
+          <button className={tb("text")} onClick={() => setTool("text")} title="Texto: clic o arrastra en el lienzo (T)" aria-label="Texto"><ToolIcon name="text" /></button>
+          <button className={tb("rect")} onClick={() => setTool("rect")} title="Rectángulo (R)" aria-label="Rectángulo"><ToolIcon name="rect" /></button>
+          <button className={tb("round")} onClick={() => setTool("round")} title="Rectángulo redondeado" aria-label="Rectángulo redondeado"><ToolIcon name="round" /></button>
+          <button className={tb("ellipse")} onClick={() => setTool("ellipse")} title="Elipse (O)" aria-label="Elipse"><ToolIcon name="ellipse" /></button>
+          <button className={tb("diamond")} onClick={() => setTool("diamond")} title="Rombo" aria-label="Rombo"><ToolIcon name="diamond" /></button>
+          <button className={tb("triangle")} onClick={() => setTool("triangle")} title="Triángulo" aria-label="Triángulo"><ToolIcon name="triangle" /></button>
+          <span className="mx-1 h-5 w-px bg-slate-300" />
+          <button className={tb("line")} onClick={() => setTool("line")} title="Línea: arrastra; si empiezas o terminas sobre un icono se une a él (L)" aria-label="Línea"><ToolIcon name="line" /></button>
+          <button className={tb("arrow")} onClick={() => setTool("arrow")} title="Flecha: arrastra; si empiezas o terminas sobre un icono se une a él (A)" aria-label="Flecha"><ToolIcon name="arrow" /></button>
+          <button className={btn} onClick={() => connect(true)} disabled={sel.length !== 2} title="Unir los 2 elementos elegidos con una flecha" aria-label="Unir con flecha"><ToolIcon name="connect" /></button>
           <span className="mx-1 h-5 w-px bg-slate-300" />
           <button className={btn} onClick={hist.undo} disabled={!hist.canUndo} title="Deshacer (Ctrl+Z)">↶</button>
           <button className={btn} onClick={hist.redo} disabled={!hist.canRedo} title="Rehacer (Ctrl+Y)">↷</button>
@@ -440,12 +649,21 @@ export default function Editor({ doc, fields, hist }: { doc: Doc; fields: Fields
           <button className={btn} onClick={() => setZoom(1)} title="Ajustar al ancho">{Math.round(scale * 100)}%</button>
           <button className={btn} onClick={() => setZoom((z) => Math.min(3, +(z + 0.25).toFixed(2)))}>+</button>
         </div>
+        {tool !== "select" && <p className="rounded-lg bg-brand-500/10 px-3 py-1.5 text-xs text-brand-700">
+          {tool === "icon" ? "Icono listo: haz clic en el lienzo para colocarlo, o mantén y arrastra para dibujarlo del tamaño que quieras." : isLineTool(tool) ? `${TOOL_NAME[tool]}: arrastra en el lienzo. Si empiezas o terminas sobre un icono o forma, queda unida y lo sigue al moverlo.` : `${TOOL_NAME[tool]}: haz clic en el lienzo para colocarlo, o mantén y arrastra para dibujarlo del tamaño que quieras.`} Esc cancela.</p>}
+        {styleKind && <StyleBar kind={styleKind} v={styleVals()} on={applyStyle} hint={tool === "select" ? "Cambia lo elegido" : "Estilo para lo que dibujes"} />}
         <div ref={wrap} className="overflow-auto rounded-xl border border-slate-300 bg-slate-200/60" style={{ maxHeight: "calc(100dvh - 12rem)" }}>
           <div style={{ width: doc.w * scale, height: doc.h * scale, position: "relative" }}>
             <div ref={stage} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp} onDoubleClick={onDbl} onDragOver={(e) => e.preventDefault()} onDrop={onDrop}
-              style={{ position: "absolute", left: 0, top: 0, width: doc.w, height: doc.h, transform: `scale(${scale})`, transformOrigin: "0 0", background: "#fff", touchAction: "none", userSelect: "none", cursor: "default", boxShadow: "0 2px 12px rgba(0,0,0,.18)" }}>
+              style={{ position: "absolute", left: 0, top: 0, width: doc.w, height: doc.h, transform: `scale(${scale})`, transformOrigin: "0 0", background: "#fff", touchAction: "none", userSelect: "none", cursor: tool === "select" ? "default" : "crosshair", boxShadow: "0 2px 12px rgba(0,0,0,.18)" }}>
               {els.map((e, i) => <ElView key={e.id} e={e} shown={shownDoc.elements[i]} icons={icons} />)}
               {sel.map((id) => { const e = byId(id); if (!e || sel.length === 1) return null; const b = bbox(e); return <div key={id} style={{ position: "absolute", left: b.x, top: b.y, width: b.w, height: b.h, outline: `${1.5 / scale}px dashed #0a84ff`, pointerEvents: "none" }} />; })}
+              {hover && (() => {
+                const he = byId(hover.id);
+                if (!he || he.type === "line") return null;
+                const ds = 12 / scale;
+                return SIDES.map((sd) => { const q = anchorPoint(he, sd), on = sd === hover.side; return <div key={sd} style={{ position: "absolute", left: q.x - ds / 2, top: q.y - ds / 2, width: ds, height: ds, borderRadius: "50%", background: on ? "#0a84ff" : "#fff", border: `${2 / scale}px solid #0a84ff`, pointerEvents: "none", transform: on ? "scale(1.4)" : undefined }} />; });
+              })()}
               {handles()}
               {marquee && <div style={{ position: "absolute", left: marquee.x, top: marquee.y, width: marquee.w, height: marquee.h, background: "rgba(10,132,255,.12)", border: `${1 / scale}px solid #0a84ff`, pointerEvents: "none" }} />}
               {editBox()}
@@ -458,7 +676,28 @@ export default function Editor({ doc, fields, hist }: { doc: Doc; fields: Fields
       {/* Derecha: propiedades */}
       <div className="card space-y-2 p-3 xl:max-h-[calc(100dvh-9rem)] xl:overflow-y-auto">
         <h3 className="text-sm font-semibold text-slate-800">{sel.length > 1 ? `${sel.length} elementos` : one ? label(one, icons) : "Propiedades"}</h3>
-        {sel.length > 1 ? <p className="text-xs text-slate-500">Arrástralos juntos, duplícalos o elimínalos. Elige uno solo para editar sus detalles.</p> : (
+        {sel.length > 1 ? (
+          <div className="space-y-2">
+            <p className="text-xs text-slate-500">Arrástralos juntos, duplícalos o elimínalos. Elige uno solo para editar sus detalles.</p>
+            <p className="text-[11px] font-semibold text-slate-600">Alinear</p>
+            <div className="grid grid-cols-3 gap-1">
+              {([["l", "Izquierda"], ["c", "Centro"], ["r", "Derecha"], ["t", "Arriba"], ["m", "Medio"], ["b", "Abajo"]] as const).map(([k, n]) => <button key={k} className="btn-secondary px-1 py-1 text-[11px]" onClick={() => align(k)}>{n}</button>)}
+            </div>
+            <div className="grid grid-cols-2 gap-1">
+              <button className="btn-secondary px-1 py-1 text-[11px]" disabled={sel.length < 3} onClick={() => align("dh")}>Repartir ↔</button>
+              <button className="btn-secondary px-1 py-1 text-[11px]" disabled={sel.length < 3} onClick={() => align("dv")}>Repartir ↕</button>
+            </div>
+            {sel.length === 2 && (
+              <>
+                <p className="text-[11px] font-semibold text-slate-600">Unir los dos</p>
+                <div className="grid grid-cols-2 gap-1">
+                  <button className="btn-secondary px-1 py-1 text-[11px]" onClick={() => connect(false)}>Con línea</button>
+                  <button className="btn-secondary px-1 py-1 text-[11px]" onClick={() => connect(true)}>Con flecha</button>
+                </div>
+              </>
+            )}
+          </div>
+        ) : (
           <PropsPanel el={one} selCell={selCell} setSelCell={setSelCell}
             p={(patch) => one && patchIds([one.id], (e) => ({ ...e, ...patch } as El))}
             onReplaceIcon={(id) => one && patchIds([one.id], (e) => ({ ...e, icon: id } as El))} />

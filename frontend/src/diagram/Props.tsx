@@ -1,5 +1,7 @@
-import type { Cell, Dash, El, Head, ImgEl, LineEl, RectEl, TableEl, TextEl } from "./types";
+import type { Cell, Dash, El, Head, ImgEl, LineEl, RectEl, Shape, TableEl, TextEl } from "./types";
 import { iconUrl, useIcons } from "./icons";
+import { FONTS, TEXT_PRESETS } from "./fonts";
+import { useVariables } from "../store/diagramVars";
 
 type Patch = (p: Partial<El> | Record<string, unknown>) => void;
 
@@ -56,9 +58,19 @@ function VAlign({ v, on }: { v: "t" | "m" | "b"; on: (a: "t" | "m" | "b") => voi
   );
 }
 
-function TextStyle({ e, p, vDefault = "t" }: { e: { size?: number; bold?: boolean; italic?: boolean; color?: string; align?: "l" | "c" | "r" | "j"; valign?: "t" | "m" | "b" }; p: Patch; vDefault?: "t" | "m" | "b" }) {
+function TextStyle({ e, p, vDefault = "t", cell }: { cell?: boolean; e: { font?: string; size?: number; bold?: boolean; italic?: boolean; color?: string; align?: "l" | "c" | "r" | "j"; valign?: "t" | "m" | "b" }; p: Patch; vDefault?: "t" | "m" | "b" }) {
   return (
     <>
+      {!cell && <Row label="Estilo rápido">
+        <select className="input w-36 px-2 py-1 text-xs" value="" onChange={(ev) => { const pr = TEXT_PRESETS.find((x) => x.name === ev.target.value); if (pr) p(pr.patch); }}>
+          <option value="">Elegir…</option>{TEXT_PRESETS.map((x) => <option key={x.name} value={x.name}>{x.name}</option>)}
+        </select>
+      </Row>}
+      {!cell && <Row label="Letra">
+        <select className="input w-36 px-2 py-1 text-xs" value={e.font || "Arial"} onChange={(ev) => p({ font: ev.target.value })} style={{ fontFamily: e.font || "Arial" }}>
+          {FONTS.map((f) => <option key={f.name} value={f.name} style={{ fontFamily: f.css }}>{f.name}</option>)}
+        </select>
+      </Row>}
       <Row label="Tamaño"><Num v={e.size ?? 12} on={(n) => p({ size: Math.max(1, n) })} w="w-[4.6rem]" /></Row>
       <Row label="Estilo">
         <button type="button" className={`rounded px-2 py-1 text-xs font-bold ${e.bold ? "bg-brand-600 text-white" : "bg-slate-100 text-slate-700"}`} onClick={() => p({ bold: !e.bold })}>N</button>
@@ -68,6 +80,20 @@ function TextStyle({ e, p, vDefault = "t" }: { e: { size?: number; bold?: boolea
       <Row label="Alineación"><Align v={e.align ?? "l"} on={(a) => p({ align: a })} /></Row>
       <Row label="Vertical"><VAlign v={e.valign ?? vDefault} on={(a) => p({ valign: a })} /></Row>
     </>
+  );
+}
+
+/** «Insertar variable»: agrega {{clave}} al texto; en el lienzo se cambia solo por el dato del cliente. */
+function VarPicker({ text, set }: { text: string; set: (t: string) => void }) {
+  const vars = useVariables();
+  return (
+    <Row label="Insertar variable">
+      <select className="input w-36 px-2 py-1 text-xs" value="" onChange={(e) => { if (e.target.value) set(`${text}{{${e.target.value}}}`); }}>
+        <option value="">Elegir…</option>
+        <optgroup label="De fábrica">{vars.filter((v) => v.builtin).map((v) => <option key={v.key} value={v.key}>{v.label}</option>)}</optgroup>
+        {vars.some((v) => !v.builtin) && <optgroup label="Datos de clientes">{vars.filter((v) => !v.builtin).map((v) => <option key={v.key} value={v.key}>{v.label}</option>)}</optgroup>}
+      </select>
+    </Row>
   );
 }
 
@@ -94,6 +120,7 @@ export default function PropsPanel({ el, p, selCell, setSelCell, onReplaceIcon }
         return (
           <>
             <textarea className="input text-sm" rows={3} value={t.text} onChange={(e) => p({ text: e.target.value })} aria-label="Texto" />
+            <VarPicker text={t.text} set={(x) => p({ text: x })} />
             <TextStyle e={t} p={p} vDefault={t.fill ? "m" : "t"} />
             <Row label="Fondo"><ColorInput v={t.fill} on={(c) => p({ fill: c })} none /></Row>
             <Row label="Sin saltos"><input type="checkbox" className="ios" checked={!!t.nowrap} onChange={(e) => p({ nowrap: e.target.checked })} /></Row>
@@ -105,6 +132,12 @@ export default function PropsPanel({ el, p, selCell, setSelCell, onReplaceIcon }
         const r = el as RectEl;
         return (
           <>
+            <Row label="Forma">
+              <select className="input w-36 px-2 py-1 text-xs" value={r.shape ?? "rect"} onChange={(e) => p({ shape: e.target.value as Shape })}>
+                {([["rect", "Rectángulo"], ["round", "Redondeado"], ["ellipse", "Elipse"], ["diamond", "Rombo"], ["triangle", "Triángulo"]] as const).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+              </select>
+            </Row>
+            {r.shape === "round" && <Row label="Redondeo"><Num v={r.radius ?? Math.round(Math.min(r.w, r.h) * 0.18)} on={(n) => p({ radius: Math.max(0, n) })} /></Row>}
             <Row label="Relleno"><ColorInput v={r.fill} on={(c) => p({ fill: c })} none /></Row>
             <Row label="Borde"><ColorInput v={r.stroke} on={(c) => p({ stroke: c })} none /></Row>
             <Row label="Grosor"><Num v={r.strokeW} on={(n) => p({ strokeW: Math.max(0, n) })} step={0.5} /></Row>
@@ -112,7 +145,8 @@ export default function PropsPanel({ el, p, selCell, setSelCell, onReplaceIcon }
               <select className="input w-36 px-2 py-1 text-xs" value={r.dash ?? ""} onChange={(e) => p({ dash: e.target.value as Dash })}>{DASHES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
             </Row>
             <textarea className="input text-sm" rows={2} placeholder="Texto dentro de la forma" value={r.text ?? ""} onChange={(e) => p({ text: e.target.value })} />
-            {(r.text ?? "") !== "" && <TextStyle e={{ size: r.size ?? 16, bold: r.bold, italic: r.italic, color: r.color ?? "#000000", align: r.align ?? "c", valign: r.valign }} p={p} vDefault="m" />}
+            <VarPicker text={r.text ?? ""} set={(x) => p({ text: x })} />
+            {(r.text ?? "") !== "" && <TextStyle e={{ font: r.font, size: r.size ?? 16, bold: r.bold, italic: r.italic, color: r.color ?? "#000000", align: r.align ?? "c", valign: r.valign }} p={p} vDefault="m" />}
           </>
         );
       })()}
@@ -132,6 +166,10 @@ export default function PropsPanel({ el, p, selCell, setSelCell, onReplaceIcon }
             <Row label="Punta final">
               <select className="input w-36 px-2 py-1 text-xs" value={l.tail ?? "none"} onChange={(e) => p({ tail: e.target.value as Head })}>{HEADS.map(([k, d]) => <option key={k} value={k}>{d}</option>)}</select>
             </Row>
+            <div className="flex flex-wrap items-center gap-1.5 rounded-lg bg-slate-100 px-2 py-1.5 text-[11px] text-slate-600">
+              <span>{l.a || l.b ? `Unida a ${l.a && l.b ? "dos elementos" : "un elemento"}: lo sigue al moverlo.` : "Suelta. Arrastra un extremo sobre un icono o forma para unirla."}</span>
+              {(l.a || l.b) && <button type="button" className="btn-secondary px-2 py-0.5 text-[11px]" onClick={() => p({ a: undefined, b: undefined })}>Desunir</button>}
+            </div>
           </>
         );
       })()}
@@ -140,6 +178,19 @@ export default function PropsPanel({ el, p, selCell, setSelCell, onReplaceIcon }
         const im = el as ImgEl;
         return (
           <>
+            <Row label="Color del icono">
+              <ColorInput v={im.tint} on={(c) => p({ tint: c })} none />
+            </Row>
+            <p className="-mt-1 text-[10px] text-slate-400">Pinta el icono de un solo color (funciona con iconos de silueta). «Sin» deja los colores originales.</p>
+            <Row label="Fondo"><ColorInput v={im.fill} on={(c) => p({ fill: c })} none /></Row>
+            <Row label="Borde"><ColorInput v={im.stroke} on={(c) => p({ stroke: c, strokeW: im.strokeW || 2 })} none /></Row>
+            {im.stroke && <Row label="Grosor"><Num v={im.strokeW ?? 2} on={(n) => p({ strokeW: Math.max(0, n) })} step={0.5} /></Row>}
+            <Row label="Redondeo"><Num v={im.radius ?? 0} on={(n) => p({ radius: Math.max(0, n) })} /></Row>
+            <Row label="Margen"><Num v={im.pad ?? 0} on={(n) => p({ pad: Math.max(0, n) })} /></Row>
+            <Row label="Voltear">
+              <button type="button" className={`rounded px-2 py-1 text-xs ${im.flipX ? "bg-brand-600 text-white" : "bg-slate-100 text-slate-700"}`} onClick={() => p({ flipX: !im.flipX })}>↔</button>
+              <button type="button" className={`rounded px-2 py-1 text-xs ${im.flipY ? "bg-brand-600 text-white" : "bg-slate-100 text-slate-700"}`} onClick={() => p({ flipY: !im.flipY })}>↕</button>
+            </Row>
             <p className="text-xs font-semibold text-slate-600">Cambiar icono</p>
             <div className="grid max-h-44 grid-cols-4 gap-1.5 overflow-y-auto rounded-lg border border-slate-200 p-1.5">
               {icons.map((i) => (
@@ -165,7 +216,8 @@ export default function PropsPanel({ el, p, selCell, setSelCell, onReplaceIcon }
               <>
                 <p className="text-xs font-semibold text-slate-600">Celda fila {selCell!.r + 1}, columna {selCell!.c + 1}</p>
                 <textarea className="input text-sm" rows={3} value={cell.text} onChange={(e) => set({ text: e.target.value })} aria-label="Texto de la celda" />
-                <TextStyle e={cell} p={set as Patch} vDefault="m" />
+                <VarPicker text={cell.text} set={(x) => set({ text: x })} />
+                <TextStyle cell e={cell} p={set as Patch} vDefault="m" />
                 <Row label="Fondo"><ColorInput v={cell.fill} on={(c) => set({ fill: c, grad: c ? null : cell.grad })} none /></Row>
               </>
             )}

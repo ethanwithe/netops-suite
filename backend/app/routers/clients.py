@@ -17,6 +17,7 @@ from app import models, schemas
 from app.auth import current_user, log_activity
 from app.database import get_db
 from app.services import client_access as ca
+from app.services import diagram_vars
 from app.services import security
 from app.services.naming import clean_part
 
@@ -168,10 +169,11 @@ class WorkspaceIn(BaseModel):
     state: dict
     nombre: str = ""
     fecha: str = ""
+    force: bool = False   # reemplazar aunque lo guardado tenga mucho más (el usuario ya lo decidió)
 
 
 VERSION_EVERY = dt.timedelta(minutes=2)
-VERSION_KEEP = 25
+VERSION_KEEP = 40
 
 
 def _ws_out(w: models.UserWorkspace, sot: str, with_state: bool = True) -> dict:
@@ -219,7 +221,12 @@ def save_workspace(payload: WorkspaceIn, request: Request, user: models.User = D
         w = models.UserWorkspace(client_id=row.id, key=payload.key, state={})
         db.add(w)
     else:
-        _snapshot(db, row.id, w, user)
+        old_n, new_n = len(json.dumps(w.state or {})), len(json.dumps(payload.state))
+        # Protección: si lo que llega tiene mucho menos que lo guardado (pantalla vacía o incompleta), no se pisa sin que el usuario lo decida.
+        if old_n > 1500 and new_n < old_n * 0.5 and not payload.force:
+            raise HTTPException(409, "shrink")
+        # Lo anterior siempre queda como copia cuando lo nuevo trae bastante menos o el usuario forzó el reemplazo
+        _snapshot(db, row.id, w, user, force=payload.force or new_n < old_n * 0.8)
     w.label, w.route, w.state = payload.label, payload.route, payload.state
     w.updated_at, w.updated_by = dt.datetime.utcnow(), user.username
     row.updated_at = dt.datetime.utcnow()
@@ -300,6 +307,7 @@ def create_client(payload: schemas.ClientIn, user: models.User = Depends(current
         raise HTTPException(409, f"La SOT {sot} está en tu papelera: recupérala desde ahí.")
     row = _new_client(db, user, sot, payload.fecha)
     _apply(row, payload.model_dump(), True)
+    diagram_vars.ensure_variables(db, row.datos)
     db.commit()
     log_activity(db, user, "cliente_creado", f"SOT {sot}", row.id)
     return ca.client_out(db, row, user.id)
@@ -323,6 +331,7 @@ def update_client(client_id: str, payload: schemas.ClientIn, user: models.User =
     row.fecha = norm_fecha(payload.fecha) or row.fecha or _today()
     row.datos = {str(k).strip()[:40]: str(v)[:300] for k, v in payload.datos.items() if str(k).strip()}
     row.updated_at = dt.datetime.utcnow()
+    diagram_vars.ensure_variables(db, row.datos)
     db.commit()
     log_activity(db, user, "cliente_editado", f"SOT {sot}", row.id)
     return ca.client_out(db, row, user.id)
@@ -370,6 +379,7 @@ def sync_client(payload: schemas.ClientSync, request: Request, user: models.User
         reportes.append(rep)
         row.reportes = reportes[-100:]
         log_activity(db, user, "reporte_generado", f"SOT {sot} · {rep.get('nombre') or rep.get('filename', '')}", row.id)
+    diagram_vars.ensure_variables(db, row.datos)
     db.commit()
     db.refresh(row)
     return ca.client_out(db, row, user.id)
@@ -426,7 +436,7 @@ def _pack_sources(db: Session, row: models.Client):
         if r.get("tipo") == "carpeta" or not r.get("filename"):
             continue
         latest[(r.get("tipo") or "", r.get("nombre") or "")] = r
-    wss = db.query(models.ClientWorkspace).filter(models.ClientWorkspace.sot == row.sot, models.ClientWorkspace.key.like("foto:%")).all()
+    wss = db.query(models.UserWorkspace).filter(models.UserWorkspace.client_id == row.id, models.UserWorkspace.key.like("foto:%")).all()
     return list(latest.values()), wss
 
 
@@ -442,7 +452,7 @@ def package_status(client_id: str, user: models.User = Depends(current_user), db
     stale = any(r.get("tipo") != "carpeta" for r in reps[pk[-1] + 1:])
     built = last.get("utc", "")
     if built and not stale:
-        for w in db.query(models.ClientWorkspace).filter(models.ClientWorkspace.sot == row.sot).all():
+        for w in db.query(models.UserWorkspace).filter(models.UserWorkspace.client_id == row.id).all():
             if w.updated_at and w.updated_at.isoformat() > built:
                 stale = True
                 break

@@ -1,5 +1,6 @@
 import type { Doc, Template } from "./types";
 import { fitText } from "./fit";
+import { resolveLines } from "./connect";
 import ontCisco from "./ontCisco.json";
 
 /** Tipos de diagrama. Cada uno trae su lienzo base (editable) y los datos que se piden al inicio. */
@@ -60,7 +61,7 @@ export function fill(text: string, f: Fields): string {
 export function resolveDoc(doc: Doc, f: Fields): Doc {
   return {
     ...doc,
-    elements: doc.elements.map((e) => {
+    elements: resolveLines(doc.elements).map((e) => {
       if (e.type === "text") return fitText({ ...e, text: fill(e.text ?? "", f) });
       if (e.type === "rect" && e.text) return { ...e, text: fill(e.text ?? "", f) };
       if (e.type === "table") return { ...e, rows: e.rows.map((r) => ({ ...r, cells: r.cells.map((c) => ({ ...c, text: fill(c.text, f) })) })) };
