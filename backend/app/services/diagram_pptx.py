@@ -170,6 +170,8 @@ def _rotate(shape, rot):
         shape.rotation = float(rot) % 360
 
 
+_SHAPES = {"rect": MSO_SHAPE.RECTANGLE, "round": MSO_SHAPE.ROUNDED_RECTANGLE, "ellipse": MSO_SHAPE.OVAL,
+           "diamond": MSO_SHAPE.DIAMOND, "triangle": MSO_SHAPE.ISOSCELES_TRIANGLE}
 HEAD = {"none": "", "triangle": "triangle", "arrow": "arrow", "stealth": "stealth", "oval": "oval", "diamond": "diamond"}
 
 
@@ -202,7 +204,7 @@ def clean_icon(data: bytes) -> bytes | None:
 
 
 def build_pptx(doc: dict, load_icon) -> bytes:
-    from app.services.diagram_fit import fit_doc, PAD_X
+    from app.services.diagram_fit import fit_doc, process_icon, PAD_X
     doc = fit_doc(doc)
     prs = Presentation()
     W, H = doc.get("w", 1920), doc.get("h", 1080)
@@ -215,7 +217,11 @@ def build_pptx(doc: dict, load_icon) -> bytes:
     for el in doc.get("elements", []):
         t = el.get("type")
         if t == "rect":
-            s = sh.add_shape(MSO_SHAPE.RECTANGLE, emu(el["x"]), emu(el["y"]), emu(el["w"]), emu(el["h"]))
+            kind = _SHAPES.get(el.get("shape") or "rect", MSO_SHAPE.RECTANGLE)
+            s = sh.add_shape(kind, emu(el["x"]), emu(el["y"]), emu(el["w"]), emu(el["h"]))
+            if kind == MSO_SHAPE.ROUNDED_RECTANGLE:
+                m = max(1.0, min(float(el["w"]), float(el["h"])))
+                s.adjustments[0] = max(0.0, min(0.5, (float(el.get("radius") or m * 0.18)) / m))
             s.shadow.inherit = False
             _set_sp_fill(s, el.get("fill"))
             _set_line(s, el.get("stroke"), el.get("strokeW", 0), el.get("dash", ""))
@@ -225,7 +231,7 @@ def build_pptx(doc: dict, load_icon) -> bytes:
                 tf.word_wrap = True
                 tf.vertical_anchor = _VANCHOR.get(el.get("valign") or "m", MSO_ANCHOR.MIDDLE)
                 _fill_paragraphs(tf, el["text"], size=el.get("size", 16), bold=el.get("bold"), italic=el.get("italic"),
-                                 color=el.get("color") or "#000000", align=el.get("align", "c"))
+                                 color=el.get("color") or "#000000", align=el.get("align", "c"), font=el.get("font") or "Arial")
             _rotate(s, el.get("rot"))
         elif t == "text":
             tb = sh.add_textbox(emu(el["x"]), emu(el["y"]), emu(el["w"]), emu(el.get("h", 20)))
@@ -239,7 +245,8 @@ def build_pptx(doc: dict, load_icon) -> bytes:
                 tf.margin_left = tf.margin_right = Emu(emu(PAD_X))
             tf.vertical_anchor = _VANCHOR.get(el.get("valign") or ("m" if el.get("fill") else "t"), MSO_ANCHOR.TOP)
             _fill_paragraphs(tf, el.get("text", ""), size=el.get("size", 12), bold=el.get("bold"), italic=el.get("italic"),
-                             color=el.get("color") or "#000000", align=el.get("align", "l"), line_h=el.get("lineH"), spc_bef=el.get("spcBef"))
+                             color=el.get("color") or "#000000", align=el.get("align", "l"), line_h=el.get("lineH"), spc_bef=el.get("spcBef"),
+                             font=el.get("font") or "Arial")
             _rotate(tb, el.get("rot"))
         elif t == "line":
             c = sh.add_connector(MSO_CONNECTOR.STRAIGHT, emu(el["x1"]), emu(el["y1"]), emu(el["x2"]), emu(el["y2"]))
@@ -247,7 +254,7 @@ def build_pptx(doc: dict, load_icon) -> bytes:
                       HEAD.get(el.get("head") or "none", ""), HEAD.get(el.get("tail") or "none", ""))
             _drop_style(c)
         elif t == "image":
-            data = load_icon(el.get("icon"))
+            data = process_icon(load_icon(el.get("icon")), el)
             if not data:
                 continue
             data = clean_icon(data)

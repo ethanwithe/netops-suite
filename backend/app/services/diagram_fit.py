@@ -16,7 +16,17 @@ PAD_Y = 4.0      # aire arriba y abajo
 _MARK = re.compile(r"\*\*|~~")
 
 
-def _font(bold, italic):
+_SERIF = ("times", "georgia", "garamond", "cambria", "palatino", "serif")
+_MONO = ("courier", "consolas", "mono", "lucida console")
+
+
+def _font(bold, italic, fam=""):
+    """Letra del PDF (las 14 estándar): tipos con serif -> Times, de ancho fijo -> Courier, el resto -> Helvetica."""
+    f = (fam or "").lower()
+    if any(k in f for k in _SERIF):
+        return "Times-" + ("BoldItalic" if bold and italic else "Bold" if bold else "Italic" if italic else "Roman")
+    if any(k in f for k in _MONO):
+        return "Courier" + ("-BoldOblique" if bold and italic else "-Bold" if bold else "-Oblique" if italic else "")
     return "Helvetica" + ("-BoldOblique" if bold and italic else "-Bold" if bold else "-Oblique" if italic else "")
 
 
@@ -42,7 +52,7 @@ def fit_filled_text(el: dict) -> dict:
     need_h = len(lines) * lead + spc * max(0, len(lines) - 1) + 2 * PAD_Y
     x, y, w, h = float(e["x"]), float(e["y"]), float(e["w"]), float(e.get("h", 20))
     if e.get("nowrap") or len(lines) == 1:
-        font = _font(e.get("bold"), e.get("italic"))
+        font = _font(e.get("bold"), e.get("italic"), e.get("font"))
         widest = max(stringWidth(_MARK.sub("", ln), font, fpx) for ln in lines)
         need_w = widest + 2 * PAD_X + 2
         if not e.get("nowrap"):
@@ -61,7 +71,52 @@ def fit_filled_text(el: dict) -> dict:
     return e
 
 
+def expand_images(els: list) -> list:
+    """Un icono con fondo, borde o margen se dibuja como una forma detrás + el icono más pequeño encima."""
+    out = []
+    for el in els:
+        if el.get("type") != "image":
+            out.append(el)
+            continue
+        pad = float(el.get("pad") or 0)
+        has_box = bool(el.get("fill")) or (bool(el.get("stroke")) and float(el.get("strokeW") or 0) > 0)
+        if has_box:
+            out.append({"type": "rect", "id": el.get("id", ""), "x": el["x"], "y": el["y"], "w": el["w"], "h": el["h"], "rot": el.get("rot"),
+                        "fill": el.get("fill"), "stroke": el.get("stroke"), "strokeW": float(el.get("strokeW") or 0),
+                        "shape": "round" if el.get("radius") else "rect", "radius": float(el.get("radius") or 0)})
+        if pad:
+            el = dict(el)
+            el["x"] = float(el["x"]) + pad; el["y"] = float(el["y"]) + pad
+            el["w"] = max(1.0, float(el["w"]) - 2 * pad); el["h"] = max(1.0, float(el["h"]) - 2 * pad)
+        out.append(el)
+    return out
+
+
+def process_icon(data, el: dict):
+    """Aplica al icono su color único (tint) y los giros (flipX / flipY)."""
+    if not data or not (el.get("tint") or el.get("flipX") or el.get("flipY")):
+        return data
+    try:
+        import io
+        from PIL import Image, ImageOps
+        im = ImageOps.exif_transpose(Image.open(io.BytesIO(data))).convert("RGBA")
+        t = str(el.get("tint") or "")
+        if re.match(r"^#[0-9a-fA-F]{6}$", t):
+            solid = Image.new("RGBA", im.size, tuple(int(t[i:i + 2], 16) for i in (1, 3, 5)) + (255,))
+            solid.putalpha(im.getchannel("A"))
+            im = solid
+        if el.get("flipX"):
+            im = ImageOps.mirror(im)
+        if el.get("flipY"):
+            im = ImageOps.flip(im)
+        out = io.BytesIO()
+        im.save(out, "PNG")
+        return out.getvalue()
+    except Exception:
+        return data
+
+
 def fit_doc(doc: dict) -> dict:
     d = dict(doc)
-    d["elements"] = [fit_filled_text(el) for el in doc.get("elements", [])]
+    d["elements"] = expand_images([fit_filled_text(el) for el in doc.get("elements", [])])
     return d
