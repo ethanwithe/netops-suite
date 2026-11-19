@@ -24,3 +24,8 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
     t = window.setTimeout(() => { delete root.dataset.scrolling; }, 140);
   }, { passive: true, capture: true });
 }
+
+// Funciona sin conexión: el service worker guarda el programa y sirve las fotos pendientes de subir.
+if (import.meta.env.PROD && "serviceWorker" in navigator && /^https?:$/.test(window.location.protocol)) {
+  window.addEventListener("load", () => { navigator.serviceWorker.register("/sw.js").catch(() => undefined); });
+}

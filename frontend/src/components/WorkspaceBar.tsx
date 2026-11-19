@@ -32,6 +32,7 @@ export default function WorkspaceBar({ ws }: { ws: WsApi }) {
     ? "Escribe la SOT para poder guardar lo de esta ventana en «Datos de cliente» (fotos, textos y PDF)."
     : ws.status?.kind === "saving" ? "Guardando…"
     : ws.dirty ? (ws.autosave ? "Guardando en unos segundos…" : "Cambios sin guardar")
+    : ws.status?.kind === "local" ? `Guardado en este equipo · se sube solo al volver Internet · ${ws.status.at}`
     : ws.status?.kind === "saved" ? `Guardado en Datos de cliente · ${ws.status.at}`
     : ws.offline || ws.status?.kind === "error" ? "Sin conexión: todo queda guardado temporal en este equipo y se sube solo al volver Internet."
     : ws.autosave ? "Guardado automático activado para esta SOT." : "Guardado automático apagado: usa «Guardar».";

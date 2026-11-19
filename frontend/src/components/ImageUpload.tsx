@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { api } from "../api/client";
-import { compressForUpload } from "../utils/imageCompress";
+import { uploadPhoto } from "../sync/engine";
 import CameraCapture from "./CameraCapture";
 import { getPlaceFast, stampImage, stampLines } from "../utils/photoStamp";
 import type { Place } from "../utils/photoStamp";
@@ -57,11 +56,8 @@ export default function ImageUpload({ onUploaded, label = "Subir imagen...", com
     setPreview(blobUrl);
 
     try {
-      const form = new FormData();
-      form.append("file", await compressForUpload(file));
-      const { data } = await api.post("/files/upload", form, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
+      // Se guarda primero en este equipo y se sube (comprimida); sin Internet queda en cola y se sube sola.
+      const data = await uploadPhoto(file, file.name);
       onUploaded(data.path, data.url);
       return data.path as string;
     } catch {
@@ -105,10 +101,8 @@ export default function ImageUpload({ onUploaded, label = "Subir imagen...", com
       // la foto limpia (sin sello) sube a la vez que la sellada
       const rawUp = onStampRaw
         ? (async () => {
-            const form = new FormData();
-            form.append("file", await compressForUpload(file));
-            const { data } = await api.post("/files/upload", form, { headers: { "Content-Type": "multipart/form-data" } });
-            return { path: data.path as string, url: data.url as string };
+            const data = await uploadPhoto(file, file.name);
+            return { path: data.path, url: data.url };
           })().catch(() => null)
         : null;
       const up = await handleFile(stamped);

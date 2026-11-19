@@ -12,6 +12,7 @@ import { getAutosave, useAutosave } from "./autosave";
 import { expandDatos } from "./clientLink";
 import { askChoice } from "./dialog";
 import { allDrafts, delDraft, getDraft, putDraft } from "./localDraft";
+import { localWorkspace, queueWorkspace } from "../sync/engine";
 import type { Draft } from "./localDraft";
 
 export interface WorkspaceInfo { sot: string; key: string; label: string; route: string; updated_at: string }
@@ -69,7 +70,7 @@ export interface WsApi {
   loadTemp: () => void;
   /** Sin conexión con el servidor: todo queda guardado temporal en este equipo. */
   offline: boolean;
-  status: { kind: "saving" | "saved" | "error"; at: string } | null;
+  status: { kind: "saving" | "saved" | "error" | "local"; at: string } | null;
   hasSot: boolean;
   /** Copias anteriores de esta ventana (para recuperar lo que se borró o se pisó por error). */
   versions: () => Promise<VersionInfo[]>;
@@ -118,6 +119,11 @@ function hookFlush(): void {
   window.addEventListener("online", () => { void flushPending(); });
   window.setInterval(() => { void flushPending(); }, 30000);
   void flushPending();
+}
+
+function queueLocal(o: WsOptions, sot: string, route: string, state: unknown): Promise<void> {
+  const cd = o.clientData;
+  return queueWorkspace({ sot, key: o.key, label: o.label, route, state, nombre: o.nombre || cd?.nombre, fecha: o.fecha || cd?.fecha, datos: cd?.datos ? expandDatos(cd.datos) : undefined });
 }
 
 export function useWorkspace(o: WsOptions): WsApi {
@@ -195,7 +201,13 @@ export function useWorkspace(o: WsOptions): WsApi {
             } catch { /* no es cliente todavía */ }
           }
         } else {
-          setMode("offline"); // sin conexión: todo queda temporal en este equipo y no se pisa nada del servidor
+          // Sin conexión: se abre lo que haya guardado en ESTE equipo (pendiente de subir o descargado antes).
+          const loc = await localWorkspace(sot, ref.current.key).catch(() => null);
+          if (dead) return;
+          if (loc && JSON.stringify(loc.state ?? {}) !== jsonRef.current) {
+            setConflict({ sot, key: ref.current.key, label: loc.label || ref.current.label, route: loc.route, updated_at: "", state: loc.state, ...(loc.pending ? { tempAt: Date.now() } : {}) });
+            setMode("blocked");
+          } else setMode("offline"); // todo queda guardado en este equipo y se sube solo al volver Internet
         }
       }
     }, modeRef.current === "offline" ? 0 : 900);
@@ -209,8 +221,19 @@ export function useWorkspace(o: WsOptions): WsApi {
     if (!sotNow) return false;
     const snap = jsonRef.current;
     setStatus({ kind: "saving", at: "" });
+    const toLocal = async (): Promise<boolean> => {
+      try {
+        await queueLocal(cur, sotNow, pathname, JSON.parse(snap));   // cola persistente: se sube sola al volver Internet
+        forceNext.current = false;
+        mark(snap);
+        void delDraft(sotNow, cur.key);
+        setStatus({ kind: "local", at: new Date().toLocaleTimeString("es-PE", { hour: "2-digit", minute: "2-digit" }) });
+        return true;
+      } catch { setStatus({ kind: "error", at: "" }); return false; }
+    };
+    if (modeRef.current === "offline" || navigator.onLine === false) return toLocal();
     // Primero queda a salvo en este equipo; solo se libera cuando el servidor confirma.
-    await putDraft({ id: `${sotNow}|${cur.key}`, sot: sotNow, key: cur.key, label: cur.label, route: pathname, nombre: cur.nombre ?? "", fecha: cur.fecha ?? "", state: JSON.parse(snap), at: Date.now(), queued: true });
+    await putDraft({ id: `${sotNow}|${cur.key}`, sot: sotNow, key: cur.key, label: cur.label, route: pathname, nombre: cur.nombre ?? "", fecha: cur.fecha ?? "", state: JSON.parse(snap), at: Date.now(), queued: false });
     try {
       await api.put("/clients/workspace", {
         sot: sotNow, key: cur.key, label: cur.label, route: pathname, state: JSON.parse(snap),
@@ -233,7 +256,7 @@ export function useWorkspace(o: WsOptions): WsApi {
         setStatus({ kind: "error", at: "" });
         return false;
       }
-      if (!r) setMode((m) => (m === "free" ? "offline" : m)); // sin conexión: sigue temporal y se reintenta
+      if (!r) { setMode((m) => (m === "free" ? "offline" : m)); return toLocal(); } // sin conexión: queda en este equipo y se sube sola
       setStatus({ kind: "error", at: "" });
       return false;
     }
@@ -242,7 +265,7 @@ export function useWorkspace(o: WsOptions): WsApi {
 
   // 2) Guardado automático (se puede apagar con el interruptor)
   useEffect(() => {
-    if (!auto || !enabled || !sot || mode !== "free" || json === last.current) return;
+    if (!auto || !enabled || !sot || (mode !== "free" && mode !== "offline") || json === last.current) return;
     const t = window.setTimeout(() => { void doSaveRef.current(); }, 1500);
     return () => window.clearTimeout(t);
   }, [json, lastS, mode, sot, enabled, pathname, auto]);
@@ -252,7 +275,7 @@ export function useWorkspace(o: WsOptions): WsApi {
     if (!enabled || !sot || (mode !== "free" && mode !== "offline") || json === last.current) return;
     const t = window.setTimeout(() => {
       const cur = ref.current;
-      void putDraft({ id: `${sot}|${cur.key}`, sot, key: cur.key, label: cur.label, route: pathname, nombre: cur.nombre ?? "", fecha: cur.fecha ?? "", state: JSON.parse(jsonRef.current), at: Date.now(), queued: getAutosave() || modeRef.current === "offline" });
+      void putDraft({ id: `${sot}|${cur.key}`, sot, key: cur.key, label: cur.label, route: pathname, nombre: cur.nombre ?? "", fecha: cur.fecha ?? "", state: JSON.parse(jsonRef.current), at: Date.now(), queued: false });
     }, 400);
     return () => window.clearTimeout(t);
   }, [json, lastS, mode, sot, enabled, pathname]);
@@ -285,11 +308,12 @@ export function useWorkspace(o: WsOptions): WsApi {
       const m = modeRef.current;
       if (ref.current.enabled !== false && sotRef.current && (m === "free" || m === "offline") && jsonRef.current !== last.current) {
         const cur = ref.current, s = sotRef.current, snap = jsonRef.current;
-        const d: Draft = { id: `${s}|${cur.key}`, sot: s, key: cur.key, label: cur.label, route: pathname, nombre: cur.nombre ?? "", fecha: cur.fecha ?? "", state: JSON.parse(snap), at: Date.now(), queued: getAutosave() || m === "offline" };
-        void putDraft(d).then(() => {
-          if (!getAutosave() || m !== "free") return;
+        const d: Draft = { id: `${s}|${cur.key}`, sot: s, key: cur.key, label: cur.label, route: pathname, nombre: cur.nombre ?? "", fecha: cur.fecha ?? "", state: JSON.parse(snap), at: Date.now(), queued: false };
+        if (m === "offline") void queueLocal(cur, s, pathname, d.state);
+        else void putDraft(d).then(() => {
+          if (!getAutosave()) return;
           return api.put("/clients/workspace", { sot: s, key: cur.key, label: cur.label, route: pathname, state: d.state, nombre: d.nombre, fecha: d.fecha })
-            .then(() => delDraft(s, cur.key)).catch(() => undefined); // si falla, queda temporal y se sube en segundo plano
+            .then(() => delDraft(s, cur.key)).catch(() => queueLocal(cur, s, pathname, d.state)); // si falla, queda en la cola local y se sube sola
         });
       }
       // Al volver a esta ventana se muestra limpia, lista para otro cliente (o para elegir el mismo otra vez); lo guardado sigue en «Datos de cliente».

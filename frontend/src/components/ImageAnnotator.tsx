@@ -1,6 +1,7 @@
 import { ToolIcon, hasToolIcon } from "./ToolIcons";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, apiErrorMessage } from "../api/client";
+import { uploadPhoto } from "../sync/engine";
 import { NEUTRAL, adjustCanvas, isNeutral } from "../utils/imageAdjust";
 import type { Adjust } from "../utils/imageAdjust";
 import { fontOf, getStampStyle, posH, posV, shadowFor, STAMP_COLORS, STAMP_FONTS, STAMP_ORDER } from "../utils/photoStamp";
@@ -1145,9 +1146,7 @@ export default function ImageAnnotator({ imageUrl, baseUrl, stamp, onClose, onSa
       renderObjects(ctx, objs, 1, unitOf(out), full);
       const blob: Blob | null = await new Promise((res) => out.toBlob(res, "image/jpeg", 0.92));
       if (!blob) throw new Error("No se pudo crear la imagen.");
-      const form = new FormData();
-      form.append("file", blob, "editada.jpg");
-      const { data } = await api.post("/files/upload", form, { headers: { "Content-Type": "multipart/form-data" } });
+      const data = await uploadPhoto(blob, "editada.jpg");
       // Imagen sin marcas (recortes y ajustes ya aplicados) + marcas: así al volver a editar todo se puede mover o cambiar.
       const plain = objs.filter((o) => !(o.k === "text" && o.stamp));
       const keepMarks = async (cleanUrl?: string) => {
@@ -1156,9 +1155,7 @@ export default function ImageAnnotator({ imageUrl, baseUrl, stamp, onClose, onSa
           if (!baseUrl2) {
             const bb: Blob | null = await new Promise((res) => full.toBlob(res, "image/jpeg", 0.92));
             if (bb) {
-              const fb = new FormData();
-              fb.append("file", bb, "base.jpg");
-              baseUrl2 = (await api.post("/files/upload", fb, { headers: { "Content-Type": "multipart/form-data" } })).data.url;
+              baseUrl2 = (await uploadPhoto(bb, "base.jpg")).url;
             }
           }
           if (baseUrl2) setEditState(data.url, { baseUrl: baseUrl2, w: full.width, h: full.height, objects: plain });
@@ -1177,10 +1174,8 @@ export default function ImageAnnotator({ imageUrl, baseUrl, stamp, onClose, onSa
         renderObjects(c2, objs.filter((o) => !(o.k === "text" && o.stamp)), 1, unitOf(out2), full);
         const b2: Blob | null = await new Promise((res) => out2.toBlob(res, "image/jpeg", 0.92));
         if (!b2) throw new Error("No se pudo crear la imagen.");
-        const f2 = new FormData();
-        f2.append("file", b2, "sin-sello.jpg");
-        const r2 = await api.post("/files/upload", f2, { headers: { "Content-Type": "multipart/form-data" } });
-        clean = { path: r2.data.path, url: r2.data.url };
+        const r2 = await uploadPhoto(b2, "sin-sello.jpg");
+        clean = { path: r2.path, url: r2.url };
       }
       await keepMarks(st && !plain.length ? clean.url : undefined);
       onSaved(data.path, data.url, {

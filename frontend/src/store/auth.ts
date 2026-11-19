@@ -68,6 +68,7 @@ export async function login(username: string, password: string): Promise<void> {
 export async function logout(): Promise<void> {
   try { await api.post("/auth/logout"); } catch { /* ignore */ }
   setActingClient(null);
+  try { navigator.serviceWorker?.controller?.postMessage("clear"); } catch { /* sin service worker */ }
   set({ me: null, notice: "" });
 }
 

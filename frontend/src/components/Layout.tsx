@@ -8,6 +8,8 @@ import NewChecklistModal from "./NewChecklistModal";
 import { checklistRoute, createChecklistType, useChecklistTypes } from "../store/checklistTypes";
 import { usePersistentState } from "../store/persistentState";
 import ThemeSwitcher from "./ThemeSwitcher";
+import SyncIndicator from "./SyncIndicator";
+import { startSync } from "../sync/engine";
 import ToolsMenu from "./ToolsMenu";
 import FloatingTools from "./FloatingTools";
 import DialogHost from "./DialogHost";
@@ -107,6 +109,8 @@ export default function Layout() {
   const [desktopOpen, setDesktopOpen] = usePersistentState("layout.sidebar", true);
 
   useEffect(() => initLiquid(), []);
+  // Sincronización en segundo plano (cola local → servidor → otros dispositivos) mientras haya sesión.
+  useEffect(() => { if (!me?.id) return; return startSync(me.id); }, [me?.id]);
   // ubicación lista de antemano (solo si el permiso ya estaba concedido): la cámara y el sello no esperan
   useEffect(() => { const t = window.setTimeout(() => { void import("../utils/photoStamp").then((m) => m.warmPlace()).catch(() => {}); }, 1500); return () => window.clearTimeout(t); }, []);
 
@@ -247,6 +251,7 @@ export default function Layout() {
           <span className="truncate font-display text-sm font-semibold text-slate-800">{titles[pathname] ?? "NetOps Suite"}</span>
           <div className="flex-1" />
           {can(me, "checklist") && <ToolsMenu />}
+          <SyncIndicator />
           <ThemeSwitcher />
           {me && (
             <div className="relative">
