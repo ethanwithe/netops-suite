@@ -1,6 +1,7 @@
 /** Sesión del usuario: quién es, qué puede hacer y si debe cambiar su contraseña. */
 import { useSyncExternalStore } from "react";
 import { api, setActingClient } from "../api/client";
+import { clearApiCache } from "../api/offlineCache";
 
 export interface Me {
   id: string;
@@ -68,6 +69,7 @@ export async function login(username: string, password: string): Promise<void> {
 export async function logout(): Promise<void> {
   try { await api.post("/auth/logout"); } catch { /* ignore */ }
   setActingClient(null);
+  void clearApiCache();
   try { navigator.serviceWorker?.controller?.postMessage("clear"); } catch { /* sin service worker */ }
   set({ me: null, notice: "" });
 }
