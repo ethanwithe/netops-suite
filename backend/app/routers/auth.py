@@ -68,7 +68,11 @@ def login(payload: LoginIn, request: Request, response: Response, db: Session = 
         path="/",
     )
     log_activity(db, user, "login")
-    return user_out(user)
+    out = user_out(user)
+    # Apps nativas (Windows/Android): reciben el token para guardarlo en el almacén seguro del sistema y enviarlo como Bearer.
+    if request.headers.get("x-client") == "native":
+        out["token"] = security.make_token(user.id, user.token_version)
+    return out
 
 
 @router.post("/logout")
