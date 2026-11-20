@@ -17,5 +17,5 @@ jobs:
       - run: pip install reportlab==4.2.5 Pillow==10.4.0
       - run: python backend/gen_spike/make_report.py backend /tmp/cpython/report.pdf
       - run: cd scripts/gen_parity && npm init -y >/dev/null && npm i pyodide@0.26.4
-      - run: mkdir -p /tmp/pyodide && cd scripts/gen_parity && node pyodide_run.mjs ../../backend /tmp/pyodide/report.pdf
+      - run: mkdir -p /tmp/pyodide && cp -r /tmp/cpython/img /tmp/pyodide/img && cd scripts/gen_parity && node pyodide_run.mjs ../../backend /tmp/pyodide/report.pdf
       - run: python scripts/gen_parity/compare.py /tmp/cpython/report.pdf /tmp/pyodide/report.pdf

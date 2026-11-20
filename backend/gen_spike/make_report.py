@@ -26,7 +26,8 @@ def main(root, out):
     items = []
     for i, c in enumerate([(200, 60, 60), (60, 160, 90), (50, 90, 200), (220, 180, 40), (120, 60, 160)], 1):
         p = os.path.join(tmp, f"{i}.jpg")
-        photo(p, c, str(i))
+        if not os.path.exists(p):   # las mismas fotos de entrada en ambos entornos (así solo se compara el generador)
+            photo(p, c, str(i))
         items.append({"numero": i, "descripcion": f"Equipo {i} instalado en rack — verificación de etiquetado y energía", "imagen": p, "lado": "cliente" if i < 4 else "site", "lado_label": ""})
     meta = {"titulo": "REPORTE FOTOGRAFICO", "lados_orden": ["cliente", "site"], "proy": "Proyecto de prueba", "cliente": "Cliente S.A.C.",
             "sot": "123456", "fecha": "20/11/2026", "cid": "CID-001", "contrata": "Contrata X", "logo_izq": None, "logo_der": None}
