@@ -3,7 +3,7 @@ import { loadPyodide } from "pyodide";
 import fs from "node:fs";
 import path from "node:path";
 
-const [, , backendDir, outPdf] = process.argv;
+const [, , backendDir, outPdf, mode = "flat"] = process.argv;
 const py = await loadPyodide();
 await py.loadPackage(["pillow", "micropip"]);
 await py.runPythonAsync(`import micropip\nawait micropip.install("reportlab==4.2.5")`);
@@ -16,6 +16,6 @@ await py.runPythonAsync(`
 import sys
 sys.path.insert(0, "/backend/gen_spike")
 import make_report
-make_report.main("/backend", "/out/${path.basename(outPdf)}")
+make_report.main("/backend", "/out/${path.basename(outPdf)}", "${mode}")
 `);
 console.log("generado", outPdf, fs.statSync(outPdf).size);

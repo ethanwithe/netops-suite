@@ -15,7 +15,16 @@ jobs:
         with: { node-version: "20" }
       - run: sudo apt-get update -qq && sudo apt-get install -y -qq poppler-utils
       - run: pip install reportlab==4.2.5 Pillow==10.4.0
-      - run: python backend/gen_spike/make_report.py backend /tmp/cpython/report.pdf
       - run: cd scripts/gen_parity && npm init -y >/dev/null && npm i pyodide@0.26.4
-      - run: mkdir -p /tmp/pyodide && cp -r /tmp/cpython/img /tmp/pyodide/img && cd scripts/gen_parity && node pyodide_run.mjs ../../backend /tmp/pyodide/report.pdf
-      - run: python scripts/gen_parity/compare.py /tmp/cpython/report.pdf /tmp/pyodide/report.pdf
+      - name: Fotos planas (debe ser IDÉNTICO píxel a píxel)
+        run: |
+          python backend/gen_spike/make_report.py backend /tmp/cp_flat/report.pdf flat
+          mkdir -p /tmp/py_flat && cp -r /tmp/cp_flat/img /tmp/py_flat/img
+          (cd scripts/gen_parity && node pyodide_run.mjs ../../backend /tmp/py_flat/report.pdf flat)
+          python scripts/gen_parity/compare.py /tmp/cp_flat/report.pdf /tmp/py_flat/report.pdf exacto
+      - name: Fotos con bordes diagonales (diferencia solo del códec JPEG)
+        run: |
+          python backend/gen_spike/make_report.py backend /tmp/cp_tex/report.pdf texture
+          mkdir -p /tmp/py_tex && cp -r /tmp/cp_tex/img /tmp/py_tex/img
+          (cd scripts/gen_parity && node pyodide_run.mjs ../../backend /tmp/py_tex/report.pdf texture)
+          python scripts/gen_parity/compare.py /tmp/cp_tex/report.pdf /tmp/py_tex/report.pdf tolerancia
