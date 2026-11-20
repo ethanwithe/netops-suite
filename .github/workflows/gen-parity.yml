@@ -1,0 +1,21 @@
+name: gen-parity
+# Prueba que el MISMO código Python de los generadores (PDF, PPTX, Word) da resultados idénticos
+# en Python normal (servidor / Windows) y en Pyodide (Python dentro del navegador / Android).
+on:
+  push:
+    branches: [offline-sync-1]
+jobs:
+  parity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - uses: actions/setup-node@v4
+        with: { node-version: "20" }
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq poppler-utils
+      - run: pip install reportlab==4.2.5 Pillow==10.4.0
+      - run: python backend/gen_spike/make_report.py backend /tmp/cpython/report.pdf
+      - run: cd scripts/gen_parity && npm init -y >/dev/null && npm i pyodide@0.26.4
+      - run: mkdir -p /tmp/pyodide && cd scripts/gen_parity && node pyodide_run.mjs ../../backend /tmp/pyodide/report.pdf
+      - run: python scripts/gen_parity/compare.py /tmp/cpython/report.pdf /tmp/pyodide/report.pdf
