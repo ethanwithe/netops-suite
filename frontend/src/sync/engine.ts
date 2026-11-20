@@ -10,7 +10,6 @@
  */
 import { useSyncExternalStore } from "react";
 import { api } from "../api/client";
-import { compressForUpload } from "../utils/imageCompress";
 import { dbAll, dbDel, dbGet, dbPut, metaGet, metaSet } from "./db";
 
 export type SyncState = "LOCAL" | "PENDING_SYNC" | "SYNCING" | "SYNCED" | "SYNC_ERROR" | "CONFLICT";
@@ -278,6 +277,54 @@ async function sha256(b: Blob): Promise<string> {
 }
 const extOf = (n: string, t: string) => { const m = /\.(png|jpe?g|gif|webp)$/i.exec(n); return (m ? m[0] : t.includes("png") ? ".png" : ".jpg").toLowerCase(); };
 
+const REPORT_PX = 1600;   // mismo tamaño que usa el PDF: la foto preparada se incrusta tal cual en cualquier equipo
+
+/**
+ * Deja la foto lista para el reporte: JPEG RGB de hasta 1600 px, con el giro ya aplicado (sin EXIF).
+ * Si ya cumple, no se toca. Con esto el PDF sale idéntico en el servidor, en Windows, en Android y en el navegador.
+ */
+export async function preparePhoto(file: Blob): Promise<Blob> {
+  if (!file.type.startsWith("image/") || file.type === "image/gif") return file;
+  try {
+    const bmp = await createImageBitmap(file, { imageOrientation: "from-image" });
+    const k = Math.min(1, REPORT_PX / Math.max(bmp.width, bmp.height));
+    if (k === 1 && file.type === "image/jpeg" && file.size <= 2.5 * 1024 * 1024 && !(file instanceof File && /orient/i.test(file.name))) {
+      // JPEG pequeño: se mantiene, salvo que traiga giro EXIF (el navegador ya lo aplicó al decodificar → se vuelve a dibujar)
+      if (!(await hasExifRotation(file))) { bmp.close(); return file; }
+    }
+    const w = Math.max(1, Math.round(bmp.width * k)), h = Math.max(1, Math.round(bmp.height * k));
+    const c = document.createElement("canvas");
+    c.width = w; c.height = h;
+    const ctx = c.getContext("2d");
+    if (!ctx) { bmp.close(); return file; }
+    ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, w, h);
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(bmp, 0, 0, w, h);
+    bmp.close();
+    const out: Blob | null = await new Promise((res) => c.toBlob(res, "image/jpeg", 0.88));
+    return out ?? file;
+  } catch { return file; }
+}
+
+async function hasExifRotation(b: Blob): Promise<boolean> {
+  try {
+    const v = new DataView(await b.slice(0, 65536).arrayBuffer());
+    if (v.getUint16(0) !== 0xffd8) return false;
+    let off = 2;
+    while (off + 4 < v.byteLength) {
+      const m = v.getUint16(off), len = v.getUint16(off + 2);
+      if (m === 0xffe1 && v.getUint32(off + 4) === 0x45786966) {
+        const t = off + 10, le = v.getUint16(t) === 0x4949, n = v.getUint16(t + 8, le);
+        for (let i = 0; i < n; i++) { const e = t + 10 + i * 12; if (v.getUint16(e, le) === 0x0112) return v.getUint16(e + 8, le) !== 1; }
+        return false;
+      }
+      if ((m & 0xff00) !== 0xff00) return false;
+      off += 2 + len;
+    }
+  } catch { /* sin EXIF legible */ }
+  return false;
+}
+
 export interface UploadedPhoto { path: string; url: string; pending: boolean }
 
 /**
@@ -286,7 +333,7 @@ export interface UploadedPhoto { path: string; url: string; pending: boolean }
  * la foto se sirve desde el equipo hasta que se suba (ver public/sw.js).
  */
 export async function uploadPhoto(file: Blob | File, name = "foto.jpg"): Promise<UploadedPhoto> {
-  const small = file instanceof File ? await compressForUpload(file) : file;
+  const small = await preparePhoto(file);
   const photo_id = uuid();
   const path = `${photo_id}${extOf(name, small.type)}`;
   const url = `/api/files/uploads/${path}`;

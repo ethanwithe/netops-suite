@@ -71,10 +71,36 @@ def fix_img(path):
         return None
 
 
+def _raw_prepared_jpeg(path):
+    """Bytes del archivo si ya es un JPEG listo para el PDF; None si hay que prepararlo."""
+    try:
+        if not path or not os.path.isfile(path):
+            return None
+        with open(path, "rb") as fh:
+            raw = fh.read()
+        with Image.open(io.BytesIO(raw)) as im:
+            if im.format != "JPEG" or im.mode != "RGB" or max(im.size) > MAX_PHOTO_PX:
+                return None
+            if im.info.get("progressive") or im.info.get("progression"):
+                return None
+            if (im.getexif().get(274) or 1) != 1:
+                return None
+        return raw
+    except Exception:
+        return None
+
+
 def _prepare_photo(path):
     """
     Devuelve un ImageReader (JPEG reducido) listo para dibujar, o None.
     """
+    # Foto ya preparada (JPEG RGB de hasta MAX_PHOTO_PX, sin giro EXIF): se incrusta TAL CUAL, sin decodificar ni volver
+    # a comprimir. Así el PDF es idéntico en cualquier equipo (servidor, Windows, Android, navegador) aunque cada uno
+    # tenga una versión distinta del códec JPEG, y la foto no pierde calidad por una segunda compresión.
+    raw = _raw_prepared_jpeg(path)
+    if raw is not None:
+        return ImageReader(io.BytesIO(raw))
+
     img = fix_img(path)
     if img is None:
         return None
