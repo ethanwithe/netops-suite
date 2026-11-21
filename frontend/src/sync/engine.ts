@@ -50,8 +50,11 @@ export interface QueuedPhoto {
   user_id?: string;
 }
 
+export interface StoredOutput { name: string; blob: Blob; at: number; synced: boolean; user_id?: string }
+
 export interface SyncStatus {
   online: boolean;
+  pendingOutputs: number;
   running: boolean;
   pendingOps: number;
   pendingPhotos: number;
@@ -69,7 +72,7 @@ export function deviceId(): string {
 }
 
 // ------------------------------------------------------------------ estado observable
-let status: SyncStatus = { online: typeof navigator === "undefined" ? true : navigator.onLine, running: false, pendingOps: 0, pendingPhotos: 0, errors: 0, conflicts: [], lastSync: "", lastError: "", needsLogin: false };
+let status: SyncStatus = { online: typeof navigator === "undefined" ? true : navigator.onLine, running: false, pendingOps: 0, pendingPhotos: 0, pendingOutputs: 0, errors: 0, conflicts: [], lastSync: "", lastError: "", needsLogin: false };
 const subs = new Set<() => void>();
 function setStatus(p: Partial<SyncStatus>) { status = { ...status, ...p }; subs.forEach((f) => f()); }
 export const getSyncStatus = () => status;
@@ -83,6 +86,7 @@ async function refreshCounts() {
     setStatus({
       pendingOps: ops.filter((o) => o.state !== "CONFLICT").length,
       pendingPhotos: photos.length,
+      pendingOutputs: (await dbAll<StoredOutput>("outputs")).filter((o) => mine(o) && !o.synced).length,
       errors: ops.filter((o) => o.state === "SYNC_ERROR").length + photos.filter((p) => p.state === "SYNC_ERROR").length,
       conflicts: ops.filter((o) => o.state === "CONFLICT"),
     });
@@ -157,6 +161,7 @@ export async function syncNow(manual = false): Promise<void> {
   try {
     if (manual) await resetErrors();
     await pushPhotos();
+    await pushOutputs();
     await pushOps();
     await pullAll();
     setStatus({ online: true, lastError: "", needsLogin: false, lastSync: new Date().toISOString() });
@@ -370,6 +375,35 @@ async function pushPhotos() {
   }
 }
 
+// ------------------------------------------------------------------ archivos generados (PDF, ZIP, Word...) sin conexión
+/** Guarda en este equipo un archivo generado; se sube al servidor cuando haya conexión y la copia local se conserva. */
+export async function saveOutput(name: string, blob: Blob): Promise<void> {
+  await dbPut("outputs", { name, blob, at: Date.now(), synced: false, user_id: me } as StoredOutput);
+  await refreshCounts();
+  scheduleKick(1500);
+}
+export async function getOutput(name: string): Promise<Blob | null> {
+  const o = await dbGet<StoredOutput>("outputs", name);
+  return o ? o.blob : null;
+}
+export async function allOutputs(): Promise<StoredOutput[]> { return (await dbAll<StoredOutput>("outputs")).filter(mine); }
+
+async function pushOutputs() {
+  for (const o of (await dbAll<StoredOutput>("outputs")).filter((x) => mine(x) && !x.synced)) {
+    const form = new FormData();
+    form.append("file", o.blob, o.name);
+    form.append("name", o.name);
+    try {
+      await api.post("/sync/outputs", form, { headers: { "Content-Type": "multipart/form-data" } });
+      const cur = await dbGet<StoredOutput>("outputs", o.name);
+      if (cur && cur.at === o.at) await dbPut("outputs", { ...cur, synced: true });   // la copia local se queda; solo se marca como subida
+    } catch (e) {
+      if (isNetErr(e) || httpStatus(e) === 401) throw e;
+      /* rechazado (p. ej. demasiado grande): se deja local */
+    }
+  }
+}
+
 /** Foto pendiente guardada en este equipo (la usa el service worker para mostrarla sin Internet). */
 export async function pendingPhoto(name: string): Promise<Blob | null> {
   const id = name.replace(/\.[^.]+$/, "");
@@ -378,16 +412,19 @@ export async function pendingPhoto(name: string): Promise<Blob | null> {
 }
 
 // ------------------------------------------------------------------ clientes creados sin conexión
-export async function ensureLocalClient(c: { sot: string; nombre?: string; fecha?: string; cid?: string; proy?: string; contrata?: string; datos?: Record<string, string> }): Promise<string> {
+export interface LocalReporte { tipo?: string; nombre?: string; filename: string; url?: string; utc?: string; generado?: string; por?: string }
+export async function ensureLocalClient(c: { sot: string; nombre?: string; fecha?: string; cid?: string; proy?: string; contrata?: string; datos?: Record<string, string>; reporte?: LocalReporte }): Promise<string> {
   const sot = c.sot.replace(/^\s*SOT\s*[-_:.#]*\s*/i, "").trim();
   const known = (await mirrorList("client")).find((x) => x.data.sot === sot);
   const ops = (await dbAll<QueuedOp>("ops")).filter((o) => o.entity === "client" && o.data.sot === sot);
   const id = known?.id ?? ops[0]?.entity_id ?? uuid();
   const prev = (await localLatest("client", id))?.data ?? {};
   const datos = { ...(prev.datos ?? {}), ...(c.datos ?? {}) };
+  const reportes = [...((prev.reportes as LocalReporte[]) ?? [])].filter((r) => !c.reporte || r.filename !== c.reporte.filename);
+  if (c.reporte) reportes.push(c.reporte);
   const pick = (k: "nombre" | "fecha" | "cid" | "proy" | "contrata") => (c[k] || prev[k] || "") as string;
   await enqueueOp({ entity: "client", entity_id: id, label: `Cliente SOT ${sot}`,
-    data: { sot, nombre: pick("nombre"), fecha: pick("fecha"), cid: pick("cid"), proy: pick("proy"), contrata: pick("contrata"), datos } });
+    data: { sot, nombre: pick("nombre"), fecha: pick("fecha"), cid: pick("cid"), proy: pick("proy"), contrata: pick("contrata"), datos, reportes } });
   return id;
 }
 
@@ -409,6 +446,16 @@ export async function localWorkspace(sot: string, key: string): Promise<{ state:
     if (w) return { state: w.data.state, label: String(w.data.label ?? ""), route: String(w.data.route ?? ""), at: "", pending: w.pending };
   }
   return null;
+}
+
+/** Ventanas de un cliente guardadas en este equipo (pendientes o descargadas), con su estado, para armar su carpeta sin conexión. */
+export async function localWorkspacesOf(clientId: string, keyPrefix = ""): Promise<{ key: string; label: string; state: unknown }[]> {
+  const out = new Map<string, { key: string; label: string; state: unknown }>();
+  for (const m of await mirrorList("workspace")) if (m.data.client_id === clientId && String(m.data.key).startsWith(keyPrefix)) out.set(m.data.key, { key: m.data.key, label: m.data.label ?? "", state: m.data.state });
+  for (const o of (await dbAll<QueuedOp>("ops")).filter(mine)) {
+    if (o.entity === "workspace" && o.action === "upsert" && o.data.client_id === clientId && String(o.data.key).startsWith(keyPrefix)) out.set(String(o.data.key), { key: String(o.data.key), label: String(o.data.label ?? ""), state: o.data.state });
+  }
+  return [...out.values()];
 }
 
 /** Clientes disponibles sin conexión (descargados + creados aquí). */

@@ -10,6 +10,7 @@ import { usePersistentState } from "../store/persistentState";
 import ThemeSwitcher from "./ThemeSwitcher";
 import SyncIndicator from "./SyncIndicator";
 import { startSync } from "../sync/engine";
+import { initGenState, warmGen } from "../gen/local";
 import ToolsMenu from "./ToolsMenu";
 import FloatingTools from "./FloatingTools";
 import DialogHost from "./DialogHost";
@@ -110,7 +111,13 @@ export default function Layout() {
 
   useEffect(() => initLiquid(), []);
   // Sincronización en segundo plano (cola local → servidor → otros dispositivos) mientras haya sesión.
-  useEffect(() => { if (!me?.id) return; return startSync(me.id); }, [me?.id]);
+  useEffect(() => {
+    if (!me?.id) return;
+    const stop = startSync(me.id);
+    // Con Internet, y sin molestar al abrir la app, se dejan en el equipo los generadores para poder crear PDF/ZIP/Word/PPTX sin conexión.
+    const t = window.setTimeout(() => { void initGenState().then(() => { if (navigator.onLine !== false) void warmGen(); }); }, 6000);
+    return () => { stop(); window.clearTimeout(t); };
+  }, [me?.id]);
   // ubicación lista de antemano (solo si el permiso ya estaba concedido): la cámara y el sello no esperan
   useEffect(() => { const t = window.setTimeout(() => { void import("../utils/photoStamp").then((m) => m.warmPlace()).catch(() => {}); }, 1500); return () => window.clearTimeout(t); }, []);
 

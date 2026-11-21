@@ -20,3 +20,4 @@ backend/app/storage/outputs/*
 # Editores/SO
 .DS_Store
 .vscode/
+public/pyodide/

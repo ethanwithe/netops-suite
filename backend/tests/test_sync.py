@@ -113,3 +113,17 @@ def test_requires_login():
     from app.main import app
     with TestClient(app) as anon:
         assert anon.post("/api/sync/push", json={"ops": []}).status_code == 401
+
+
+def test_reportes_union_and_outputs(client):
+    cid = str(uuid.uuid4())
+    r = push(client, op("client", cid, {"sot": "9400", "nombre": "R", "reportes": [{"tipo": "grafica", "nombre": "G", "filename": "g1.pdf", "url": "/api/files/outputs/g1.pdf"}]}))[0]
+    assert r["status"] == "applied"
+    r2 = push(client, op("client", cid, {"sot": "9400", "nombre": "R", "reportes": [{"tipo": "checklist", "nombre": "C", "filename": "c1.pdf"}]}, base=r["version"]))[0]
+    assert r2["status"] == "applied"
+    got = client.get("/api/clients/by-sot/9400").json()
+    assert sorted(x["filename"] for x in got["reportes"]) == ["c1.pdf", "g1.pdf"]
+    up = client.post("/api/sync/outputs", files={"file": ("x.pdf", b"%PDF-1.4 test", "application/pdf")}, data={"name": "Prueba offline.pdf"})
+    assert up.status_code == 200 and up.json()["size"] == 13
+    assert client.get("/api/files/outputs/Prueba%20offline.pdf").content == b"%PDF-1.4 test"
+    assert client.post("/api/sync/outputs", files={"file": ("x", b"1", "a/b")}, data={"name": "../x"}).status_code == 400

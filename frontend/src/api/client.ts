@@ -1,5 +1,6 @@
 import axios from "axios";
 import { installOfflineCache } from "./offlineCache";
+import { installLocalGen } from "../gen/local";
 
 export const api = axios.create({ baseURL: "/api", withCredentials: true });
 
@@ -22,6 +23,7 @@ api.interceptors.request.use((cfg) => {
 });
 
 installOfflineCache(api);
+installLocalGen(api);
 
 export function wsUrl(path: string): string {
   const proto = window.location.protocol === "https:" ? "wss" : "ws";

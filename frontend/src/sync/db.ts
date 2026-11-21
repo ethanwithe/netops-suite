@@ -4,9 +4,9 @@
  * en Windows (Tauri/WebView2) y en Android (Capacitor/WebView): cada instalación tiene su propia base.
  */
 const NAME = "netops-sync";
-const VERSION = 1;
-export type StoreName = "ops" | "photos" | "mirror" | "meta";
-const KEYS: Record<StoreName, string> = { ops: "op_id", photos: "photo_id", mirror: "k", meta: "k" };
+const VERSION = 2;
+export type StoreName = "ops" | "photos" | "mirror" | "meta" | "outputs";
+const KEYS: Record<StoreName, string> = { ops: "op_id", photos: "photo_id", mirror: "k", meta: "k", outputs: "name" };
 
 let dbp: Promise<IDBDatabase> | null = null;
 function open(): Promise<IDBDatabase> {

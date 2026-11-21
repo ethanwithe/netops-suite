@@ -3,7 +3,7 @@
  *  - Fotos subidas: inmutables, se guardan; las que aún no se subieron se sirven desde la cola local (IndexedDB).
  *  - Datos de la API (clientes, ventanas...) NO se guardan aquí: viven en la base local de la app (ver src/sync).
  */
-const VERSION = "v1";
+const VERSION = "v2";
 const SHELL = "netops-shell-" + VERSION;
 const PHOTOS = "netops-photos-" + VERSION;
 
@@ -18,21 +18,29 @@ self.addEventListener("message", (e) => {
   if (e.data === "clear") e.waitUntil(Promise.all([caches.delete(SHELL), caches.delete(PHOTOS)]));   // al cerrar sesión
 });
 
-function pendingPhoto(name) {
-  const id = name.replace(/\.[^.]+$/, "");
+function idbGet(store, key) {
   return new Promise((res) => {
     try {
       const rq = indexedDB.open("netops-sync");
       rq.onerror = () => res(null);
       rq.onsuccess = () => {
         const db = rq.result;
-        if (!db.objectStoreNames.contains("photos")) { db.close(); res(null); return; }
-        const g = db.transaction("photos").objectStore("photos").get(id);
-        g.onsuccess = () => { db.close(); res(g.result ? g.result.blob : null); };
+        if (!db.objectStoreNames.contains(store)) { db.close(); res(null); return; }
+        const g = db.transaction(store).objectStore(store).get(key);
+        g.onsuccess = () => { db.close(); res(g.result || null); };
         g.onerror = () => { db.close(); res(null); };
       };
     } catch { res(null); }
   });
+}
+async function pendingPhoto(name) {
+  const r = await idbGet("photos", name.replace(/\.[^.]+$/, ""));
+  return r ? r.blob : null;
+}
+const MIME = { pdf: "application/pdf", zip: "application/zip", docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation" };
+function fromOutput(o, name) {
+  const ext = name.split(".").pop().toLowerCase();
+  return new Response(o.blob, { headers: { "Content-Type": MIME[ext] || o.blob.type || "application/octet-stream", "Content-Disposition": "inline; filename*=UTF-8''" + encodeURIComponent(name) } });
 }
 
 self.addEventListener("fetch", (e) => {
@@ -55,6 +63,26 @@ self.addEventListener("fetch", (e) => {
     })());
     return;
   }
+  // Archivos generados: los de este equipo que aún no se subieron salen de la base local; si no hay red, también los ya subidos.
+  if (url.pathname.startsWith("/api/files/outputs/")) {
+    e.respondWith((async () => {
+      const name = decodeURIComponent(url.pathname.split("/").pop());
+      const loc = await idbGet("outputs", name);
+      if (loc && !loc.synced) return fromOutput(loc, name);
+      try { const net = await fetch(req); if (net.ok || !loc) return net; } catch (err) { if (!loc) throw err; }
+      return fromOutput(loc, name);
+    })());
+    return;
+  }
+  // Logos e iconos de gráfica (los usan los generadores sin conexión): primero el equipo, se actualizan al haber red.
+  if (/^\/api\/(logos\/[^/]+\/image|diagrams\/icons\/[^/]+\/image)$/.test(url.pathname)) {
+    e.respondWith((async () => {
+      const cache = await caches.open(PHOTOS);
+      try { const net = await fetch(req); if (net.ok) { cache.put(req, net.clone()); return net; } } catch { /* sin red */ }
+      return (await cache.match(req)) || Response.error();
+    })());
+    return;
+  }
   if (url.pathname.startsWith("/api/")) return;
 
   if (req.mode === "navigate") {
@@ -71,7 +99,7 @@ self.addEventListener("fetch", (e) => {
     const hit = await cache.match(req);
     if (hit) return hit;
     const net = await fetch(req);
-    if (net.ok && (url.pathname.startsWith("/assets/") || /\.(png|jpg|svg|webmanifest|woff2?)$/.test(url.pathname))) cache.put(req, net.clone());
+    if (net.ok && (url.pathname.startsWith("/assets/") || url.pathname.startsWith("/pyodide/") || /\.(png|jpg|svg|webmanifest|woff2?)$/.test(url.pathname))) cache.put(req, net.clone());
     return net;
   })());
 });

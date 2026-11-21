@@ -60,7 +60,7 @@ def parse_iso(s: str) -> Optional[dt.datetime]:
 # ------------------------------------------------------------------ serializadores
 def client_data(c: models.Client) -> dict:
     return {"sot": c.sot, "nombre": c.nombre, "fecha": c.fecha, "cid": c.cid, "proy": c.proy,
-            "contrata": c.contrata, "datos": c.datos or {}}
+            "contrata": c.contrata, "datos": c.datos or {}, "reportes": c.reportes or []}
 
 
 def ws_id(client_id: str, key: str) -> str:
@@ -156,6 +156,13 @@ def _apply_client(db: Session, user: models.User, op: OpIn) -> dict:
     row.fecha = norm_fecha(str(d.get("fecha", ""))) or row.fecha or dt.date.today().isoformat()
     row.datos = {str(k).strip()[:40]: str(v)[:300] for k, v in (d.get("datos") or {}).items() if str(k).strip()}
     diagram_vars.ensure_variables(db, row.datos)
+    inc = d.get("reportes")
+    if isinstance(inc, list):   # el historial de reportes solo crece: se unen los de ambos lados por nombre de archivo
+        have = {r.get("filename"): r for r in (row.reportes or [])}
+        for r in inc:
+            if isinstance(r, dict) and r.get("filename") and r["filename"] not in have:
+                have[r["filename"]] = {k: str(v)[:300] for k, v in r.items() if k in ("tipo", "nombre", "filename", "url", "utc", "generado", "por")}
+        row.reportes = list(have.values())[-150:]
     db.flush()
     return _res(op, "applied", version=row.version + (1 if db.is_modified(row) else 0), server_id=row.id)
 
@@ -431,3 +438,22 @@ def photo_status(photo_id: str, user: models.User = Depends(current_user)):
             return {"photo_id": photo_id, "path": p.name, "url": f"/api/files/uploads/{p.name}",
                     "sha256": hashlib.sha256(p.read_bytes()).hexdigest(), "size": p.stat().st_size}
     raise HTTPException(404, "La foto aún no está en el servidor.")
+
+
+# ------------------------------------------------------------------ archivos generados (PDF/ZIP/Word...)
+SAFE_OUT = re.compile(r"^[^/\\\x00-\x1f]{1,200}$")
+
+
+@router.post("/outputs")
+async def push_output(file: UploadFile = File(...), name: str = Form(...), user: models.User = Depends(current_user)):
+    """Sube un archivo generado en el equipo sin conexión para que quede también en el servidor. Reintentar es seguro."""
+    from app.config import OUTPUTS_DIR
+    if not SAFE_OUT.match(name or "") or name.startswith(".") or ".." in name:
+        raise HTTPException(400, "Nombre de archivo inválido.")
+    content = await file.read()
+    if len(content) > 60 * 1024 * 1024:
+        raise HTTPException(413, "El archivo es demasiado grande.")
+    dest = OUTPUTS_DIR / name
+    dest.write_bytes(content)
+    await run_in_threadpool(filestore.save_output, dest)
+    return {"name": name, "sha256": hashlib.sha256(content).hexdigest(), "size": len(content)}

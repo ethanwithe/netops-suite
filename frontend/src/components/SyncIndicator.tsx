@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
+import { getGenMode, getGenState, setGenMode, subscribeGen, warmGen } from "../gen/local";
 import { listOps, resolveConflict, syncNow, useSyncStatus } from "../sync/engine";
 import type { QueuedOp, SyncState } from "../sync/engine";
 
@@ -24,6 +25,8 @@ export default function SyncIndicator() {
   const st = useSyncStatus();
   const [open, setOpen] = useState(false);
   const [ops, setOps] = useState<QueuedOp[]>([]);
+  const gen = useSyncExternalStore(subscribeGen, getGenState, getGenState);
+  const [always, setAlways] = useState(getGenMode() === "always");
   useEffect(() => {
     if (!open) return;
     let dead = false;
@@ -33,7 +36,7 @@ export default function SyncIndicator() {
     return () => { dead = true; window.clearInterval(t); };
   }, [open, st.pendingOps, st.pendingPhotos, st.running]);
 
-  const pending = st.pendingOps + st.pendingPhotos;
+  const pending = st.pendingOps + st.pendingPhotos + st.pendingOutputs;
   const tone = !st.online ? "bg-slate-500" : st.conflicts.length ? "bg-orange-500" : st.errors || st.needsLogin ? "bg-red-500" : pending ? "bg-amber-500" : "bg-emerald-500";
   const text = !st.online ? "Sin conexión" : st.running ? "Sincronizando…" : st.conflicts.length ? `${st.conflicts.length} conflicto${st.conflicts.length > 1 ? "s" : ""}` : pending ? `${pending} pendiente${pending > 1 ? "s" : ""}` : "Sincronizado";
 
@@ -52,8 +55,21 @@ export default function SyncIndicator() {
           <ul className="space-y-0.5 text-slate-600">
             <li>Registros pendientes: <b>{st.pendingOps}</b></li>
             <li>Fotografías pendientes: <b>{st.pendingPhotos}</b></li>
+            <li>Archivos generados por subir: <b>{st.pendingOutputs}</b></li>
             <li>Última sincronización: <b>{ago(st.lastSync)}</b></li>
           </ul>
+          <div className="rounded border border-slate-200 p-2">
+            <div className="flex items-center justify-between gap-2">
+              <span>Generar PDF, Word, ZIP y gráficas sin conexión</span>
+              <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${gen.ready ? COLOR.SYNCED : gen.warming ? COLOR.SYNCING : COLOR.PENDING_SYNC}`}>{gen.ready ? "Listo" : gen.warming ? "Preparando…" : "Pendiente"}</span>
+            </div>
+            {gen.error && <p className="mt-1 text-red-600">{gen.error}</p>}
+            {!gen.ready && !gen.warming && <button type="button" className="btn-secondary mt-1 !px-2 !py-0.5 text-[11px]" disabled={!st.online} onClick={() => void warmGen()}>Preparar ahora (necesita Internet)</button>}
+            <label className="mt-1.5 flex cursor-pointer items-center gap-1.5 text-slate-600">
+              <input type="checkbox" checked={always} disabled={!gen.ready} onChange={(e) => { setAlways(e.target.checked); setGenMode(e.target.checked ? "always" : "auto"); }} />
+              Generar siempre en este equipo (aunque haya Internet)
+            </label>
+          </div>
           {!st.online && <p className="rounded bg-slate-100 p-2 text-slate-600">Puedes seguir trabajando: todo se guarda en este equipo y se sube solo al volver Internet.</p>}
           {(st.lastError || st.needsLogin) && <p className="rounded bg-red-50 p-2 text-red-700">{st.lastError}</p>}
           {ops.length > 0 && (
