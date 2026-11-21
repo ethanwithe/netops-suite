@@ -64,7 +64,11 @@ def test_photo_report_same(client, photos, work):
     srv = client.post("/api/photos/pdf", json=req).json()
     loc = gen_local.photo_report(req, work)
     assert srv["filename"] == loc["filename"] and srv["pages"] == loc["pages"] and srv["warnings"] == loc["warnings"]
-    assert norm_pdf(served(client, srv["url"])) == norm_pdf(open(loc["path"], "rb").read())
+    a, b = norm_pdf(served(client, srv["url"])), norm_pdf(open(loc["path"], "rb").read())
+    if a != b:
+        i = next((k for k in range(min(len(a), len(b))) if a[k] != b[k]), 0)
+        print("DIFF-A", a[max(0, i - 200):i + 120]); print("DIFF-B", b[max(0, i - 200):i + 120])
+    assert a == b
 
 
 def test_checklist_pdf_and_docx_same(client, photos, work):
