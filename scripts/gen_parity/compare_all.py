@@ -29,16 +29,15 @@ for f in sorted(os.listdir(a)):
         if diff:
             bad.append(f)
     elif f.endswith(".zip"):
-        same = open(pa, "rb").read() == open(pb, "rb").read()
-        print(f"{f}: ZIP {'IDÉNTICO byte a byte' if same else 'DISTINTO'}")
-        if not same:
-            za, zb = zipfile.ZipFile(pa), zipfile.ZipFile(pb)
-            for n in za.namelist():
-                if n in zb.namelist() and za.read(n) != zb.read(n):
-                    x, y = za.read(n), zb.read(n)
-                    i = next((k for k in range(min(len(x), len(y))) if x[k] != y[k]), 0)
-                    print("   difiere:", n, len(x), len(y), x[max(0, i - 60):i + 60], y[max(0, i - 60):i + 60])
-            bad.append(f)
+        # Los PDF de adentro llevan un nombre interno que reportlab saca del hash de los píxeles decodificados (puede variar
+        # 1 nivel entre versiones del códec JPEG) aunque se vean idénticos: se comparan por separado, página renderizada.
+        za, zb = zipfile.ZipFile(pa), zipfile.ZipFile(pb)
+        if za.namelist() != zb.namelist():
+            bad.append(f"{f}: distintas entradas"); continue
+        dif = [n for n in za.namelist() if not n.lower().endswith(".pdf") and za.read(n) != zb.read(n)]
+        print(f"{f}: {len(za.namelist())} entradas, {'IDÉNTICO (nombres y contenido; PDF se comparan aparte)' if not dif else 'distintas: ' + ', '.join(dif)}")
+        if dif:
+            bad.append(f"{f}: {dif}")
     elif f.endswith((".pptx", ".docx")):
         za, zb = zipfile.ZipFile(pa), zipfile.ZipFile(pb)
         na, nb = sorted(za.namelist()), sorted(zb.namelist())
