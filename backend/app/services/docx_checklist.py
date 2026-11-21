@@ -22,7 +22,22 @@ MONO = "Courier New"
 
 def _stream(src) -> Tuple[io.BytesIO, int, int]:
     """Imagen (ruta o bytes) -> flujo PNG/JPEG que Word entiende, y su tamaño en píxeles (máx. 1800 px de ancho)."""
-    im = Image.open(io.BytesIO(bytes(src)) if isinstance(src, (bytes, bytearray)) else src)
+    if isinstance(src, (bytes, bytearray)):
+        raw = bytes(src)
+    else:
+        with open(src, "rb") as fh:
+            raw = fh.read()
+    # JPEG/PNG que ya sirven (hasta 1800 px y sin giro EXIF): se incrustan TAL CUAL, sin volver a comprimir.
+    # Así el Word sale idéntico en cualquier equipo (servidor, Windows, Android, navegador) y la foto no pierde calidad.
+    try:
+        with Image.open(io.BytesIO(raw)) as p:
+            ok = p.format in ("JPEG", "PNG") and p.width <= 1800 and (p.getexif().get(274) or 1) == 1
+            size = p.size
+        if ok:
+            return io.BytesIO(raw), size[0], size[1]
+    except Exception:
+        pass
+    im = Image.open(io.BytesIO(raw))
     im = ImageOps.exif_transpose(im)
     im.load()
     if im.width > 1800:
