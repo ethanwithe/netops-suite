@@ -85,6 +85,38 @@ def main(root, out):
     open(os.path.join(out, "diagram.pdf"), "wb").write(build_pdf(doc, load))
     from app.services.diagram_pptx import build_pptx
     open(os.path.join(out, "diagram.pptx"), "wb").write(build_pptx(doc, load))
+
+    # ---- Generadores locales completos (gen_local): mismos endpoints sin servidor
+    import datetime as dt
+    import shutil
+    from app.services import gen_local
+    w = gen_local.Work(os.path.join(out, "work"), icons={"demo": icon})
+    for ph in photos:
+        shutil.copy(ph, os.path.join(w.uploads, os.path.basename(ph)))
+    names = [os.path.basename(x) for x in photos]
+    now = dt.datetime(2026, 11, 21, 10, 0, 0)
+    req_foto = {"titulo": "REPORTE FOTOGRAFICO", "lados": ["cliente"], "proy": "P", "cliente": "Cliente X", "sot": "5001", "fecha": "21/11/2026", "cid": "C1", "contrata": "K", "version": "01",
+                "items": [{"numero": i + 1, "descripcion": f"Foto {i + 1}", "image_path": n, "lado": "cliente", "lado_label": ""} for i, n in enumerate(names)],
+                "project": {"nota": "x", "imagen": names[0]}}
+    r1 = gen_local.photo_report(req_foto, w, now=now)
+    req_ck = {"titulo": "CheckList de Claro", "servicio_label": "Internet", "sot": "5002", "cid": "C2", "cliente": "Cliente Y", "fecha": "21/11/2026", "equipo": "RTR1",
+              "sections": [{"titulo": "1. Datos", "items": [{"nombre": "Versión", "modo": "texto", "texto": "IOS 17", "cmd": "show version", "images": []}, {"nombre": "Foto", "modo": "foto", "texto": "", "cmd": "", "images": names[:2]}]}]}
+    r2 = gen_local.checklist_pdf(req_ck, w, now=now)
+    r3 = gen_local.checklist_docx(req_ck, w, now=now)
+    req_ev = {"sot": "5003", "cliente": "Cliente Z", "items": [{"nombre": "Rack", "path": names[0], "original_path": names[1], "lado_label": "SITE"}, {"nombre": "ONT", "path": names[2], "original_path": "", "lado_label": "CLIENTE"}]}
+    r4 = gen_local.evidence_zip(req_ev, w)
+    client = {"sot": "7001", "nombre": "Cliente", "cid": "C", "fecha": "2026-11-21", "proy": "", "contrata": "", "datos": {"IP": "1.1.1.1"}}
+    reps = [{"tipo": "foto", "nombre": "RF", "filename": r1["filename"]}, {"tipo": "checklist", "nombre": "CK", "filename": r2["filename"]}]
+    wss = [{"key": "foto:x", "label": "Fotos · Site", "state": {"extras": [{"path": names[0], "nombre": "Rack", "lado": "site"}]}}]
+    r5 = gen_local.package_zip(client, reps, wss, 1, w)
+    pj_req = {k: v for k, v in pj.items() if k != "logo"}
+    pj_req["foto_ubicacion"] = names[0]
+    for sec in pj_req["sections"]:
+        for cell in sec["cells"]:
+            cell["images"] = [os.path.basename(x) for x in cell["images"]]
+    r6 = gen_local.pj_report(pj_req, w, now=now)
+    for r in (r1, r2, r3, r4, r5, r6):
+        shutil.copy(r["path"], os.path.join(out, "local_" + r["filename"].replace(" ", "_")))
     print("OK", sorted(f for f in os.listdir(out) if "." in f))
 
 

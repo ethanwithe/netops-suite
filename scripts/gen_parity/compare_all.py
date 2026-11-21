@@ -28,6 +28,11 @@ for f in sorted(os.listdir(a)):
         print(f"{f}: {len(fa)} páginas, {'IDÉNTICO' if not diff else f'{diff} páginas distintas'}")
         if diff:
             bad.append(f)
+    elif f.endswith(".zip"):
+        same = open(pa, "rb").read() == open(pb, "rb").read()
+        print(f"{f}: ZIP {'IDÉNTICO byte a byte' if same else 'DISTINTO'}")
+        if not same:
+            bad.append(f)
     elif f.endswith((".pptx", ".docx")):
         za, zb = zipfile.ZipFile(pa), zipfile.ZipFile(pb)
         na, nb = sorted(za.namelist()), sorted(zb.namelist())

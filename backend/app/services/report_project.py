@@ -69,6 +69,7 @@ def embed_project(pdf_path: str, project: dict, uploads_dir: Path, resolve=None)
                 ensure_ascii=False,
             ).encode("utf-8"),
             compresslevel=6,
+            mtime=0,   # sin hora actual dentro del gzip: el mismo proyecto da los mismos bytes en cualquier equipo
         )
 
         writer = PdfWriter(clone_from=pdf_path)
