@@ -35,3 +35,10 @@ jobs:
           mkdir -p /tmp/py_tex && cp -r /tmp/cp_tex/img /tmp/py_tex/img
           (cd scripts/gen_parity && node pyodide_run.mjs ../../backend /tmp/py_tex/report.pdf texture)
           python scripts/gen_parity/compare.py /tmp/cp_tex/report.pdf /tmp/py_tex/report.pdf exacto
+      - name: "Todos los generadores (CheckList PDF/Word, Poder Judicial, Gráfica PDF/PPTX): IDÉNTICOS"
+        run: |
+          pip install python-pptx==1.0.2 python-docx==1.1.2 pypdf==5.9.0
+          python backend/gen_spike/cases.py backend /tmp/cases_cp
+          mkdir -p /tmp/cases_py && cp -r /tmp/cases_cp/img /tmp/cases_py/img
+          (cd scripts/gen_parity && node pyodide_cases.mjs ../../backend /tmp/cases_py)
+          python scripts/gen_parity/compare_all.py /tmp/cases_cp /tmp/cases_py
