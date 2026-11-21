@@ -463,71 +463,26 @@ def package_status(client_id: str, user: models.User = Depends(current_user), db
 def build_package(client_id: str, user: models.User = Depends(current_user), db: Session = Depends(get_db)):
     """Arma «SOT <sot> <cliente>.zip» como una versión nueva (las anteriores siguen en la lista de reportes)."""
     import os
-    import zipfile
     from urllib.parse import quote
     from app.config import OUTPUTS_DIR
-    from app.routers.photos import _resolve_upload_path, _safe_name
+    from app.routers.photos import _resolve_upload_path
     from app.services import filestore
+    from app.services.zip_plans import plan_package, write_zip
 
     row = _own_or_404(db, user, client_id)
-    root = f"SOT {clean_part(row.sot)}" + (f" {clean_part(row.nombre)}" if row.nombre else "")
     reps, wss = _pack_sources(db, row)
     version = sum(1 for r in (row.reportes or []) if r.get("tipo") == "carpeta") + 1
-    out_name = f"{root} v{version}.zip"
+    client = {"sot": row.sot, "nombre": row.nombre, "cid": row.cid, "fecha": row.fecha, "proy": row.proy,
+              "contrata": row.contrata, "datos": row.datos or {}}
+    root, out_name, entries, counts = plan_package(
+        client, reps, [{"key": w.key, "label": w.label, "state": w.state} for w in wss], version,
+        lambda n: str(filestore.ensure_output(n) or ""), _resolve_upload_path)
+    if not any(counts.values()):
+        raise HTTPException(400, "Todavía no hay nada para guardar: genera el PDF de fotos, el CheckList o la gráfica, o agrega fotos a la carpeta.")
     out_path = OUTPUTS_DIR / out_name
     tmp = OUTPUTS_DIR / f".{out_name}.{os.getpid()}.tmp"
-    used: set = set()
-    counts = {"pdf": 0, "checklist": 0, "graficas": 0, "fotos": 0}
-
-    def uniq(folder: str, name: str) -> str:
-        base, ext = os.path.splitext(name)
-        cand, n = name, 2
-        while (folder, cand) in used:
-            cand = f"{base} ({n}){ext}"
-            n += 1
-        used.add((folder, cand))
-        return cand
-
     try:
-        with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as z:
-            for r in reps:
-                p = filestore.ensure_output(os.path.basename(r["filename"]))
-                if not p or not os.path.isfile(p):
-                    continue
-                tipo = r.get("tipo") or ""
-                nm = r["filename"]
-                if tipo == "checklist":
-                    folder, k = "CheckList", "checklist"
-                elif tipo == "grafica":
-                    folder, k = "Gráficas", "graficas"
-                elif nm.lower().endswith(".zip"):
-                    continue  # la carpeta de fotos se arma abajo desde lo guardado en cada ventana
-                else:
-                    folder, k = "Reporte fotográfico", "pdf"
-                z.write(p, f"{root}/{folder}/{uniq(folder, nm)}")
-                counts[k] += 1
-            multi = len(wss) > 1
-            for w in wss:
-                st = w.state if isinstance(w.state, dict) else {}
-                ventana = _safe_name((w.label or w.key).replace("Fotos ·", "").strip(), "Fotos")
-                n = 0
-                for e in st.get("extras") or []:
-                    if not isinstance(e, dict) or e.get("trashed") or not e.get("path"):
-                        continue
-                    p = _resolve_upload_path(e["path"])
-                    if not p or not os.path.isfile(p):
-                        continue
-                    lado = _LADOS.get(str(e.get("lado") or ""), str(e.get("lado") or "General").replace("_", " ").title())
-                    folder = f"Fotos/{ventana}/{lado}" if multi else f"Fotos/{lado}"
-                    n += 1
-                    nm = f"{n:02d} {_safe_name(e.get('nombre') or 'foto')}{os.path.splitext(p)[1] or '.jpg'}"
-                    z.write(p, f"{root}/{folder}/{uniq(folder, nm)}")
-                    counts["fotos"] += 1
-            info = [f"SOT: {row.sot}", f"Cliente: {row.nombre}", f"CID: {row.cid}", f"Fecha: {row.fecha}", f"Proyecto: {row.proy}", f"Contrata: {row.contrata}", ""]
-            info += [f"{k}: {v}" for k, v in sorted((row.datos or {}).items())]
-            z.writestr(f"{root}/Datos del cliente.txt", "\n".join(info))
-        if not any(counts.values()):
-            raise HTTPException(400, "Todavía no hay nada para guardar: genera el PDF de fotos, el CheckList o la gráfica, o agrega fotos a la carpeta.")
+        write_zip(str(tmp), entries)
         os.replace(tmp, out_path)
         filestore.save_output(out_path)
     finally:

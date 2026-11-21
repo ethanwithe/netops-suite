@@ -422,75 +422,27 @@ def build_evidence_zip(payload: schemas.EvidenceRequest):
     ZIP «Evidencia fotográfica SOT <sot> <cliente>». Si las fotos son de varias
     opciones (site, cliente...), cada una va en su subcarpeta; si es una sola,
     van directo en la carpeta principal. Cada foto editada lleva también su original.
+    (Qué entra y cómo se escribe: services/zip_plans.py, el mismo código que usa el generador local.)
     """
-    import zipfile
-    from app.services.naming import _SOT_PREFIX, clean_part
+    from app.services.zip_plans import plan_evidence, write_zip
 
-    sot = clean_part(_SOT_PREFIX.sub("", payload.sot or ""))
-    cliente = clean_part(payload.cliente)
-    root = "Evidencia fotográfica"
-    if sot:
-        root += f" SOT {sot}"
-    if cliente:
-        root += f" {cliente}"
-
-    items = [i for i in payload.items if i.path or i.original_path]
-    if not items:
+    root, entries, total, missing, folders = plan_evidence(payload.model_dump(), _resolve_upload_path)
+    if not total:
         raise HTTPException(400, "No hay fotos para guardar.")
-
-    labels = list(dict.fromkeys((i.lado_label or "").strip() for i in items))
-    use_sub = len(labels) > 1
-    # Con una sola opción, las fotos van directo en la carpeta principal.
-
     out_name = f"{root}.zip"
     out_path = OUTPUTS_DIR / out_name
     tmp_path = OUTPUTS_DIR / f".{out_name}.{os.getpid()}.tmp"
-
-    missing = 0
-    used: set = set()
-    counters: dict = {}
-
-    def unique(folder: str, name: str) -> str:
-        base, ext = os.path.splitext(name)
-        cand, n = name, 2
-        while (folder, cand) in used:
-            cand = f"{base} ({n}){ext}"
-            n += 1
-        used.add((folder, cand))
-        return cand
-
     try:
-        with zipfile.ZipFile(tmp_path, "w", zipfile.ZIP_DEFLATED) as z:
-            for it in items:
-                sub = _safe_name(it.lado_label, "General") if use_sub else ""
-                counters[sub] = counters.get(sub, 0) + 1
-                n = counters[sub]
-                base = f"{n:02d} {_safe_name(it.nombre)}"
-                folder = f"{root}/{sub}" if sub else root
-
-                final = _resolve_upload_path(it.path or it.original_path)
-                orig = _resolve_upload_path(it.original_path) if it.original_path else ""
-                edited = bool(orig and it.path and orig != final)
-
-                if os.path.isfile(final):
-                    ext = os.path.splitext(final)[1] or ".jpg"
-                    label = " (editada)" if edited else ""
-                    z.write(final, f"{folder}/{unique(folder, base + label + ext)}")
-                else:
-                    missing += 1
-                if edited and os.path.isfile(orig):
-                    ext = os.path.splitext(orig)[1] or ".jpg"
-                    z.write(orig, f"{folder}/{unique(folder, base + ' (sin editar)' + ext)}")
+        write_zip(str(tmp_path), entries)
         os.replace(tmp_path, out_path)
         filestore.save_output(out_path)
     finally:
         if tmp_path.exists():
             tmp_path.unlink()
-
     return {
         "filename": out_name,
         "url": f"/api/files/outputs/{quote(out_name)}",
-        "total": len(items),
+        "total": total,
         "missing": missing,
-        "folders": [(_safe_name(l, "General") if use_sub else "") for l in labels],
+        "folders": folders,
     }
