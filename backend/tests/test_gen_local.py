@@ -47,6 +47,7 @@ def norm_pdf(b: bytes) -> bytes:
     b = re.sub(rb"/CreationDate\s*\(D:[^)]*\)", b"", b)
     b = re.sub(rb"/ModDate\s*\(D:[^)]*\)", b"", b)
     b = re.sub(rb"/ID\s*\[[^\]]*\]", b"", b)
+    b = re.sub(rb"\(D:\d{14}[^)]*\)", b"()", b)          # cualquier otra marca de fecha (p. ej. la del adjunto)
     return b
 
 
