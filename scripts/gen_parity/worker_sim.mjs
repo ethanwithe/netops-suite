@@ -16,7 +16,7 @@ py.mountNodeFS("/wheels", path.join(base, "wheels"));
 const mp = py.pyimport("micropip");
 await mp.install(manifest.wheels.map((f) => `emfs:/wheels/${f}`), { deps: false });
 py.FS.mkdirTree("/pkg");
-py.unpackArchive(fs.readFileSync(bundleZip), "zip", { extractDir: "/pkg" });
+py.unpackArchive(new Uint8Array(fs.readFileSync(bundleZip)), "zip", { extractDir: "/pkg" });
 py.runPython(`import sys\nsys.path.insert(0, "/pkg")`);
 const src = fs.readFileSync("frontend/src/gen/runner.ts", "utf8");
 py.runPython(src.slice(src.indexOf("`") + 1, src.lastIndexOf("`")));
