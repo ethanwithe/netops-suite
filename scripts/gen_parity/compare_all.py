@@ -32,6 +32,12 @@ for f in sorted(os.listdir(a)):
         same = open(pa, "rb").read() == open(pb, "rb").read()
         print(f"{f}: ZIP {'IDÉNTICO byte a byte' if same else 'DISTINTO'}")
         if not same:
+            za, zb = zipfile.ZipFile(pa), zipfile.ZipFile(pb)
+            for n in za.namelist():
+                if n in zb.namelist() and za.read(n) != zb.read(n):
+                    x, y = za.read(n), zb.read(n)
+                    i = next((k for k in range(min(len(x), len(y))) if x[k] != y[k]), 0)
+                    print("   difiere:", n, len(x), len(y), x[max(0, i - 60):i + 60], y[max(0, i - 60):i + 60])
             bad.append(f)
     elif f.endswith((".pptx", ".docx")):
         za, zb = zipfile.ZipFile(pa), zipfile.ZipFile(pb)
