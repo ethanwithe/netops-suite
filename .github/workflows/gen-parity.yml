@@ -42,3 +42,10 @@ jobs:
           mkdir -p /tmp/cases_py && cp -r /tmp/cases_cp/img /tmp/cases_py/img
           (cd scripts/gen_parity && node pyodide_cases.mjs ../../backend /tmp/cases_py)
           python scripts/gen_parity/compare_all.py /tmp/cases_cp /tmp/cases_py
+      - name: "Worker de la app (archivos locales, sin Internet): mismo resultado que el servidor"
+        run: |
+          (cd frontend && node scripts/fetch-pyodide.mjs)
+          (cd backend && python -c "from app.services.gen_bundle import build_bundle; open('/tmp/bundle.zip','wb').write(build_bundle()[0])")
+          python backend/gen_spike/make_requests.py backend /tmp/sim
+          node scripts/gen_parity/worker_sim.mjs frontend/public /tmp/bundle.zip /tmp/sim /tmp/sim_out
+          python scripts/gen_parity/compare_all.py /tmp/sim/expected /tmp/sim_out
