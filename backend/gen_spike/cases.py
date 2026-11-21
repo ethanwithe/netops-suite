@@ -87,6 +87,8 @@ def main(root, out):
     open(os.path.join(out, "diagram.pptx"), "wb").write(build_pptx(doc, load))
 
     # ---- Generadores locales completos (gen_local): mismos endpoints sin servidor
+    import reportlab.rl_config as _rl
+    _rl.invariant = 1   # solo en esta prueba: sin fecha/ID variables en el PDF, así el ZIP que los contiene se puede comparar byte a byte
     import datetime as dt
     import shutil
     from app.services import gen_local
