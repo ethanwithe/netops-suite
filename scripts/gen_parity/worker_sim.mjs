@@ -4,6 +4,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
+process.on("uncaughtException", (e) => { console.error("ERROR-SIM:", String(e && e.message || e).slice(0, 1500)); process.exit(1); });
+process.on("unhandledRejection", (e) => { console.error("ERROR-SIM:", String(e && e.message || e).slice(0, 1500)); process.exit(1); });
 const [, , publicDir, bundleZip, workDir, outDir] = process.argv;
 const base = path.resolve(publicDir, "pyodide");
 const { loadPyodide } = await import(pathToFileURL(path.join(base, "pyodide.mjs")).href);
