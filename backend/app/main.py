@@ -15,6 +15,7 @@ from app.database import Base, engine, SessionLocal
 from app import db_seed
 from app.routers import services, vendors, templates, checklist, photos, tests, files, serial_ports, tools, logos, clients, mascot, imageai
 from app.routers import sync as sync_router
+from app.routers import gen as gen_router
 from app.routers import auth as auth_router, admin as admin_router, exports as exports_router, diagrams as diagrams_router, agenda as agenda_router, system as system_router, diagram_options as diagram_options_router
 from app import auth as authlib, models
 from app.services import security
@@ -81,6 +82,7 @@ app.include_router(checklist.router)
 app.include_router(photos.router)
 app.include_router(clients.router)
 app.include_router(sync_router.router)
+app.include_router(gen_router.router)
 app.include_router(mascot.router)
 app.include_router(imageai.router)
 app.include_router(logos.router)
