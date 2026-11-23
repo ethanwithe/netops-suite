@@ -91,6 +91,9 @@ jobs:
           Write-Host ("Tardó {0:N1} s en cargar la interfaz" -f ((Get-Date) - $t0).TotalSeconds)
           Write-Host "---- server.log ----"
           Get-Content (Join-Path $env:LOCALAPPDATA "NetOpsSuite\server.log") -ErrorAction SilentlyContinue
+          Write-Host "---- shell.log ----"
+          Get-Content (Join-Path $env:LOCALAPPDATA "NetOpsSuite\shell.log") -ErrorAction SilentlyContinue
+          try { Write-Host "---- ventanas ----"; (Invoke-RestMethod "http://127.0.0.1:9222/json") | Format-List url, title } catch { Write-Host "sin puerto de depuración: $_" }
           if (-not $page) { Get-Process | Where-Object { $_.Name -match "netops" } | Format-Table Name, Id; throw "La ventana no cargó la interfaz" }
           Write-Host ("Ventana en: " + $page.url + " · título: " + $page.title)
           Get-Process | Where-Object { $_.Name -match "netops" } | Stop-Process -Force
