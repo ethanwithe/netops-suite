@@ -4,13 +4,28 @@ import { BrowserRouter } from "react-router-dom";
 import App from "./App";
 import "./index.css";
 
-ReactDOM.createRoot(document.getElementById("root")!).render(
-  <React.StrictMode>
-    <BrowserRouter>
-      <App />
-    </BrowserRouter>
-  </React.StrictMode>
-);
+/** App de escritorio: la consola y el saturador viven dentro del programa; la página recibe sus códigos sola. */
+async function desktopSetup() {
+  if (!import.meta.env.VITE_DESKTOP) return;
+  try {
+    const r = await fetch("/api/local/info", { signal: AbortSignal.timeout(3000) });
+    const d = await r.json();
+    if (!d?.desktop) return;
+    const put = (k: string, v: string) => { if (v) localStorage.setItem("netops.ui.v1." + k, JSON.stringify({ v, d: false })); };
+    put("puente.codigo", d.puente_code);
+    put("saturador.codigo", d.saturador_code);
+  } catch { /* sin datos: se pueden escribir a mano */ }
+}
+
+void desktopSetup().then(() => {
+  ReactDOM.createRoot(document.getElementById("root")!).render(
+    <React.StrictMode>
+      <BrowserRouter>
+        <App />
+      </BrowserRouter>
+    </React.StrictMode>
+  );
+});
 
 // Rendimiento: con la pestaña oculta o mientras se desplaza la página se pausan las animaciones de fondo
 {

@@ -14,7 +14,7 @@ from app import models
 from app.database import SessionLocal, get_db
 from app.services import security
 
-PUBLIC_PATHS = {"/api/health", "/api/auth/login", "/api/auth/logout", "/api/tools/saturador.py"}
+PUBLIC_PATHS = {"/api/health", "/api/auth/login", "/api/auth/logout", "/api/tools/saturador.py", "/api/local/info"}
 
 # prefijo de ruta -> función que hay que tener
 FEATURE_BY_PREFIX = [

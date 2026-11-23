@@ -3,6 +3,9 @@
 import fs from "node:fs";
 import path from "node:path";
 
+// La app de escritorio genera con el Python del propio programa: no necesita Pyodide.
+if (process.env.VITE_DESKTOP) { console.log("Pyodide omitido (VITE_DESKTOP)."); process.exit(0); }
+
 const VERSION = "0.26.4";
 const CDN = `https://cdn.jsdelivr.net/pyodide/v${VERSION}/full/`;
 const OUT = path.resolve("public/pyodide");

@@ -16,6 +16,7 @@ from app import db_seed
 from app.routers import services, vendors, templates, checklist, photos, tests, files, serial_ports, tools, logos, clients, mascot, imageai
 from app.routers import sync as sync_router
 from app.routers import gen as gen_router
+from app.routers import local_tools as local_router
 from app.routers import auth as auth_router, admin as admin_router, exports as exports_router, diagrams as diagrams_router, agenda as agenda_router, system as system_router, diagram_options as diagram_options_router
 from app import auth as authlib, models
 from app.services import security
@@ -83,6 +84,7 @@ app.include_router(photos.router)
 app.include_router(clients.router)
 app.include_router(sync_router.router)
 app.include_router(gen_router.router)
+app.include_router(local_router.router)
 app.include_router(mascot.router)
 app.include_router(imageai.router)
 app.include_router(logos.router)
@@ -258,6 +260,6 @@ class FastGZip:
 
 app.add_middleware(FastGZip)
 
-FRONTEND_DIST = Path(__file__).resolve().parent / "static_frontend"
+FRONTEND_DIST = Path(os.getenv("FRONTEND_DIST") or Path(__file__).resolve().parent / "static_frontend")
 if FRONTEND_DIST.is_dir():
     app.mount("/", SPAStaticFiles(directory=str(FRONTEND_DIST), html=True), name="frontend")
