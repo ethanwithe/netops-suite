@@ -66,18 +66,33 @@ pub fn run() {
             *handle.state::<Server>().0.lock().unwrap() = Some(child);
             std::thread::spawn(move || {
                 let Some(out) = stdout else { return };
-                for line in BufReader::new(out).lines().map_while(Result::ok) {
-                    if let Some(p) = line.strip_prefix("NETOPS_READY ") {
+                // Se lee en bytes (la consola de Windows no siempre escribe UTF-8) y nunca se deja de leer:
+                // si no, la tubería se llena y el servidor se queda bloqueado al imprimir.
+                let mut rd = BufReader::new(out);
+                let mut buf: Vec<u8> = Vec::new();
+                let mut opened = false;
+                loop {
+                    buf.clear();
+                    match rd.read_until(b'\n', &mut buf) {
+                        Ok(0) => break,
+                        Ok(_) => {}
+                        Err(_) => continue,
+                    }
+                    let line = String::from_utf8_lossy(&buf).to_string();
+                    if opened {
+                        continue;
+                    }
+                    if let Some(p) = line.trim().strip_prefix("NETOPS_READY ") {
                         log(&format!("servidor listo: puerto {}", p.trim()));
                         match p.trim().parse::<u16>() {
                             Ok(port) => {
                                 let h = handle.clone();
                                 // la ventana se crea desde el hilo principal de la aplicación
                                 let _ = handle.run_on_main_thread(move || open_window(&h, Some(port)));
+                                opened = true;
                             }
                             Err(e) => log(&format!("puerto inválido: {e}")),
                         }
-                        break;
                     }
                 }
                 log("fin de la lectura del servidor");

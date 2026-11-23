@@ -48,7 +48,12 @@ def main() -> None:
     # Sin consola (ventana de Windows) stdout/stderr no existen: se evita que print() falle.
     for name in ("stdout", "stderr"):
         if getattr(sys, name) is None:
-            setattr(sys, name, open(os.devnull, "w"))
+            setattr(sys, name, open(os.devnull, "w", encoding="utf-8"))
+        else:
+            try:  # la consola de Windows usa otra codificación: se fuerza UTF-8 y nunca falla por un carácter
+                getattr(sys, name).reconfigure(encoding="utf-8", errors="replace")
+            except Exception:  # noqa: BLE001
+                pass
 
     global _LOG
     data = _data_dir()
