@@ -2,14 +2,16 @@
 //! avise «NETOPS_READY <puerto>» y abre la interfaz en http://127.0.0.1:<puerto>/ . Al cerrar, lo detiene.
 use std::io::{BufRead, BufReader};
 use std::process::{Child, Command, Stdio};
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
 use tauri::{Manager, RunEvent};
 
 struct Server(Mutex<Option<Child>>);
 
 fn spawn_server(app: &tauri::AppHandle) -> Result<Child, String> {
     let dir = app.path().resource_dir().map_err(|e| e.to_string())?;
-    let exe = dir.join("netops-server.exe");
+    let exe = dir.join("netops-server").join("netops-server.exe");
     let mut cmd = Command::new(&exe);
     cmd.stdout(Stdio::piped()).stderr(Stdio::null()).stdin(Stdio::null());
     #[cfg(windows)]
@@ -34,10 +36,23 @@ pub fn run() {
             };
             let stdout = child.stdout.take();
             *handle.state::<Server>().0.lock().unwrap() = Some(child);
+            let ready = Arc::new(AtomicBool::new(false));
+            {
+                let (h, r) = (app.handle().clone(), ready.clone());
+                std::thread::spawn(move || {
+                    std::thread::sleep(Duration::from_secs(60));
+                    if !r.load(Ordering::SeqCst) {
+                        if let Some(w) = h.get_webview_window("main") {
+                            let _ = w.eval("document.getElementById('m').textContent='Está tardando más de lo normal. Si no abre, revisa el archivo %LOCALAPPDATA%/NetOpsSuite/server.log';");
+                        }
+                    }
+                });
+            }
             std::thread::spawn(move || {
                 let Some(out) = stdout else { return };
                 for line in BufReader::new(out).lines().map_while(Result::ok) {
                     if let Some(p) = line.strip_prefix("NETOPS_READY ") {
+                        ready.store(true, Ordering::SeqCst);
                         if let (Ok(port), Some(w)) = (p.trim().parse::<u16>(), handle.get_webview_window("main")) {
                             if let Ok(url) = format!("http://127.0.0.1:{port}/").parse() {
                                 let _ = w.navigate(url);

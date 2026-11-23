@@ -32,7 +32,7 @@ jobs:
           $data = Join-Path $env:RUNNER_TEMP "netops-data"
           $env:NETOPS_DATA_DIR = $data
           $out = Join-Path $env:RUNNER_TEMP "server.out"
-          $p = Start-Process -FilePath "backend\dist\netops-server.exe" -RedirectStandardOutput $out -PassThru -WindowStyle Hidden
+          $p = Start-Process -FilePath "backend\dist\netops-server\netops-server.exe" -RedirectStandardOutput $out -PassThru -WindowStyle Hidden
           $port = $null
           for ($i = 0; $i -lt 120 -and -not $port; $i++) {
             Start-Sleep -Seconds 1
@@ -41,6 +41,7 @@ jobs:
           }
           if (-not $port) { Get-Content $out -ErrorAction SilentlyContinue; throw "El servidor no arrancó" }
           Write-Host "Servidor en el puerto $port"
+          Write-Host "---- server.log ----"; Get-Content (Join-Path $data "server.log")
           $h = Invoke-RestMethod "http://127.0.0.1:$port/api/health"
           if ($h.status -ne "ok") { throw "health falló" }
           $idx = Invoke-WebRequest "http://127.0.0.1:$port/" -UseBasicParsing
@@ -64,7 +65,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p frontend/src-tauri/binaries
-          cp backend/dist/netops-server.exe frontend/src-tauri/binaries/netops-server.exe
+          cp -r backend/dist/netops-server frontend/src-tauri/binaries/netops-server
           cd frontend
           npm install --no-save @tauri-apps/cli@2
           npx tauri icon public/icon-512.png

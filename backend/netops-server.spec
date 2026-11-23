@@ -16,4 +16,6 @@ if os.path.isdir(frontend):
 a = Analysis(["desktop_main.py"], pathex=["."], binaries=binaries, datas=datas, hiddenimports=hidden,
              excludes=["playwright", "telethon", "redis", "psycopg2", "tkinter"])
 pyz = PYZ(a.pure)
-exe = EXE(pyz, a.scripts, a.binaries, a.datas, [], name="netops-server", console=True, upx=False)
+# Carpeta (no un solo .exe): un .exe único se descomprime entero en cada arranque (lento y el antivirus lo revisa cada vez).
+exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name="netops-server", console=True, upx=False)
+coll = COLLECT(exe, a.binaries, a.datas, name="netops-server", upx=False)

@@ -26,4 +26,4 @@ public/pyodide/
 frontend/src-tauri/target/
 frontend/src-tauri/gen/
 frontend/src-tauri/icons/
-frontend/src-tauri/binaries/*.exe
+frontend/src-tauri/binaries/netops-server/
