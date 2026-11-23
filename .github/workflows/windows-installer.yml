@@ -58,7 +58,7 @@ jobs:
         shell: bash
         run: |
           cd backend
-          python -c "from app.services.cloud_sync import protect_secret, unprotect_secret; b=protect_secret('abc123'); assert b.startswith('dpapi:'), b; assert unprotect_secret(b)=='abc123'; print('DPAPI ok')"
+          NETOPS_LOCAL=1 python -c "from app.services.cloud_sync import protect_secret, unprotect_secret; b=protect_secret('abc123'); assert b.startswith('dpapi:'), b; assert unprotect_secret(b)=='abc123'; print('DPAPI ok')"
 
       - name: "Instalador (Tauri)"
         shell: bash
