@@ -9,6 +9,7 @@ import { checklistRoute, createChecklistType, useChecklistTypes } from "../store
 import { usePersistentState } from "../store/persistentState";
 import ThemeSwitcher from "./ThemeSwitcher";
 import SyncIndicator from "./SyncIndicator";
+import CloudStatus from "./CloudStatus";
 import { startSync } from "../sync/engine";
 import { initGenState, warmGen } from "../gen/local";
 import ToolsMenu from "./ToolsMenu";
@@ -259,6 +260,7 @@ export default function Layout() {
           <div className="flex-1" />
           {can(me, "checklist") && <ToolsMenu />}
           <SyncIndicator />
+          <CloudStatus />
           <ThemeSwitcher />
           {me && (
             <div className="relative">

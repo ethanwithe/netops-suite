@@ -54,6 +54,12 @@ jobs:
           Test-Path (Join-Path $data "netops.db") | Write-Host
           Stop-Process -Id $p.Id -Force
 
+      - name: "Token protegido con Windows (DPAPI)"
+        shell: bash
+        run: |
+          cd backend
+          python -c "from app.services.cloud_sync import protect_secret, unprotect_secret; b=protect_secret('abc123'); assert b.startswith('dpapi:'), b; assert unprotect_secret(b)=='abc123'; print('DPAPI ok')"
+
       - name: "Instalador (Tauri)"
         shell: bash
         run: |

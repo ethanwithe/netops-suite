@@ -48,6 +48,13 @@ def login(payload: LoginIn, request: Request, response: Response, db: Session = 
     _fails[key] = [t for t in _fails[key] if now - t < WINDOW]
     if len(_fails[key]) >= MAX_FAILS:
         raise HTTPException(429, "Demasiados intentos. Espera unos minutos e inténtalo otra vez.")
+    from app.routers.local_tools import DESKTOP
+    if DESKTOP:   # app de escritorio: con Internet se valida contra la nube y se guarda copia local de la cuenta
+        from app.services import cloud_sync
+        st, info = cloud_sync.login_via_cloud(db, username, payload.password)
+        if st == "denied" and cloud_sync.is_linked(username):
+            _fails[key].append(now)
+            raise HTTPException(401, info or "Usuario o contraseña incorrectos.")
     user = db.query(models.User).filter(models.User.username == username).first()
     if not user or not security.verify_password(payload.password, user.password_hash):
         _fails[key].append(now)

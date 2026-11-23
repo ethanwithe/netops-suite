@@ -41,6 +41,7 @@ def main() -> None:
     os.environ.setdefault("UPLOADS_DIR", os.path.join(data, "uploads"))
     os.environ.setdefault("OUTPUTS_DIR", os.path.join(data, "outputs"))
     os.environ["NETOPS_DESKTOP"] = "1"
+    os.environ.setdefault("NETOPS_CLOUD_URL", "https://netopssuite.up.railway.app")
     if getattr(sys, "frozen", False):
         os.environ.setdefault("FRONTEND_DIST", os.path.join(sys._MEIPASS, "static_frontend"))  # type: ignore[attr-defined]
 
@@ -53,6 +54,9 @@ def main() -> None:
     local_tools.CODES["saturador"] = sat_code
     threading.Thread(target=puente.run, args=(8766, local_tools.CODES["puente"]), daemon=True).start()
     threading.Thread(target=saturador.run_agent, args=(8765, sat_code), daemon=True).start()
+
+    from app.services import cloud_sync
+    cloud_sync.start_agent()   # sincroniza en segundo plano con la nube cuando hay Internet y sesión
 
     import uvicorn
     from app.main import app

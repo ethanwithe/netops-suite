@@ -447,6 +447,20 @@ class SyncOp(Base):
     created_at = Column(DateTime, default=dt.datetime.utcnow, index=True)
 
 
+class CloudItem(Base):
+    """App de escritorio: estado de sincronización de cada registro con la nube (versión remota, huella de lo ya enviado)."""
+    __tablename__ = "cloud_items"
+
+    entity = Column(String, primary_key=True)          # client | workspace | checklist_copy | photo
+    id = Column(String, primary_key=True)
+    remote_version = Column(Integer, nullable=False, default=0)   # versión que tiene la nube de este registro
+    local_version = Column(Integer, nullable=False, default=0)    # versión local ya revisada (evita recalcular)
+    synced_hash = Column(String, nullable=False, default="")      # huella de lo que coincide con la nube
+    status = Column(String, nullable=False, default="SYNCED")     # SYNCED | CONFLICT | ERROR
+    info = Column(JSON, nullable=True)                            # conflicto: {"server": ..., "reason": ...} / error
+    updated_at = Column(DateTime, default=dt.datetime.utcnow)
+
+
 # Cada modificación (venga de la web, de un PDF importado o de la sincronización) sube la versión y la hora UTC:
 # así dos dispositivos que editen lo mismo se detectan como conflicto y nunca se pisan en silencio.
 def _bump(_mapper, _conn, target):
