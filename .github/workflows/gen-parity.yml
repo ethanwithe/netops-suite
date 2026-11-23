@@ -1,0 +1,51 @@
+name: gen-parity
+# Prueba que el MISMO código Python de los generadores (PDF, PPTX, Word) da resultados idénticos
+# en Python normal (servidor / Windows) y en Pyodide (Python dentro del navegador / Android).
+on:
+  push:
+    branches: [offline-sync-1]
+jobs:
+  parity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - uses: actions/setup-node@v4
+        with: { node-version: "20" }
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq poppler-utils
+      - run: pip install reportlab==4.2.5 Pillow==10.4.0
+      - run: cd scripts/gen_parity && npm init -y >/dev/null && npm i pyodide@0.26.4
+      - name: "Diseño, textos, fuentes y vectores (debe ser IDÉNTICO)"
+        run: |
+          python backend/gen_spike/make_report.py backend /tmp/cp_np/report.pdf nophoto
+          mkdir -p /tmp/py_np
+          (cd scripts/gen_parity && node pyodide_run.mjs ../../backend /tmp/py_np/report.pdf nophoto)
+          python scripts/gen_parity/compare.py /tmp/cp_np/report.pdf /tmp/py_np/report.pdf exacto
+          cmp /tmp/cp_np/report.pdf /tmp/py_np/report.pdf && echo "PDF idéntico byte a byte" || echo "(los bytes difieren por marcas de fecha/ID del PDF)"
+      - name: "Fotos preparadas (planas): IDÉNTICO"
+        run: |
+          python backend/gen_spike/make_report.py backend /tmp/cp_flat/report.pdf flat
+          mkdir -p /tmp/py_flat && cp -r /tmp/cp_flat/img /tmp/py_flat/img
+          (cd scripts/gen_parity && node pyodide_run.mjs ../../backend /tmp/py_flat/report.pdf flat)
+          python scripts/gen_parity/compare.py /tmp/cp_flat/report.pdf /tmp/py_flat/report.pdf exacto
+      - name: "Fotos preparadas con bordes diagonales: IDÉNTICO"
+        run: |
+          python backend/gen_spike/make_report.py backend /tmp/cp_tex/report.pdf texture
+          mkdir -p /tmp/py_tex && cp -r /tmp/cp_tex/img /tmp/py_tex/img
+          (cd scripts/gen_parity && node pyodide_run.mjs ../../backend /tmp/py_tex/report.pdf texture)
+          python scripts/gen_parity/compare.py /tmp/cp_tex/report.pdf /tmp/py_tex/report.pdf exacto
+      - name: "Todos los generadores (CheckList PDF/Word, Poder Judicial, Gráfica PDF/PPTX): IDÉNTICOS"
+        run: |
+          pip install python-pptx==1.0.2 python-docx==1.1.2 pypdf==5.9.0
+          python backend/gen_spike/cases.py backend /tmp/cases_cp
+          mkdir -p /tmp/cases_py && cp -r /tmp/cases_cp/img /tmp/cases_py/img
+          (cd scripts/gen_parity && node pyodide_cases.mjs ../../backend /tmp/cases_py)
+          python scripts/gen_parity/compare_all.py /tmp/cases_cp /tmp/cases_py
+      - name: "Worker de la app (archivos locales, sin Internet): mismo resultado que el servidor"
+        run: |
+          (cd frontend && node scripts/fetch-pyodide.mjs)
+          (cd backend && python -c "from app.services.gen_bundle import build_bundle; open('/tmp/bundle.zip','wb').write(build_bundle()[0])")
+          python backend/gen_spike/make_requests.py backend /tmp/sim
+          cp -r frontend/public /tmp/pub && node scripts/gen_parity/worker_sim.mjs /tmp/pub /tmp/bundle.zip /tmp/sim /tmp/sim_out
+          python scripts/gen_parity/compare_all.py /tmp/sim/expected /tmp/sim_out

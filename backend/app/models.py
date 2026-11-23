@@ -7,7 +7,7 @@ templates_store.py / checklist_store.py / photo_items_store.py (JSON).
 import uuid
 import datetime as dt
 
-from sqlalchemy import Column, String, Integer, Text, DateTime, JSON, LargeBinary, Boolean, ForeignKey, Index
+from sqlalchemy import Column, String, Integer, Text, DateTime, JSON, LargeBinary, Boolean, ForeignKey, Index, event
 from sqlalchemy.dialects.postgresql import ARRAY
 
 from app.database import Base
@@ -36,7 +36,7 @@ class TemplateFragment(Base):
     nombre = Column(String, nullable=False)
     marca = Column(String, nullable=False, index=True)
     modelos_compatibles = Column(String, default="")
-    servicios = Column(ARRAY(String), default=list)
+    servicios = Column(ARRAY(String).with_variant(JSON, "sqlite"), default=list)
     orden = Column(Integer, default=50)
     texto = Column(Text, nullable=False, default="")
     created_at = Column(DateTime, default=dt.datetime.utcnow)
@@ -110,6 +110,7 @@ class ChecklistUserCopy(Base):
     nombre = Column(String, nullable=False)
     data = Column(JSON, nullable=False, default=dict)
     updated_at = Column(DateTime, default=dt.datetime.utcnow)
+    version = Column(Integer, nullable=False, default=1)
 
 
 class ChecklistBase(Base):
@@ -185,6 +186,7 @@ class Client(Base):
     owner_id = Column(String, nullable=True, index=True)
     deleted_at = Column(DateTime, nullable=True)
     deleted_by = Column(String, nullable=True)
+    version = Column(Integer, nullable=False, default=1)  # sube en cada cambio: base de la sincronización
 
 
 class ClientYear(Base):
@@ -301,6 +303,7 @@ class UserWorkspace(Base):
     state = Column(JSON, nullable=False, default=dict)
     updated_at = Column(DateTime, default=dt.datetime.utcnow)
     updated_by = Column(String, nullable=True)
+    version = Column(Integer, nullable=False, default=1)
 
 
 class WorkspaceVersion(Base):
@@ -421,3 +424,49 @@ class BitMemory(Base):
     weight = Column(Integer, nullable=False, default=1)
     created_at = Column(DateTime, default=dt.datetime.utcnow)
     last_seen = Column(DateTime, default=dt.datetime.utcnow, index=True)
+
+
+class SyncOp(Base):
+    """Registro de operaciones de sincronización recibidas de los dispositivos.
+
+    `op_id` lo genera el dispositivo (UUID): si la misma operación llega dos veces (reintento tras
+    perder la conexión) no se aplica otra vez, se devuelve el resultado guardado (idempotencia).
+    """
+    __tablename__ = "sync_ops"
+
+    op_id = Column(String, primary_key=True)
+    user_id = Column(String, nullable=False, index=True)
+    device_id = Column(String, nullable=False, default="")
+    entity = Column(String, nullable=False)            # client | workspace | checklist_copy | file
+    entity_id = Column(String, nullable=False, index=True)
+    action = Column(String, nullable=False)            # upsert | delete
+    base_version = Column(Integer, nullable=True)      # versión que el dispositivo tenía al editar
+    status = Column(String, nullable=False, default="applied")  # applied | conflict | error | rejected
+    result = Column(JSON, nullable=True)
+    error = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=dt.datetime.utcnow, index=True)
+
+
+class CloudItem(Base):
+    """App de escritorio: estado de sincronización de cada registro con la nube (versión remota, huella de lo ya enviado)."""
+    __tablename__ = "cloud_items"
+
+    entity = Column(String, primary_key=True)          # client | workspace | checklist_copy | photo
+    id = Column(String, primary_key=True)
+    remote_version = Column(Integer, nullable=False, default=0)   # versión que tiene la nube de este registro
+    local_version = Column(Integer, nullable=False, default=0)    # versión local ya revisada (evita recalcular)
+    synced_hash = Column(String, nullable=False, default="")      # huella de lo que coincide con la nube
+    status = Column(String, nullable=False, default="SYNCED")     # SYNCED | CONFLICT | ERROR
+    info = Column(JSON, nullable=True)                            # conflicto: {"server": ..., "reason": ...} / error
+    updated_at = Column(DateTime, default=dt.datetime.utcnow)
+
+
+# Cada modificación (venga de la web, de un PDF importado o de la sincronización) sube la versión y la hora UTC:
+# así dos dispositivos que editen lo mismo se detectan como conflicto y nunca se pisan en silencio.
+def _bump(_mapper, _conn, target):
+    target.version = (target.version or 1) + 1
+    target.updated_at = dt.datetime.utcnow()
+
+
+for _m in (Client, UserWorkspace, ChecklistUserCopy):
+    event.listen(_m, "before_update", _bump)

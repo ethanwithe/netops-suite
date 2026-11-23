@@ -38,7 +38,7 @@ def _walk(node: Any, fn) -> None:
             _walk(v, fn)
 
 
-def embed_project(pdf_path: str, project: dict, uploads_dir: Path) -> Optional[str]:
+def embed_project(pdf_path: str, project: dict, uploads_dir: Path, resolve=None) -> Optional[str]:
     """Adjunta el proyecto al PDF. Devuelve un aviso si no se pudo (el PDF sigue válido)."""
     try:
         from pypdf import PdfWriter
@@ -53,8 +53,11 @@ def embed_project(pdf_path: str, project: dict, uploads_dir: Path) -> Optional[s
                 v = d.get(k)
                 if isinstance(v, str) and v and Path(v).suffix.lower() in ALLOWED_EXT:
                     name = os.path.basename(v)
-                    from app.services.filestore import ensure_upload
-                    f = ensure_upload(name)
+                    if resolve is not None:       # generador local: las fotos están en la carpeta de trabajo
+                        f = Path(resolve(name))
+                    else:
+                        from app.services.filestore import ensure_upload
+                        f = ensure_upload(name)
                     if name not in images and f.is_file():
                         images[name] = base64.b64encode(f.read_bytes()).decode("ascii")
 
@@ -66,6 +69,7 @@ def embed_project(pdf_path: str, project: dict, uploads_dir: Path) -> Optional[s
                 ensure_ascii=False,
             ).encode("utf-8"),
             compresslevel=6,
+            mtime=0,   # sin hora actual dentro del gzip: el mismo proyecto da los mismos bytes en cualquier equipo
         )
 
         writer = PdfWriter(clone_from=pdf_path)

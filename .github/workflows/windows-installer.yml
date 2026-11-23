@@ -1,0 +1,78 @@
+name: windows-installer
+on:
+  push:
+    branches: [offline-sync-1]
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "20" }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+
+      - name: "Interfaz (modo escritorio, sin Pyodide)"
+        shell: bash
+        env: { VITE_DESKTOP: "1" }
+        run: cd frontend && npm ci && npm run build
+
+      - name: "Servidor local (PyInstaller)"
+        shell: bash
+        run: |
+          cd backend
+          pip install -r requirements.txt pyinstaller
+          pyinstaller netops-server.spec --noconfirm
+          ls -la dist
+
+      - name: "Prueba del servidor empaquetado"
+        shell: pwsh
+        run: |
+          $data = Join-Path $env:RUNNER_TEMP "netops-data"
+          $env:NETOPS_DATA_DIR = $data
+          $out = Join-Path $env:RUNNER_TEMP "server.out"
+          $p = Start-Process -FilePath "backend\dist\netops-server.exe" -RedirectStandardOutput $out -PassThru -WindowStyle Hidden
+          $port = $null
+          for ($i = 0; $i -lt 120 -and -not $port; $i++) {
+            Start-Sleep -Seconds 1
+            if (Test-Path $out) { $m = Select-String -Path $out -Pattern "NETOPS_READY (\d+)" ; if ($m) { $port = $m.Matches[0].Groups[1].Value } }
+            if ($p.HasExited) { break }
+          }
+          if (-not $port) { Get-Content $out -ErrorAction SilentlyContinue; throw "El servidor no arrancó" }
+          Write-Host "Servidor en el puerto $port"
+          $h = Invoke-RestMethod "http://127.0.0.1:$port/api/health"
+          if ($h.status -ne "ok") { throw "health falló" }
+          $idx = Invoke-WebRequest "http://127.0.0.1:$port/" -UseBasicParsing
+          if ($idx.Content -notmatch "<div id=`"root`"") { throw "No sirve la interfaz" }
+          $info = Invoke-RestMethod "http://127.0.0.1:$port/api/local/info"
+          if (-not $info.desktop -or -not $info.puente_code) { throw "local/info falló" }
+          $pu = Invoke-RestMethod "http://127.0.0.1:8766/hola"
+          if (-not $pu.puente) { throw "La consola local no está activa" }
+          $sa = Invoke-WebRequest "http://127.0.0.1:8765/estado" -UseBasicParsing -SkipHttpErrorCheck
+          if ($sa.Content -notmatch "agente") { throw "El saturador local no está activo" }
+          Test-Path (Join-Path $data "netops.db") | Write-Host
+          Stop-Process -Id $p.Id -Force
+
+      - name: "Token protegido con Windows (DPAPI)"
+        shell: bash
+        run: |
+          cd backend
+          NETOPS_LOCAL=1 python -c "from app.services.cloud_sync import protect_secret, unprotect_secret; b=protect_secret('abc123'); assert b.startswith('dpapi:'), b; assert unprotect_secret(b)=='abc123'; print('DPAPI ok')"
+
+      - name: "Instalador (Tauri)"
+        shell: bash
+        run: |
+          mkdir -p frontend/src-tauri/binaries
+          cp backend/dist/netops-server.exe frontend/src-tauri/binaries/netops-server.exe
+          cd frontend
+          npm install --no-save @tauri-apps/cli@2
+          npx tauri icon public/icon-512.png
+          npx tauri build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NetOps-Suite-Windows
+          path: |
+            frontend/src-tauri/target/release/bundle/nsis/*.exe
+            frontend/src-tauri/target/release/bundle/msi/*.msi

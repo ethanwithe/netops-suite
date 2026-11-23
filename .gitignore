@@ -20,3 +20,10 @@ backend/app/storage/outputs/*
 # Editores/SO
 .DS_Store
 .vscode/
+public/pyodide/
+
+# Escritorio (Tauri)
+frontend/src-tauri/target/
+frontend/src-tauri/gen/
+frontend/src-tauri/icons/
+frontend/src-tauri/binaries/*.exe
