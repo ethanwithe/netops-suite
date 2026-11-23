@@ -120,7 +120,7 @@ def test_flujo_completo(world):
     # La nube ya tiene un cliente con ventana y foto (hecho desde la web / otro equipo).
     foto_a = cloud.photo(b"\xff\xd8\xff fake-jpeg A " * 50)
     cid_a = uuid.uuid4().hex
-    assert cloud.push("client", cid_a, client_data("SOT-A1", "Cliente A"))["status"] == "applied"
+    assert cloud.push("client", cid_a, client_data("A1", "Cliente A"))["status"] == "applied"
     ws_a = {"client_id": cid_a, "key": "fotografico", "label": "Fotográfico", "route": "/fotografico", "state": {"items": [{"foto": foto_a}]}}
     assert cloud.push("workspace", f"{cid_a}|fotografico", ws_a)["status"] == "applied"
 
@@ -141,26 +141,26 @@ def test_flujo_completo(world):
     # 3) Trabajo sin la nube en el escritorio: cliente nuevo con foto + edición del que bajó -> sube todo
     foto_b = local.photo(b"\xff\xd8\xff fake-jpeg B " * 80)
     cid_b = uuid.uuid4().hex
-    assert local.push("client", cid_b, client_data("SOT-B2", "Cliente B"))["status"] == "applied"
+    assert local.push("client", cid_b, client_data("B2", "Cliente B"))["status"] == "applied"
     assert local.push("workspace", f"{cid_b}|fotografico", {"client_id": cid_b, "key": "fotografico", "label": "F", "route": "/f", "state": {"items": [{"foto": foto_b}]}})["status"] == "applied"
     va = items[cid_a]["version"]
-    assert local.push("client", cid_a, client_data("SOT-A1", "Cliente A editado en escritorio"), base=va)["status"] == "applied"
+    assert local.push("client", cid_a, client_data("A1", "Cliente A editado en escritorio"), base=va)["status"] == "applied"
     st = local.sync()
     assert st["state"] == "synced" and st["pending"] == 0, st
     on_cloud = cloud.pull("client")
-    assert on_cloud[cid_b]["data"]["sot"] == "SOT-B2"
+    assert on_cloud[cid_b]["data"]["sot"] == "B2"
     assert on_cloud[cid_a]["data"]["nombre"] == "Cliente A editado en escritorio"
     fb = cloud.c.get(f"/api/files/uploads/{foto_b}")
     assert fb.status_code == 200 and fb.content == b"\xff\xd8\xff fake-jpeg B " * 80
     # repetir la sincronización no cambia nada (idempotente, sin duplicados)
     assert local.sync()["state"] == "synced"
-    assert len([i for i in cloud.pull("client").values() if i["data"]["sot"] == "SOT-B2"]) == 1
+    assert len([i for i in cloud.pull("client").values() if i["data"]["sot"] == "B2"]) == 1
 
     # 4) Conflicto: se edita lo mismo en la nube y en el escritorio -> nunca se pisa; se elige «la de la nube»
     va = local.pull("client")[cid_a]["version"]
     vc = cloud.pull("client")[cid_a]["version"]
-    assert cloud.push("client", cid_a, client_data("SOT-A1", "Versión de la nube"), base=vc)["status"] == "applied"
-    assert local.push("client", cid_a, client_data("SOT-A1", "Versión del escritorio"), base=va)["status"] == "applied"
+    assert cloud.push("client", cid_a, client_data("A1", "Versión de la nube"), base=vc)["status"] == "applied"
+    assert local.push("client", cid_a, client_data("A1", "Versión del escritorio"), base=va)["status"] == "applied"
     st = local.sync()
     assert st["state"] == "conflict" and len(st["conflicts"]) == 1, st
     assert cloud.pull("client")[cid_a]["data"]["nombre"] == "Versión de la nube"          # la nube no se tocó
@@ -172,8 +172,8 @@ def test_flujo_completo(world):
     # 5) Otro conflicto, ahora se elige «la mía»: se aplica en la nube
     va = local.pull("client")[cid_a]["version"]
     vc = cloud.pull("client")[cid_a]["version"]
-    assert cloud.push("client", cid_a, client_data("SOT-A1", "Nube 2"), base=vc)["status"] == "applied"
-    assert local.push("client", cid_a, client_data("SOT-A1", "Escritorio 2"), base=va)["status"] == "applied"
+    assert cloud.push("client", cid_a, client_data("A1", "Nube 2"), base=vc)["status"] == "applied"
+    assert local.push("client", cid_a, client_data("A1", "Escritorio 2"), base=va)["status"] == "applied"
     assert local.sync()["state"] == "conflict"
     st = local.c.post("/api/cloud/resolve", json={"entity": "client", "id": cid_a, "resolution": "mine"}).json()
     assert st["state"] == "synced" and not st["conflicts"], st
@@ -181,7 +181,7 @@ def test_flujo_completo(world):
 
     # 6) Cambio hecho en la nube -> baja solo
     vc = cloud.pull("client")[cid_a]["version"]
-    cloud.push("client", cid_a, client_data("SOT-A1", "Nube 3"), base=vc)
+    cloud.push("client", cid_a, client_data("A1", "Nube 3"), base=vc)
     assert local.sync()["state"] == "synced"
     assert local.pull("client")[cid_a]["data"]["nombre"] == "Nube 3"
 
@@ -195,7 +195,7 @@ def test_sin_conexion(world):
     assert r.status_code == 200, r.text
     local.use_token()
     cid = uuid.uuid4().hex
-    assert local.push("client", cid, client_data("SOT-OFF1", "Hecho sin conexión"))["status"] == "applied"
+    assert local.push("client", cid, client_data("OFF1", "Hecho sin conexión"))["status"] == "applied"
     st = local.sync()
     assert st["state"] == "offline", st
     assert cid in local.pull("client")      # todo sigue disponible localmente
