@@ -71,6 +71,30 @@ jobs:
           npx tauri icon public/icon-512.png
           npx tauri build
 
+      - name: "Prueba del instalador (instala, abre la ventana y comprueba que carga la interfaz)"
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem frontend\src-tauri\target\release\bundle\nsis\*.exe | Select-Object -First 1
+          Start-Process $setup.FullName -ArgumentList "/S" -Wait
+          $dir = Join-Path $env:LOCALAPPDATA "NetOps Suite"
+          Get-ChildItem $dir -ErrorAction SilentlyContinue | Format-Table Name, Length
+          $exe = Get-ChildItem $dir -Filter *.exe -ErrorAction SilentlyContinue | Where-Object { $_.Name -notmatch "uninstall|netops-server" } | Select-Object -First 1
+          if (-not $exe) { throw "No se instaló la aplicación" }
+          $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = "--remote-debugging-port=9222"
+          $t0 = Get-Date
+          $app = Start-Process $exe.FullName -PassThru
+          $page = $null
+          for ($i = 0; $i -lt 150 -and -not $page; $i++) {
+            Start-Sleep -Seconds 1
+            try { $page = Invoke-RestMethod "http://127.0.0.1:9222/json" | Where-Object { $_.url -like "http://127.0.0.1:*" } | Select-Object -First 1 } catch {}
+          }
+          Write-Host ("Tardó {0:N1} s en cargar la interfaz" -f ((Get-Date) - $t0).TotalSeconds)
+          Write-Host "---- server.log ----"
+          Get-Content (Join-Path $env:LOCALAPPDATA "NetOpsSuite\server.log") -ErrorAction SilentlyContinue
+          if (-not $page) { Get-Process | Where-Object { $_.Name -match "netops" } | Format-Table Name, Id; throw "La ventana no cargó la interfaz" }
+          Write-Host ("Ventana en: " + $page.url + " · título: " + $page.title)
+          Get-Process | Where-Object { $_.Name -match "netops" } | Stop-Process -Force
+
       - uses: actions/upload-artifact@v4
         with:
           name: NetOps-Suite-Windows
