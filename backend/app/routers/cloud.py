@@ -21,7 +21,7 @@ def _status(db: Session, user: models.User) -> dict:
     cfg = cs.load_cfg()
     linked = cfg.get("user_id") == user.id and bool(cfg.get("token"))
     items = cs.conflicts(db, user) if linked else []
-    return {"enabled": True, "url": cs.cloud_url(), "linked": linked, "state": cs.STATE["state"] if linked else "unlinked",
+    return {"enabled": True, "url": cs.cloud_url(), "linked": linked, "state": cs.STATE["state"] if linked else "unlinked", "running": bool(cs.STATE.get("running")),
             "last_sync": cs.STATE.get("last_sync", ""), "error": cs.STATE.get("error", ""),
             "pending": cs.pending_count(db) if linked else 0, "conflicts": items}
 

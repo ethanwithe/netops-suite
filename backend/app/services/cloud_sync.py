@@ -132,7 +132,7 @@ def is_linked(username: str) -> bool:
 
 
 # ------------------------------------------------------------------ estado visible en la interfaz
-STATE: dict[str, Any] = {"state": "idle", "last_sync": "", "error": "", "pending": 0}
+STATE: dict[str, Any] = {"state": "idle", "running": False, "last_sync": "", "error": "", "pending": 0}
 _kick = threading.Event()
 _run_lock = threading.Lock()
 
@@ -499,7 +499,7 @@ def _sync_locked() -> dict:
         if not cloud_url() or not token:
             _set(state="needs_login" if cfg.get("linked") else "idle")
             return dict(STATE)
-        _set(state="syncing", error="")
+        _set(running=True)
         db = SessionLocal()
         try:
             user = db.get(models.User, cfg.get("user_id", ""))
@@ -521,6 +521,8 @@ def _sync_locked() -> dict:
         _set(state="offline", error=str(e)[:200])
     except Exception as e:  # noqa: BLE001
         _set(state="error", error=f"{type(e).__name__}: {str(e)[:200]}")
+    finally:
+        _set(running=False)
     return dict(STATE)
 
 

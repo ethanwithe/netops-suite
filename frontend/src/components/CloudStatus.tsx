@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "../api/client";
 
 interface Conflict { entity: string; id: string; label: string; reason: string; server_updated_at: string; server_deleted: boolean }
-interface Cloud { enabled: boolean; url?: string; linked?: boolean; state?: string; last_sync?: string; error?: string; pending?: number; conflicts?: Conflict[] }
+interface Cloud { enabled: boolean; url?: string; linked?: boolean; state?: string; running?: boolean; last_sync?: string; error?: string; pending?: number; conflicts?: Conflict[] }
 
 const TEXT: Record<string, string> = {
   synced: "Nube: sincronizado", syncing: "Nube: sincronizando…", offline: "Nube: sin conexión (se sube solo al volver)",
@@ -26,7 +26,7 @@ export default function CloudStatus() {
     return () => window.clearInterval(t);
   }, [load]);
   if (!import.meta.env.VITE_DESKTOP || !c?.enabled) return null;
-  const state = c.state ?? "idle";
+  const state = c.running ? "syncing" : (c.state ?? "idle");
 
   async function run(fn: () => Promise<unknown>) {
     setBusy(true); setMsg("");
