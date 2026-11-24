@@ -58,6 +58,7 @@ const TITLES: Record<string, string> = {
 
 export default function Layout() {
   const { me } = useAuth();
+  const { L } = useUiLabels();
   const { pathname } = useLocation();
   const [acting, setActing] = useState(getActingClient());
   useEffect(() => setActing(getActingClient()), [pathname]);
@@ -94,11 +95,10 @@ export default function Layout() {
     { to: "/checklist/saturador", label: L("ck.saturador", "Saturador") },
   ];
   const fotoSub = [
-    ...FOTO_SUB.filter((o) => (o.to.endsWith("poder-judicial") ? can(me, "poder_judicial") : okFoto)),
+    ...FOTO_SUB.filter((o) => (o.to.endsWith("poder-judicial") ? can(me, "poder_judicial") : okFoto)).map((o) => ({ ...o, label: L(`rf.${o.to.split("/").pop()!.replace(/-/g, "_")}`, o.label) })),
     ...(okFoto ? custom.map((w) => ({ to: windowRoute(w.id), label: w.nombre })) : []),
   ];
   const grupos = useGrupos();
-  const { L } = useUiLabels();
   const { layout } = useDiagramOptions();
   const grTitles: Record<string, string> = {
     ...Object.fromEntries(grupos.map((g) => [`/grafica/${g.id}`, g.label])),
