@@ -48,7 +48,7 @@ export default function DiagramIconsPage() {
               {list.map((i) => (
                 <div key={i.id} className="card space-y-2 p-3">
                   <div className="flex h-24 items-center justify-center rounded-lg bg-slate-100/70 p-2">
-                    <img src={iconUrl(i.id)} alt={i.name} className="max-h-full max-w-full object-contain" />
+                    <img loading="lazy" decoding="async" src={iconUrl(i.id)} alt={i.name} className="max-h-full max-w-full object-contain" />
                   </div>
                   <p className="truncate text-xs font-medium text-slate-700" title={i.name}>{i.name}</p>
                   <div className="flex items-center justify-between text-[11px] text-slate-400">

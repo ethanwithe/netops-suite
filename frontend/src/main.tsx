@@ -3,6 +3,9 @@ import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import App from "./App";
 import "./index.css";
+import { installDownloadGuard } from "./utils/saveFile";
+
+installDownloadGuard();
 
 /** App de escritorio: la consola y el saturador viven dentro del programa; la página recibe sus códigos sola. */
 async function desktopSetup() {
@@ -26,6 +29,14 @@ void desktopSetup().then(() => {
     </React.StrictMode>
   );
 });
+
+// Modo ligero automático: pantalla táctil/estrecha o equipo con poca memoria/núcleos (quita desenfoques y animaciones de fondo)
+try {
+  const nav = navigator as Navigator & { deviceMemory?: number };
+  const weak = (nav.deviceMemory ?? 8) <= 4 || (navigator.hardwareConcurrency ?? 8) <= 4;
+  const phone = window.matchMedia("(pointer: coarse)").matches || window.innerWidth < 820;
+  if (weak || phone) document.documentElement.dataset.lite = "1";
+} catch { /* sin datos: modo normal */ }
 
 // Rendimiento: con la pestaña oculta o mientras se desplaza la página se pausan las animaciones de fondo
 {

@@ -693,6 +693,16 @@ input, select, textarea, .font-mono, td { font-variant-numeric: tabular-nums; }
   *::-webkit-scrollbar-thumb:hover { background: rgb(var(--s400, var(--s300))); background-clip: content-box; }
 }
 
+/* ============ Modo ligero: teléfonos y equipos modestos ============
+   Sin desenfoque de vidrio ni animaciones de fondo (lo que más gasta batería y entrecorta el desplazamiento).
+   Se activa solo (ver main.tsx); el contenido y los colores son los mismos. */
+html[data-lite] .glass, html[data-lite] .dock { -webkit-backdrop-filter: none; backdrop-filter: none; background-color: rgb(var(--surface) / .96); }
+html[data-lite] .scene *, html[data-lite] .scene *::before, html[data-lite] .scene *::after { animation: none !important; transition: none !important; will-change: auto !important; }
+html[data-lite] .px-layer { transform: none; }
+@media (hover: none) { .btn-primary:active, .btn-secondary:active { transition-duration: 60ms; } }
+html { -webkit-tap-highlight-color: transparent; }
+body { overscroll-behavior-y: none; }
+
 /* Menús desplegables en celular: ocupan el ancho de la pantalla (con margen) en vez de salirse por el borde. */
 @media (max-width: 639px) {
   .pop-mobile {

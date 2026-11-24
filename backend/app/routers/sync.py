@@ -31,7 +31,7 @@ from app.auth import current_user, log_activity
 from app.config import UPLOADS_DIR
 from app.database import get_db
 from app.routers.clients import norm_fecha, norm_sot, _snapshot
-from app.services import client_access as ca, diagram_vars, filestore, security
+from app.services import client_access as ca, diagram_vars, filestore, reference_sync, security
 
 router = APIRouter(prefix="/api/sync", tags=["sync"])
 
@@ -457,3 +457,13 @@ async def push_output(file: UploadFile = File(...), name: str = Form(...), user:
     dest.write_bytes(content)
     await run_in_threadpool(filestore.save_output, dest)
     return {"name": name, "sha256": hashlib.sha256(content).hexdigest(), "size": len(content)}
+
+
+class ReferenceIn(BaseModel):
+    have: dict = Field(default_factory=dict)   # {tabla: huella} de lo que el dispositivo ya tiene
+
+
+@router.post("/reference")
+def reference(p: ReferenceIn, user: models.User = Depends(current_user), db: Session = Depends(get_db)):
+    """Cuentas, logos, iconos, catálogos, diseños y ajustes de la nube (solo lo que cambió). Solo lectura."""
+    return {"tables": reference_sync.snapshot(db, user, p.have)}

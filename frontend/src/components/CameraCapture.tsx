@@ -45,6 +45,23 @@ interface Props {
   onDiscard?: (file: File, mode: "trash" | "delete") => void;
 }
 
+/** Gira la imagen `deg` grados en sentido horario (0/90/180/270). */
+function rotated(src: HTMLCanvasElement, deg: number): HTMLCanvasElement {
+  if (!deg) return src;
+  const out = document.createElement("canvas");
+  const swap = deg === 90 || deg === 270;
+  out.width = swap ? src.height : src.width;
+  out.height = swap ? src.width : src.height;
+  const c = out.getContext("2d");
+  if (!c) return src;
+  if (deg === 90) { c.translate(out.width, 0); c.rotate(Math.PI / 2); }
+  else if (deg === 180) { c.translate(out.width, out.height); c.rotate(Math.PI); }
+  else { c.translate(0, out.height); c.rotate(-Math.PI / 2); }
+  c.drawImage(src, 0, 0);
+  return out;
+}
+
+const PILL = "flex h-10 items-center gap-1.5 rounded-full bg-white/15 px-3 text-xs font-semibold text-white backdrop-blur transition active:scale-95";
 const GLASS = "grid h-10 w-10 place-items-center rounded-full bg-white/15 text-white backdrop-blur transition active:scale-90";
 
 export default function CameraCapture({ cliente = "", onCapture, onClose, onNative, multi = false, onDiscard }: Props) {
@@ -56,10 +73,32 @@ export default function CameraCapture({ cliente = "", onCapture, onClose, onNati
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [torch, setTorch] = useState(false);
-  const [hasTorch, setHasTorch] = useState(false);
+  const [hasTorch, setHasTorch] = useState(true);   // se muestra siempre; si el teléfono no la tiene, se avisa al tocarla
+  const [torchMsg, setTorchMsg] = useState("");
+  // Giro físico del teléfono respecto a la pantalla (0/90/180/270). Si la pantalla no gira sola (bloqueo de rotación)
+  // o el teléfono está acostado, la foto y el sello se enderezan según la gravedad.
+  const [tilt, setTilt] = useState<0 | 90 | 180 | 270>(0);
+  const tiltRef = useRef(0);
+  useEffect(() => {
+    const ios = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    let cand = 0, votes = 0;
+    const onMotion = (e: DeviceMotionEvent) => {
+      const g = e.accelerationIncludingGravity;
+      if (!g || g.x == null || g.y == null) return;
+      const gx = ios ? -g.x : g.x, gy = ios ? -g.y : g.y;
+      if (Math.hypot(gx, gy) < 4.5) return;                       // teléfono casi plano: no se cambia
+      const dev = (Math.atan2(gx, gy) * 180) / Math.PI;
+      const scr = screen.orientation?.angle ?? (window as unknown as { orientation?: number }).orientation ?? 0;
+      const rel = ((Math.round((((dev - scr) % 360) + 360) % 360 / 90) * 90) % 360) as 0 | 90 | 180 | 270;
+      if (rel === cand) votes++; else { cand = rel; votes = 1; }
+      if (votes >= 4 && rel !== tiltRef.current) { tiltRef.current = rel; setTilt(rel); }
+    };
+    window.addEventListener("devicemotion", onMotion);
+    return () => window.removeEventListener("devicemotion", onMotion);
+  }, []);
   const [busy, setBusy] = useState(false);
   const [flash, setFlash] = useState(false);
-  const [hq, setHq] = useState(() => { try { return localStorage.getItem("netops.camHQ") === "1"; } catch { return false; } });
+  const [hq, setHq] = useState(() => { try { return localStorage.getItem("netops.camHQ") !== "0"; } catch { return true; } });
   const [ring, setRing] = useState<{ x: number; y: number } | null>(null);
 
   // Vista previa en vivo del sello (para ver si taparía la serie del equipo)
@@ -128,8 +167,8 @@ export default function CameraCapture({ cliente = "", onCapture, onClose, onNati
           audio: false,
           video: {
             facingMode: { ideal: "environment" },
-            width: { ideal: 1920 },   // el sello se hace a 1600 px: pedir más solo retrasa la cámara
-            height: { ideal: 1440 },
+            width: { ideal: 2560 },
+            height: { ideal: 1920 },
           },
         });
         if (cancelled) {
@@ -153,12 +192,29 @@ export default function CameraCapture({ cliente = "", onCapture, onClose, onNati
             .catch(() => undefined);
         }
 
+        // Exposición y balance de blancos continuos (fotos más claras y con color real)
+        const adv: Record<string, string>[] = [];
+        const capsAny = caps as unknown as Record<string, string[] | undefined>;
+        if (capsAny.exposureMode?.includes("continuous")) adv.push({ exposureMode: "continuous" });
+        if (capsAny.whiteBalanceMode?.includes("continuous")) adv.push({ whiteBalanceMode: "continuous" });
+        for (const a of adv) await track.applyConstraints({ advanced: [a as unknown as MediaTrackConstraintSet] }).catch(() => undefined);
+        // Sin ImageCapture (iPhone/Safari) el cuadro de video es la foto: se pide la mayor resolución que dé el sensor
+        const wMax = (caps as unknown as { width?: { max: number } }).width?.max, hMax = (caps as unknown as { height?: { max: number } }).height?.max;
+        if (!("ImageCapture" in window) && wMax && hMax) {
+          await track.applyConstraints({ width: { ideal: Math.min(wMax, 4096) }, height: { ideal: Math.min(hMax, 3072) } }).catch(() => undefined);
+        }
+
         const v = videoRef.current;
         if (v) {
           v.srcObject = stream;
           await v.play().catch(() => undefined);
         }
         setReady(true);
+        // Muchos Android solo informan la linterna cuando la cámara ya está transmitiendo: se vuelve a consultar
+        window.setTimeout(() => {
+          const c2 = (track.getCapabilities?.() ?? {}) as FocusCaps;
+          if (c2.torch) { capsRef.current = { ...capsRef.current, ...c2 }; setHasTorch(true); }
+        }, 700);
       } catch (e) {
         const name = (e as DOMException)?.name;
         setError(
@@ -245,6 +301,8 @@ export default function CameraCapture({ cliente = "", onCapture, onClose, onNati
   }, [setZ]);
 
   function onPtrDown(e: React.PointerEvent<HTMLDivElement>) {
+    const DM = (window as unknown as { DeviceMotionEvent?: { requestPermission?: () => Promise<string> } }).DeviceMotionEvent;
+    if (DM?.requestPermission) { void DM.requestPermission().catch(() => undefined); }
     pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (pointers.current.size === 2) {
       const [a, b] = [...pointers.current.values()];
@@ -273,8 +331,10 @@ export default function CameraCapture({ cliente = "", onCapture, onClose, onNati
     try {
       await track.applyConstraints({ advanced: [{ torch: next } as MediaTrackConstraintSet] });
       setTorch(next);
+      setTorchMsg("");
     } catch {
-      /* el teléfono no la deja encender */
+      setTorchMsg("Este teléfono o navegador no deja encender el flash desde la cámara de la app. Prueba «Cámara del teléfono».");
+      window.setTimeout(() => setTorchMsg(""), 4500);
     }
   }
 
@@ -330,14 +390,22 @@ export default function CameraCapture({ cliente = "", onCapture, onClose, onNati
 
       const digital = !hwZoom && zoomRef.current > 1.01 ? zoomRef.current : 1;
       if (hq && digital === 1) {
-        const IC = (window as unknown as { ImageCapture?: new (t: MediaStreamTrack) => { takePhoto: (o?: object) => Promise<Blob> } }).ImageCapture;
+        const IC = (window as unknown as { ImageCapture?: new (t: MediaStreamTrack) => { takePhoto: (o?: object) => Promise<Blob>; getPhotoCapabilities?: () => Promise<{ imageWidth?: { max: number }; imageHeight?: { max: number }; fillLightMode?: string[] }> } }).ImageCapture;
         if (IC) {
-          try { blob = await new IC(track).takePhoto(); } catch { blob = null; }
+          try {
+            const ic = new IC(track);
+            // foto del sensor completo con el enfoque, HDR y reducción de ruido propios del teléfono
+            const pc = await ic.getPhotoCapabilities?.().catch(() => undefined);
+            const opts: Record<string, unknown> = {};
+            if (pc?.imageWidth?.max && pc?.imageHeight?.max) { opts.imageWidth = pc.imageWidth.max; opts.imageHeight = pc.imageHeight.max; }
+            if (pc?.fillLightMode?.includes(torch ? "flash" : "off")) opts.fillLightMode = torch ? "flash" : "off";
+            blob = await ic.takePhoto(opts).catch(() => ic.takePhoto());
+          } catch { blob = null; }
         }
       }
 
       if (!blob) {
-        const MAX = 1600; // el sello también se hace a este tamaño
+        const MAX = 4096; // casi el sensor completo; el sello baja a 3200 px sin perder detalle útil
         // Con zoom digital se recorta el centro del cuadro, igual que se ve en pantalla.
         const sw = video.videoWidth / digital, sh = video.videoHeight / digital;
         const sx = (video.videoWidth - sw) / 2, sy = (video.videoHeight - sh) / 2;
@@ -346,7 +414,15 @@ export default function CameraCapture({ cliente = "", onCapture, onClose, onNati
         canvas.width = Math.round(sw * k);
         canvas.height = Math.round(sh * k);
         canvas.getContext("2d")?.drawImage(video, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
-        blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, "image/jpeg", 0.92));
+        blob = await new Promise<Blob | null>((res) => rotated(canvas, tiltRef.current).toBlob(res, "image/jpeg", 0.95));
+      } else if (tiltRef.current) {
+        try {
+          const bmp = await createImageBitmap(blob);
+          const c0 = document.createElement("canvas");
+          c0.width = bmp.width; c0.height = bmp.height;
+          c0.getContext("2d")?.drawImage(bmp, 0, 0);
+          blob = await new Promise<Blob | null>((res) => rotated(c0, tiltRef.current).toBlob(res, "image/jpeg", 0.95)) ?? blob;
+        } catch { /* se deja como vino */ }
       }
 
       if (blob) {
@@ -390,15 +466,18 @@ export default function CameraCapture({ cliente = "", onCapture, onClose, onNati
         )}
         <div className="flex items-center gap-2">
           {hasTorch && (
-            <button className={`${GLASS} ${torch ? "!bg-yellow-300 !text-black" : ""}`} onClick={toggleTorch} aria-label={torch ? "Apagar linterna" : "Encender linterna"} aria-pressed={torch}>
+            <button className={`${PILL} ${torch ? "!bg-yellow-300 !text-black" : ""}`} onClick={toggleTorch} aria-label={torch ? "Apagar el flash" : "Encender el flash"} aria-pressed={torch}>
               <svg viewBox="0 0 24 24" className="h-5 w-5" fill={torch ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinejoin="round"><path d="M13 2L5 14h6l-1 8 8-12h-6l1-8z" /></svg>
+              Flash
             </button>
           )}
-          <button className={`${GLASS} ${panel ? "!bg-white !text-black" : ""}`} onClick={() => setPanel((v) => !v)} aria-label="Sello: posición, letra, color y texto" aria-pressed={panel} title="Sello">
-            <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 20h4L19 9l-4-4L4 16v4zM13.5 6.5l4 4" /></svg>
+          <button className={`${PILL} ${panel ? "!bg-white !text-black" : ""}`} onClick={() => setPanel((v) => !v)} aria-label="Sello: posición, tipo de letra, color y texto" aria-pressed={panel}>
+            <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 7V5h16v2M12 5v14M9 19h6" /></svg>
+            Letra
           </button>
         </div>
       </div>
+      {torchMsg && <p role="status" className="mx-4 rounded-xl bg-black/70 p-2 text-center text-xs text-white">{torchMsg}</p>}
 
       <div ref={areaRef} className="relative flex-1 overflow-hidden" style={{ touchAction: "none" }} onClick={refocus}
         onPointerDown={onPtrDown} onPointerMove={onPtrMove} onPointerUp={onPtrUp} onPointerCancel={onPtrUp}>
@@ -417,7 +496,9 @@ export default function CameraCapture({ cliente = "", onCapture, onClose, onNati
         {box && ready && (
           <div
             className="pointer-events-none absolute overflow-hidden"
-            style={{ left: box.x, top: box.y, width: box.w, height: box.h }}
+            style={tilt % 180
+              ? { left: box.x + box.w / 2 - box.h / 2, top: box.y + box.h / 2 - box.w / 2, width: box.h, height: box.w, transform: `rotate(${-tilt}deg)`, transition: "transform .2s" }
+              : { left: box.x, top: box.y, width: box.w, height: box.h, transform: tilt ? "rotate(180deg)" : undefined }}
             aria-hidden="true"
           >
             <div
@@ -431,6 +512,7 @@ export default function CameraCapture({ cliente = "", onCapture, onClose, onNati
               <div
                 className="flex max-w-full flex-col"
                 style={{
+                  overflowWrap: "anywhere",
                   alignItems: posH(sty.pos) === "r" ? "flex-end" : posH(sty.pos) === "c" ? "center" : "flex-start",
                   textAlign: posH(sty.pos) === "r" ? "right" : posH(sty.pos) === "c" ? "center" : "left",
                   fontFamily: fontOf(sty.font).family,
@@ -525,8 +607,8 @@ export default function CameraCapture({ cliente = "", onCapture, onClose, onNati
           </button>
           <div className="flex w-20 justify-end">
             <button className={`h-9 rounded-full px-3 text-xs font-semibold backdrop-blur ${hq ? "bg-yellow-300 text-black" : "bg-white/15 text-white"}`} onClick={toggleHq} aria-pressed={hq}
-              title="Rápida: toma el cuadro que ves (instantánea). Alta calidad: usa el sensor completo y tarda más.">
-              {hq ? "HQ" : "Rápida"}
+              title="Máx. calidad: sensor completo con el enfoque del teléfono (tarda un instante más). Rápida: toma el cuadro que ves.">
+              {hq ? "Máx. calidad" : "Rápida"}
             </button>
           </div>
         </div>

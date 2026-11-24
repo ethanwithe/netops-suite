@@ -466,7 +466,7 @@ function Viewer({ tipo, items, sections, keys, startKey, opciones, onEdit, onClo
 
       <div className="relative flex min-h-0 flex-1 items-center justify-center p-2">
         <button className="absolute left-2 z-10 rounded-full bg-white/20 px-3 py-2 text-white disabled:opacity-30" disabled={idx === 0} onClick={() => setCur(list[idx - 1].key)} aria-label="Anterior">‹</button>
-        <img src={showOrig && e.originalUrl ? e.originalUrl : e.url} alt={e.nombre} className="max-h-full max-w-full object-contain" />
+        <img loading="lazy" decoding="async" src={showOrig && e.originalUrl ? e.originalUrl : e.url} alt={e.nombre} className="max-h-full max-w-full object-contain" />
         {showOrig && <span className="absolute bottom-3 rounded bg-black/60 px-2 py-0.5 text-xs text-white">Original sin editar</span>}
         <button className="absolute right-2 z-10 rounded-full bg-white/20 px-3 py-2 text-white disabled:opacity-30" disabled={idx === list.length - 1} onClick={() => setCur(list[idx + 1].key)} aria-label="Siguiente">›</button>
       </div>
@@ -475,7 +475,7 @@ function Viewer({ tipo, items, sections, keys, startKey, opciones, onEdit, onClo
         {list.map((x, i) => (
           <div key={x.key} id={`ex-th-${x.key}`} className={`relative h-16 w-20 shrink-0 overflow-hidden rounded border-2 ${x.key === cur ? "border-brand-400" : "border-transparent opacity-70"}`}>
             <button type="button" onClick={() => setCur(x.key)} className="h-full w-full" aria-label={`Foto ${i + 1}`}>
-              <img src={x.url} alt="" className="h-full w-full object-cover" />
+              <img loading="lazy" decoding="async" src={x.url} alt="" className="h-full w-full object-cover" />
             </button>
             <button type="button" aria-label="Quitar foto" onClick={() => trashItems(tipo, [x], sections)}
               className="absolute right-0.5 top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-600 text-[11px] font-bold leading-none text-white">×</button>

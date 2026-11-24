@@ -11,6 +11,8 @@ export interface Place {
   address?: string[];
   /** Ubicación recordada de antes (solo para mostrar); nunca se imprime en el sello. */
   approx?: boolean;
+  /** Cuándo se leyó esta posición (ms). Sirve para avisar en el sello si es de hace unos minutos (sin señal). */
+  at?: number;
 }
 
 /** Posición del sello: 9 puntos (arriba/centro/abajo × izquierda/centro/derecha). Por defecto abajo-derecha. */
@@ -125,7 +127,7 @@ function cacheAddress(lat: number, lng: number, a: string[]): void {
     const m = JSON.parse(localStorage.getItem(ADDR_KEY) || "{}") as Record<string, string[]>;
     m[addrKey(lat, lng)] = a;
     const keys = Object.keys(m);
-    keys.slice(0, Math.max(0, keys.length - 30)).forEach((k) => delete m[k]);
+    keys.slice(0, Math.max(0, keys.length - 300)).forEach((k) => delete m[k]);
     localStorage.setItem(ADDR_KEY, JSON.stringify(m));
   } catch { /* sin almacenamiento */ }
 }
@@ -137,18 +139,44 @@ function cacheAddress(lat: number, lng: number, a: string[]): void {
 function resolveAddress(lat: number, lng: number, cb: (a: string[]) => void): void {
   const hit = cachedAddress(lat, lng);
   if (hit) { cb(hit); return; }
-  let streetOk = false, streetFailed = false;
+  if (typeof navigator !== "undefined" && navigator.onLine === false) {     // sin Internet: no se espera a la red
+    const z = nearbyZone(lat, lng);
+    if (z) cb(z);
+    return;
+  }
+  let streetOk = false, streetFailed = false, zoneDone = false;
   let zone: string[] | undefined;
+  const fallback = () => {
+    if (streetFailed && zoneDone && !streetOk && !zone) { const z = nearbyZone(lat, lng); if (z) cb(z); }
+  };
   void reverseBigData(lat, lng).then((a) => {
     zone = a;
+    zoneDone = true;
+    fallback();
     if (!a || streetOk) return;
     cb(a);
     if (streetFailed) cacheAddress(lat, lng, a);
   });
   void reverseNominatim(lat, lng).then((a) => {
     if (a) { streetOk = true; cacheAddress(lat, lng, a); cb(a); }
-    else { streetFailed = true; if (zone) cacheAddress(lat, lng, zone); }
+    else { streetFailed = true; if (zone) cacheAddress(lat, lng, zone); fallback(); }
   });
+}
+
+/** Sin Internet: zona (ciudad/provincia/región) de la dirección guardada más cercana, si fue a menos de 5 km. */
+function nearbyZone(lat: number, lng: number): string[] | undefined {
+  try {
+    const m = JSON.parse(localStorage.getItem(ADDR_KEY) || "{}") as Record<string, string[]>;
+    let best: { d: number; a: string[] } | null = null;
+    for (const [k, a] of Object.entries(m)) {
+      const [la, ln] = k.split(",").map(Number);
+      if (!Number.isFinite(la) || !Number.isFinite(ln) || !a?.length) continue;
+      const d = distanceM({ lat, lng }, { lat: la, lng: ln });
+      if (d < 5000 && (!best || d < best.d)) best = { d, a };
+    }
+    if (!best) return undefined;
+    return best.a.length > 1 ? best.a.slice(1) : best.a;     // sin la calle: ya no es la misma
+  } catch { return undefined; }
 }
 
 const sleep = (ms: number) => new Promise<void>((r) => window.setTimeout(r, ms));
@@ -161,6 +189,7 @@ const sleep = (ms: number) => new Promise<void>((r) => window.setTimeout(r, ms))
 // ---------------------------------------------------------------
 const LAST_KEY = "netops.lastPlace";
 const FRESH_MS = 120_000;
+const STALE_OK_MS = 20 * 60_000;
 interface Fix { place: Place; at: number }
 
 function loadLast(): Fix | null {
@@ -178,9 +207,9 @@ let denied = false;
 const isFresh = (f: Fix | null) => !!f && !f.place.approx && Date.now() - f.at < FRESH_MS;
 
 function publish(place: Place) {
-  current = { place, at: Date.now() };
+  current = { place: { ...place, at: place.at ?? Date.now() }, at: place.at ?? Date.now() };
   try { localStorage.setItem(LAST_KEY, JSON.stringify({ ...place, approx: undefined, at: current.at })); } catch { /* ignorar */ }
-  listeners.forEach((l) => l(place));
+  listeners.forEach((l) => l(current!.place));
 }
 
 function accept(pos: GeolocationPosition, coarse: boolean) {
@@ -191,7 +220,7 @@ function accept(pos: GeolocationPosition, coarse: boolean) {
   const address = prev?.address && distanceM(prev, { lat, lng }) < 60 ? prev.address : cachedAddress(lat, lng);
   // una lectura que el navegador tenía guardada de hace rato sirve para mostrar, pero nunca para el sello
   const stale = Date.now() - pos.timestamp > FRESH_MS;
-  const place: Place = { lat, lng, accuracy, address, approx: stale || undefined };
+  const place: Place = { lat, lng, accuracy, address, approx: stale || undefined, at: pos.timestamp };
   publish(place);
   if (!address) {
     resolveAddress(lat, lng, (a) => {
@@ -219,7 +248,7 @@ function startLocating() {
     }).catch(() => undefined);
   } catch { /* sin Permissions API */ }
   navigator.geolocation.getCurrentPosition((p) => accept(p, true), () => undefined, { enableHighAccuracy: false, maximumAge: 600_000, timeout: 8000 });
-  watchId = navigator.geolocation.watchPosition((p) => accept(p, false), () => undefined, { enableHighAccuracy: true, maximumAge: 10_000, timeout: 20_000 });
+  watchId = navigator.geolocation.watchPosition((p) => accept(p, false), () => undefined, { enableHighAccuracy: true, maximumAge: 10_000, timeout: 60_000 });
 }
 
 /**
@@ -256,11 +285,15 @@ export async function getPlaceFast(): Promise<Place | null> {
     await new Promise<void>((resolve) => {
       const done = () => { listeners.delete(l); window.clearTimeout(t); resolve(); };
       const l = () => done();
-      const t = window.setTimeout(done, 2500);
+      const t = window.setTimeout(done, current ? 2500 : 5000);
       listeners.add(l);
     });
   }
-  if (!isFresh(current)) return null;
+  // Sin señal: la última posición GPS de hace menos de 20 min se usa y el sello avisa de cuánto tiempo hace
+  if (!isFresh(current)) {
+    if (current && Date.now() - current.at < STALE_OK_MS) return current.place;
+    return null;
+  }
   for (let i = 0; i < 8 && !current!.place.address; i++) await sleep(150);   // hasta ~1,2 s por la dirección
   return current!.place;
 }
@@ -296,6 +329,8 @@ export function stampLines(cliente: string, place: Place | null, when = new Date
   if (place) {
     if (place.address) lines.push(...place.address);
     lines.push(`${place.lat.toFixed(7)} ${place.lng.toFixed(7)}`);
+    const age = place.at ? Math.round((when.getTime() - place.at) / 60000) : 0;
+    if (age >= 3) lines.push(`GPS sin señal: posición de hace ${age} min`);
   } else {
     lines.push("Ubicación no disponible");
   }
@@ -308,19 +343,27 @@ export function stampLines(cliente: string, place: Place | null, when = new Date
   return lines;
 }
 
-function wrap(ctx: CanvasRenderingContext2D, text: string, maxW: number): string[] {
+/** Divide un texto en varias líneas para que ninguna pase de `maxW` (corta por palabras y, si una sola no cabe, por letras). */
+export function wrap(ctx: CanvasRenderingContext2D, text: string, maxW: number): string[] {
   const out: string[] = [];
   let cur = "";
-  for (const word of text.split(/\s+/)) {
-    const test = cur ? `${cur} ${word}` : word;
-    if (ctx.measureText(test).width <= maxW || !cur) cur = test;
-    else {
-      out.push(cur);
-      cur = word;
+  const fits = (t: string) => ctx.measureText(t).width <= maxW;
+  const push = (word: string) => {
+    if (fits(word) || maxW <= 0) { cur = word; return; }
+    let chunk = "";
+    for (const ch of Array.from(word)) {
+      if (chunk && !fits(chunk + ch)) { out.push(chunk); chunk = ch; } else chunk += ch;
     }
+    cur = chunk;
+  };
+  for (const word of text.split(/\s+/).filter(Boolean)) {
+    const test = cur ? `${cur} ${word}` : word;
+    if (!cur) push(word);
+    else if (fits(test)) cur = test;
+    else { out.push(cur); push(word); }
   }
   if (cur) out.push(cur);
-  return out;
+  return out.length ? out : [""];
 }
 
 function loadImage(file: File): Promise<HTMLImageElement> {
@@ -343,7 +386,7 @@ function loadImage(file: File): Promise<HTMLImageElement> {
 export async function stampImage(file: File, lines: string[], style: StampStyle = getStampStyle()): Promise<File> {
   const img = await loadImage(file);
 
-  const MAX = 1600;
+  const MAX = 3200;
   const scale = Math.min(1, MAX / Math.max(img.naturalWidth, img.naturalHeight));
   const w = Math.round(img.naturalWidth * scale);
   const h = Math.round(img.naturalHeight * scale);
@@ -353,6 +396,7 @@ export async function stampImage(file: File, lines: string[], style: StampStyle 
   canvas.height = h;
   const ctx = canvas.getContext("2d");
   if (!ctx) return file;
+  ctx.imageSmoothingQuality = "high";
   ctx.drawImage(img, 0, 0, w, h);
 
   // Estilo del sello: letra, color, tamaño y posición elegidos (por defecto cursiva blanca abajo a la derecha, sin franja).
@@ -383,7 +427,7 @@ export async function stampImage(file: File, lines: string[], style: StampStyle 
   const top = V === "t" ? pad : V === "m" ? (h - blockH) / 2 : h - pad - blockH;
   rows.forEach((r, i) => ctx.fillText(r, x, Math.round(top + size * 0.85 + i * lead)));
 
-  const blob: Blob | null = await new Promise((res) => canvas.toBlob(res, "image/jpeg", 0.88));
+  const blob: Blob | null = await new Promise((res) => canvas.toBlob(res, "image/jpeg", 0.94));
   if (!blob) return file;
 
   const base = (file.name || "foto").replace(/\.[^.]+$/, "");

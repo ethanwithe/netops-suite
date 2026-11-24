@@ -1,3 +1,4 @@
+import { saveFile } from "../utils/saveFile";
 import { useEffect, useMemo, useState } from "react";
 import { api, runStreaming } from "../api/client";
 import ConnectionPanel from "../components/ConnectionPanel";
@@ -261,11 +262,7 @@ function GenerarPlantilla({ vendors, services }: { vendors: Vendor[]; services: 
 
   function downloadTxt() {
     if (!preview) return;
-    const blob = new Blob([preview], { type: "text/plain" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url; a.download = "plantilla.txt"; a.click();
-    URL.revokeObjectURL(url);
+    void saveFile(new Blob([preview], { type: "text/plain" }), "plantilla.txt");
   }
 
   function apply() {

@@ -4,7 +4,7 @@ import { api, apiErrorMessage } from "../api/client";
 import { uploadPhoto } from "../sync/engine";
 import { NEUTRAL, adjustCanvas, isNeutral } from "../utils/imageAdjust";
 import type { Adjust } from "../utils/imageAdjust";
-import { fontOf, getStampStyle, posH, posV, shadowFor, STAMP_COLORS, STAMP_FONTS, STAMP_ORDER } from "../utils/photoStamp";
+import { fontOf, getStampStyle, posH, posV, shadowFor, STAMP_COLORS, STAMP_FONTS, STAMP_ORDER, wrap } from "../utils/photoStamp";
 import type { StampPos } from "../utils/photoStamp";
 
 /** Sello de la foto (fecha, dirección, coordenadas) como objeto libre: se mueve, se agranda y se edita. */
@@ -39,7 +39,7 @@ type Poly = { id: number; k: "poly"; pts: Point[]; closed: boolean; smooth: bool
 type Obj =
   | Poly
   | { id: number; k: "blur"; a: Point; b: Point }
-  | { id: number; k: "text"; p: Point; text: string; size: number; color: string; bg: TextBg; bold: boolean; stamp?: boolean; font?: string; align?: Align; rot?: number };
+  | { id: number; k: "text"; p: Point; text: string; size: number; color: string; bg: TextBg; bold: boolean; stamp?: boolean; font?: string; align?: Align; rot?: number; wrapW?: number };
 
 interface Doc {
   base: HTMLCanvasElement; // imagen de trabajo (nunca se modifica: cada recorte/giro crea otra)
@@ -135,9 +135,13 @@ function drawAligned(ctx: CanvasRenderingContext2D, mode: "fill" | "stroke", l: 
   f(l, x + (align === "right" ? boxW - lw : align === "center" ? (boxW - lw) / 2 : 0));
 }
 
-function textMetrics(ctx: CanvasRenderingContext2D, o: Extract<Obj, { k: "text" }>, px: number) {
-  ctx.font = o.stamp ? `${fontOf(o.font).weight} ${px}px ${fontOf(o.font).family}` : `${o.bold ? "bold " : ""}${px}px Arial`;
-  const lines = o.text.split("\n");
+function textMetrics(ctx: CanvasRenderingContext2D, o: Extract<Obj, { k: "text" }>, px: number, s = 1) {
+  ctx.font = o.stamp ? `${fontOf(o.font).weight} ${px}px ${fontOf(o.font).family}`
+    : o.font ? `${o.bold ? "bold " : fontOf(o.font).weight >= 700 ? "bold " : ""}${px}px ${fontOf(o.font).family}`
+    : `${o.bold ? "bold " : ""}${px}px Arial`;
+  // Un nombre largo no se sale de la foto: se reparte en varias líneas según el ancho disponible
+  const raw = o.text.split("\n");
+  const lines = o.wrapW ? raw.flatMap((l) => wrap(ctx, l, o.wrapW! * s)) : raw;
   const w = Math.max(...lines.map((l) => ctx.measureText(l).width));
   const lead = px * (o.stamp ? 1.18 : 1.2);
   return { lines, w, lead, h: lead * lines.length };
@@ -213,7 +217,7 @@ function renderObjects(ctx: CanvasRenderingContext2D, objects: Obj[], s: number,
       pixelate(ctx, src, o.a, o.b, s);
     } else if (o.k === "text") {
       const px = o.size * u * s;
-      const m = textMetrics(ctx, o, px);
+      const m = textMetrics(ctx, o, px, s);
       ctx.textBaseline = "top";
       const pad = px * 0.28;
       const x = o.p.x * s, y = o.p.y * s;
@@ -560,7 +564,7 @@ export default function ImageAnnotator({ imageUrl, baseUrl, stamp, onClose, onSa
         const u0 = unitOf(base);
         const size = stamp.size ?? (Math.max(14, Math.round(Math.min(base.width, base.height) * 0.05 * ss.scale))) / u0;
         const H0 = posH(ss.pos);
-        const o: Extract<Obj, { k: "text" }> = { id: newId(), k: "text", p: { x: 0, y: 0 }, text: stamp.lines.join("\n"), size, color, bg: "none", bold: false, stamp: true, font, align: stamp.align ?? (H0 === "r" ? "right" : H0 === "c" ? "center" : "left") };
+        const o: Extract<Obj, { k: "text" }> = { id: newId(), k: "text", p: { x: 0, y: 0 }, text: stamp.lines.join("\n"), size, color, bg: "none", bold: false, stamp: true, font, wrapW: base.width * 0.92, align: stamp.align ?? (H0 === "r" ? "right" : H0 === "c" ? "center" : "left") };
         if (stamp.fx != null && stamp.fy != null) {
           o.p = { x: stamp.fx * base.width, y: stamp.fy * base.height };
         } else {
@@ -1333,12 +1337,15 @@ export default function ImageAnnotator({ imageUrl, baseUrl, stamp, onClose, onSa
               <input type="range" min={8} max={200} step={1} className="w-24 shrink-0" aria-label="Tamaño del texto"
                 value={Math.round(selected?.k === "text" ? selected.size : textSize)}
                 onChange={(e) => { const v = Number(e.target.value); setTextSize(v); if (selected?.k === "text") patchSelected({ size: v }); }} />
+              {selected?.k === "text" && doc && (
+                <select className={sel} value={selected.font ?? (selected.stamp ? "script" : "")} aria-label="Tipo de letra"
+                  onChange={(e) => { const v = e.target.value; if (v) void document.fonts.load(`${fontOf(v).weight} 40px ${fontOf(v).family}`).catch(() => undefined).then(() => patchSelected({ font: v })); else patchSelected({ font: undefined }); }}>
+                  {!selected.stamp && <option value="">Letra normal</option>}
+                  {STAMP_FONTS.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
+                </select>
+              )}
               {selected?.k === "text" && selected.stamp && doc && (
                 <>
-                  <select className={sel} value={selected.font ?? "script"} aria-label="Tipo de letra del sello"
-                    onChange={(e) => patchSelected({ font: e.target.value })}>
-                    {STAMP_FONTS.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
-                  </select>
                   <span className="flex shrink-0 items-center gap-1" aria-label="Color del sello">
                     {STAMP_COLORS.map((c) => (
                       <button key={c} type="button" aria-label={`Color ${c}`} onClick={() => patchSelected({ color: c })}

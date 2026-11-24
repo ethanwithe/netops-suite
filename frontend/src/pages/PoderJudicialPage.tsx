@@ -243,7 +243,7 @@ export default function PoderJudicialPage() {
                 <div className="flex flex-wrap gap-2">
                   {c.images.map((im, k) => (
                     <div key={im.path} className="relative">
-                      <img src={im.url} alt="" className="h-16 rounded border" />
+                      <img loading="lazy" decoding="async" src={im.url} alt="" className="h-16 rounded border" />
                       <button type="button" title="Editar foto" aria-label="Editar foto"
                         className="absolute -left-1 -top-1 rounded-full bg-brand-600 px-1 text-[10px] text-white"
                         onClick={() => setEditing({ target: { kind: "cell", sid: s.id, cid: c.id, idx: k }, url: im.url })}>Editar</button>
