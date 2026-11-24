@@ -27,6 +27,14 @@ void desktopSetup().then(() => {
   );
 });
 
+// Modo ligero automático: pantalla táctil/estrecha o equipo con poca memoria/núcleos (quita desenfoques y animaciones de fondo)
+try {
+  const nav = navigator as Navigator & { deviceMemory?: number };
+  const weak = (nav.deviceMemory ?? 8) <= 4 || (navigator.hardwareConcurrency ?? 8) <= 4;
+  const phone = window.matchMedia("(pointer: coarse)").matches || window.innerWidth < 820;
+  if (weak || phone) document.documentElement.dataset.lite = "1";
+} catch { /* sin datos: modo normal */ }
+
 // Rendimiento: con la pestaña oculta o mientras se desplaza la página se pausan las animaciones de fondo
 {
   const root = document.documentElement;

@@ -45,6 +45,22 @@ interface Props {
   onDiscard?: (file: File, mode: "trash" | "delete") => void;
 }
 
+/** Gira la imagen `deg` grados en sentido horario (0/90/180/270). */
+function rotated(src: HTMLCanvasElement, deg: number): HTMLCanvasElement {
+  if (!deg) return src;
+  const out = document.createElement("canvas");
+  const swap = deg === 90 || deg === 270;
+  out.width = swap ? src.height : src.width;
+  out.height = swap ? src.width : src.height;
+  const c = out.getContext("2d");
+  if (!c) return src;
+  if (deg === 90) { c.translate(out.width, 0); c.rotate(Math.PI / 2); }
+  else if (deg === 180) { c.translate(out.width, out.height); c.rotate(Math.PI); }
+  else { c.translate(0, out.height); c.rotate(-Math.PI / 2); }
+  c.drawImage(src, 0, 0);
+  return out;
+}
+
 const PILL = "flex h-10 items-center gap-1.5 rounded-full bg-white/15 px-3 text-xs font-semibold text-white backdrop-blur transition active:scale-95";
 const GLASS = "grid h-10 w-10 place-items-center rounded-full bg-white/15 text-white backdrop-blur transition active:scale-90";
 
@@ -59,6 +75,27 @@ export default function CameraCapture({ cliente = "", onCapture, onClose, onNati
   const [torch, setTorch] = useState(false);
   const [hasTorch, setHasTorch] = useState(true);   // se muestra siempre; si el teléfono no la tiene, se avisa al tocarla
   const [torchMsg, setTorchMsg] = useState("");
+  // Giro físico del teléfono respecto a la pantalla (0/90/180/270). Si la pantalla no gira sola (bloqueo de rotación)
+  // o el teléfono está acostado, la foto y el sello se enderezan según la gravedad.
+  const [tilt, setTilt] = useState<0 | 90 | 180 | 270>(0);
+  const tiltRef = useRef(0);
+  useEffect(() => {
+    const ios = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    let cand = 0, votes = 0;
+    const onMotion = (e: DeviceMotionEvent) => {
+      const g = e.accelerationIncludingGravity;
+      if (!g || g.x == null || g.y == null) return;
+      const gx = ios ? -g.x : g.x, gy = ios ? -g.y : g.y;
+      if (Math.hypot(gx, gy) < 4.5) return;                       // teléfono casi plano: no se cambia
+      const dev = (Math.atan2(gx, gy) * 180) / Math.PI;
+      const scr = screen.orientation?.angle ?? (window as unknown as { orientation?: number }).orientation ?? 0;
+      const rel = ((Math.round((((dev - scr) % 360) + 360) % 360 / 90) * 90) % 360) as 0 | 90 | 180 | 270;
+      if (rel === cand) votes++; else { cand = rel; votes = 1; }
+      if (votes >= 4 && rel !== tiltRef.current) { tiltRef.current = rel; setTilt(rel); }
+    };
+    window.addEventListener("devicemotion", onMotion);
+    return () => window.removeEventListener("devicemotion", onMotion);
+  }, []);
   const [busy, setBusy] = useState(false);
   const [flash, setFlash] = useState(false);
   const [hq, setHq] = useState(() => { try { return localStorage.getItem("netops.camHQ") === "1"; } catch { return false; } });
@@ -252,6 +289,8 @@ export default function CameraCapture({ cliente = "", onCapture, onClose, onNati
   }, [setZ]);
 
   function onPtrDown(e: React.PointerEvent<HTMLDivElement>) {
+    const DM = (window as unknown as { DeviceMotionEvent?: { requestPermission?: () => Promise<string> } }).DeviceMotionEvent;
+    if (DM?.requestPermission) { void DM.requestPermission().catch(() => undefined); }
     pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (pointers.current.size === 2) {
       const [a, b] = [...pointers.current.values()];
@@ -355,7 +394,15 @@ export default function CameraCapture({ cliente = "", onCapture, onClose, onNati
         canvas.width = Math.round(sw * k);
         canvas.height = Math.round(sh * k);
         canvas.getContext("2d")?.drawImage(video, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
-        blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, "image/jpeg", 0.92));
+        blob = await new Promise<Blob | null>((res) => rotated(canvas, tiltRef.current).toBlob(res, "image/jpeg", 0.92));
+      } else if (tiltRef.current) {
+        try {
+          const bmp = await createImageBitmap(blob);
+          const c0 = document.createElement("canvas");
+          c0.width = bmp.width; c0.height = bmp.height;
+          c0.getContext("2d")?.drawImage(bmp, 0, 0);
+          blob = await new Promise<Blob | null>((res) => rotated(c0, tiltRef.current).toBlob(res, "image/jpeg", 0.92)) ?? blob;
+        } catch { /* se deja como vino */ }
       }
 
       if (blob) {
@@ -429,7 +476,9 @@ export default function CameraCapture({ cliente = "", onCapture, onClose, onNati
         {box && ready && (
           <div
             className="pointer-events-none absolute overflow-hidden"
-            style={{ left: box.x, top: box.y, width: box.w, height: box.h }}
+            style={tilt % 180
+              ? { left: box.x + box.w / 2 - box.h / 2, top: box.y + box.h / 2 - box.w / 2, width: box.h, height: box.w, transform: `rotate(${-tilt}deg)`, transition: "transform .2s" }
+              : { left: box.x, top: box.y, width: box.w, height: box.h, transform: tilt ? "rotate(180deg)" : undefined }}
             aria-hidden="true"
           >
             <div

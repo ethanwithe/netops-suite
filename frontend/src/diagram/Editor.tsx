@@ -601,7 +601,7 @@ export default function Editor({ doc, fields, hist }: { doc: Doc; fields: Fields
                   <div className="grid grid-cols-3 gap-1.5">
                     {list.map((i) => (
                       <button key={i.id} type="button" title={`${i.name}: clic para elegirlo y luego clic o arrastre en el lienzo (doble clic lo pone al centro)`} draggable onDragStart={(e) => e.dataTransfer.setData("text/icon-id", i.id)} onClick={() => void armIcon(i.id)} onDoubleClick={() => void addIcon(i.id)} className={`flex h-14 items-center justify-center rounded-lg p-1 hover:bg-slate-200/80 ${tool === "icon" && pendingIcon?.id === i.id ? "bg-brand-500/20 ring-2 ring-brand-500" : "bg-slate-100/70"}`}>
-                        <img src={iconUrl(i.id)} alt={i.name} className="max-h-full max-w-full object-contain" draggable={false} />
+                        <img loading="lazy" decoding="async" src={iconUrl(i.id)} alt={i.name} className="max-h-full max-w-full object-contain" draggable={false} />
                       </button>
                     ))}
                   </div>

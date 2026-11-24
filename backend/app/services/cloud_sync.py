@@ -18,6 +18,8 @@ import json
 import os
 import re
 import threading
+from concurrent.futures import ThreadPoolExecutor
+import time
 import uuid
 from pathlib import Path
 from typing import Any, Optional
@@ -33,7 +35,9 @@ from app.services import client_access as ca, reference_sync, security
 DATA = {"client": S.client_data, "workspace": S.ws_data, "checklist_copy": S.ck_data}
 ORDER = ("client", "workspace", "checklist_copy")
 PHOTO_RE = re.compile(r"(?<![A-Za-z0-9-])([0-9a-fA-F-]{32,36}\.(?:png|jpe?g|gif|webp))(?![A-Za-z0-9])", re.I)
-CYCLE_SECONDS = 20
+CYCLE_SECONDS = 10
+REF_EVERY = 60          # los datos de referencia (usuarios, logos, catálogos) se revisan como mucho cada minuto
+_ref_at = [0.0]
 BATCH_OPS, BATCH_BYTES = 50, 6_000_000
 
 
@@ -243,32 +247,40 @@ def _tracked(db, ent: str, eid: str, create: bool = False):
 
 
 def _upload_photos(h: httpx.Client, db, names: list[str]) -> None:
-    for n in names:
-        if db.get(models.CloudItem, ("photo", n)):
-            continue
-        p = UPLOADS_DIR / n
-        if not p.is_file():
-            continue
-        content = p.read_bytes()
+    todo = [n for n in dict.fromkeys(names) if not db.get(models.CloudItem, ("photo", n)) and (UPLOADS_DIR / n).is_file()]
+    if not todo:
+        return
+
+    def one(n: str):
+        content = (UPLOADS_DIR / n).read_bytes()
         sha = hashlib.sha256(content).hexdigest()
         r = _call(h, "POST", "/api/sync/photos", files={"file": (n, content)}, data={"photo_id": Path(n).stem, "sha256": sha})
-        if r.status_code == 200 and r.json().get("sha256") == sha:      # solo se marca como enviada si llegó completa
-            db.add(models.CloudItem(entity="photo", id=n, synced_hash=sha, status="SYNCED"))
-            db.commit()
-        elif r.status_code == 422:
-            raise Offline("La foto llegó dañada: se reintenta.")
+        return n, sha, r
+
+    with ThreadPoolExecutor(max_workers=4) as ex:      # varias fotos a la vez (la base se escribe aquí, en un solo hilo)
+        for n, sha, r in ex.map(one, todo):
+            if r.status_code == 200 and r.json().get("sha256") == sha:      # solo se marca como enviada si llegó completa
+                db.add(models.CloudItem(entity="photo", id=n, synced_hash=sha, status="SYNCED"))
+                db.commit()
+            elif r.status_code == 422:
+                raise Offline("La foto llegó dañada: se reintenta.")
 
 
 def _download_photos(h: httpx.Client, names: list[str]) -> None:
-    for n in names:
-        dest = UPLOADS_DIR / n
-        if dest.is_file():
-            continue
+    todo = [n for n in dict.fromkeys(names) if not (UPLOADS_DIR / n).is_file()]
+    if not todo:
+        return
+
+    def one(n: str) -> None:
         r = _call(h, "GET", f"/api/files/uploads/{n}")
         if r.status_code == 200 and r.content:
+            dest = UPLOADS_DIR / n
             tmp = dest.with_suffix(dest.suffix + ".part")
             tmp.write_bytes(r.content)
             os.replace(tmp, dest)
+
+    with ThreadPoolExecutor(max_workers=6) as ex:
+        list(ex.map(one, todo))
 
 
 # ------------------------------------------------------------------ aplicar lo que llega de la nube
@@ -464,10 +476,13 @@ def _pull(db, h: httpx.Client, user: models.User, cfg: dict) -> int:
 def _pull_reference(db, h: httpx.Client, user: models.User, cfg: dict) -> None:
     """Usuarios, logos, catálogos y ajustes de la nube. Un fallo aquí no frena el resto de la sincronización."""
     try:
+        if time.time() - _ref_at[0] < REF_EVERY:
+            return
         have = cfg.setdefault("ref", {})
         r = _call(h, "POST", "/api/sync/reference", json={"have": have})
         if r.status_code != 200:
             return
+        _ref_at[0] = time.time()
         done = reference_sync.apply(db, r.json().get("tables", {}), user.id)
         if done:
             have.update(done)
@@ -504,7 +519,9 @@ def _pull_item(db, h: httpx.Client, user: models.User, it: dict) -> int:
 
 
 # ------------------------------------------------------------------ ciclo completo
-def sync_once() -> dict:
+def sync_once(force: bool = False) -> dict:
+    if force:
+        _ref_at[0] = 0.0
     with _run_lock:          # un solo ciclo a la vez (el automático y el «Sincronizar ahora» esperan su turno)
         return _sync_locked()
 

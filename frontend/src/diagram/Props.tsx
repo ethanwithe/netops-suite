@@ -195,7 +195,7 @@ export default function PropsPanel({ el, p, selCell, setSelCell, onReplaceIcon }
             <div className="grid max-h-44 grid-cols-4 gap-1.5 overflow-y-auto rounded-lg border border-slate-200 p-1.5">
               {icons.map((i) => (
                 <button key={i.id} type="button" title={i.name} onClick={() => onReplaceIcon(i.id)} className={`flex h-12 items-center justify-center rounded-md p-0.5 hover:bg-slate-100 ${i.id === im.icon ? "ring-2 ring-brand-500" : ""}`}>
-                  <img src={iconUrl(i.id)} alt={i.name} className="max-h-full max-w-full object-contain" draggable={false} />
+                  <img loading="lazy" decoding="async" src={iconUrl(i.id)} alt={i.name} className="max-h-full max-w-full object-contain" draggable={false} />
                 </button>
               ))}
             </div>

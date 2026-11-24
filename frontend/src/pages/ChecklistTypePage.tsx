@@ -463,7 +463,7 @@ const ItemCard = memo(function ItemCard({ it, r, params, ancho, connected, busy,
         <div className="flex flex-wrap items-start gap-2">
           {r.images.map((im, k) => (
             <div key={im.path} className="relative">
-              <img src={im.url} alt="" className="h-20 w-28 rounded border object-cover" />
+              <img loading="lazy" decoding="async" src={im.url} alt="" className="h-20 w-28 rounded border object-cover" />
               <button type="button" aria-label="Editar captura" title="Editar (líneas, flechas, texto, recorte…)"
                 className="absolute -left-1 -top-1 rounded-full bg-slate-700 px-1.5 text-xs text-white"
                 onClick={() => onEdit(it.id, k, im.url)}>Editar</button>

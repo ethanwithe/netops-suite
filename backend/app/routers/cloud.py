@@ -35,7 +35,7 @@ def status(user: models.User = Depends(current_user), db: Session = Depends(get_
 def sync_now(user: models.User = Depends(current_user), db: Session = Depends(get_db)):
     if not DESKTOP:
         raise HTTPException(404, "No disponible.")
-    cs.sync_once()
+    cs.sync_once(force=True)
     return _status(db, user)
 
 

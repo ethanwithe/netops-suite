@@ -12,7 +12,7 @@ import hashlib
 import json
 from typing import Any
 
-from sqlalchemy import Boolean, DateTime, Integer, LargeBinary, inspect
+from sqlalchemy import LargeBinary, DateTime, func, inspect
 
 from app import models
 from app.services import cache
@@ -63,14 +63,28 @@ def digest(rows: list[dict]) -> str:
     return hashlib.sha1(json.dumps(rows, sort_keys=True, default=str).encode()).hexdigest()
 
 
+def _signature(db, table: str, user: models.User) -> str:
+    """Huella barata: no carga los binarios (logos, iconos), solo su tamaño."""
+    M = _model(table)
+    cols = list(inspect(M).columns)
+    skip = USER_SKIP if table == "users" else set()
+    sel = [func.length(getattr(M, c.key)) if isinstance(c.type, LargeBinary) else getattr(M, c.key) for c in cols if c.key not in skip]
+    rows = [tuple(str(v) for v in r) for r in db.query(*sel).all()]
+    if table == "app_settings":
+        rows = [r for r in rows if not any(w in r[0].lower() for w in SECRET_WORDS)]
+    if table == "users" and user.role not in ("admin", "superadmin"):
+        rows = []
+    rows.sort()
+    return "s" + hashlib.sha1(json.dumps(rows).encode()).hexdigest()
+
+
 def snapshot(db, user: models.User, have: dict) -> dict:
-    """{tabla: {digest, rows}} solo de las tablas que cambiaron."""
+    """{tabla: {digest, rows}} solo de las tablas que cambiaron (se decide con la huella barata, sin armar las filas)."""
     out = {}
     for t in TABLES:
-        rows = _rows(db, t, user)
-        d = digest(rows)
-        if have.get(t) != d:
-            out[t] = {"digest": d, "rows": rows}
+        sig = _signature(db, t, user)
+        if have.get(t) != sig:
+            out[t] = {"digest": sig, "rows": _rows(db, t, user)}
     return out
 
 
