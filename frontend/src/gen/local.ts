@@ -223,6 +223,8 @@ function wrap(cfg: InternalAxiosRequestConfig, out: any): AxiosResponse { // esl
 }
 
 export function installLocalGen(api: AxiosInstance): void {
+  // App de escritorio: el servidor local ya genera PDF/Word/ZIP sin Internet; Pyodide no se usa (ni se descarga).
+  if (import.meta.env.VITE_DESKTOP) return;
   const base: AxiosAdapter = axios.getAdapter(api.defaults.adapter ?? axios.defaults.adapter) as AxiosAdapter;
   api.interceptors.request.use((cfg) => {
     if ((cfg.method || "get").toLowerCase() !== "post") return cfg;

@@ -58,6 +58,12 @@ export default function SyncIndicator() {
             <li>Archivos generados por subir: <b>{st.pendingOutputs}</b></li>
             <li>Última sincronización: <b>{ago(st.lastSync)}</b></li>
           </ul>
+          {import.meta.env.VITE_DESKTOP ? (
+            <div className="flex items-center justify-between gap-2 rounded border border-slate-200 p-2">
+              <span>Generar PDF, Word, ZIP y gráficas sin conexión</span>
+              <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${COLOR.SYNCED}`}>Listo</span>
+            </div>
+          ) : (
           <div className="rounded border border-slate-200 p-2">
             <div className="flex items-center justify-between gap-2">
               <span>Generar PDF, Word, ZIP y gráficas sin conexión</span>
@@ -70,6 +76,7 @@ export default function SyncIndicator() {
               Generar siempre en este equipo (aunque haya Internet)
             </label>
           </div>
+          )}
           {!st.online && <p className="rounded bg-slate-100 p-2 text-slate-600">Puedes seguir trabajando: todo se guarda en este equipo y se sube solo al volver Internet.</p>}
           {(st.lastError || st.needsLogin) && <p className="rounded bg-red-50 p-2 text-red-700">{st.lastError}</p>}
           {ops.length > 0 && (

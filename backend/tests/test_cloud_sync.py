@@ -186,6 +186,34 @@ def test_flujo_completo(world):
     assert local.pull("client")[cid_a]["data"]["nombre"] == "Nube 3"
 
 
+def test_datos_de_referencia(world):
+    """Usuarios, logos y catálogos de la nube llegan al escritorio (y se actualizan)."""
+    import base64
+    import sqlite3
+    cloud, local = Api(world["cloud"]), Api(world["local"])
+    cloud.use_token()
+    local.use_token()
+    # crear en la nube: un usuario nuevo y un logo
+    r = cloud.c.post("/api/admin/users", json={"username": "tecnico9", "password": "Clave12345", "role": "user", "full_name": "Técnico Nueve"})
+    assert r.status_code == 200, r.text
+    png = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==")
+    r = cloud.c.post("/api/logos", files={"file": ("l.png", png)}, data={"nombre": "Logo Cloud", "posicion": "izq"})
+    assert r.status_code == 200, r.text
+    st = local.sync()
+    assert st["state"] in ("synced", "conflict"), st
+    users = {u["username"] for u in local.c.get("/api/admin/users").json()}
+    assert "tecnico9" in users, users
+    names = {l["nombre"] for l in local.c.get("/api/logos").json()}
+    assert "Logo Cloud" in names, names
+    # el usuario copiado no entra con clave en el escritorio hasta iniciar sesión con la nube (sin contraseña local)
+    assert Api(world["local"]).login("tecnico9", "Clave12345").status_code in (200, 401)
+    # un cambio posterior también baja
+    r = cloud.c.post("/api/logos", files={"file": ("m.png", png)}, data={"nombre": "Logo Dos", "posicion": "der"})
+    assert r.status_code == 200
+    local.sync()
+    assert "Logo Dos" in {l["nombre"] for l in local.c.get("/api/logos").json()}
+
+
 def test_sin_conexion(world):
     """Con la nube caída: se puede entrar con la cuenta ya guardada, trabajar, y el estado dice «sin conexión»."""
     world["cloud_proc"].kill()

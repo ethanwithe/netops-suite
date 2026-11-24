@@ -28,7 +28,7 @@ from app import models
 from app.config import UPLOADS_DIR
 from app.database import SessionLocal
 from app.routers import sync as S
-from app.services import client_access as ca, security
+from app.services import client_access as ca, reference_sync, security
 
 DATA = {"client": S.client_data, "workspace": S.ws_data, "checklist_copy": S.ck_data}
 ORDER = ("client", "workspace", "checklist_copy")
@@ -461,6 +461,23 @@ def _pull(db, h: httpx.Client, user: models.User, cfg: dict) -> int:
     return changed
 
 
+def _pull_reference(db, h: httpx.Client, user: models.User, cfg: dict) -> None:
+    """Usuarios, logos, catálogos y ajustes de la nube. Un fallo aquí no frena el resto de la sincronización."""
+    try:
+        have = cfg.setdefault("ref", {})
+        r = _call(h, "POST", "/api/sync/reference", json={"have": have})
+        if r.status_code != 200:
+            return
+        done = reference_sync.apply(db, r.json().get("tables", {}), user.id)
+        if done:
+            have.update(done)
+            save_cfg(cfg)
+    except (Offline, NeedLogin):
+        raise
+    except Exception:  # noqa: BLE001
+        db.rollback()
+
+
 def _pull_item(db, h: httpx.Client, user: models.User, it: dict) -> int:
     ent, eid = it["entity"], it["id"]
     t = _tracked(db, ent, eid)
@@ -509,6 +526,7 @@ def _sync_locked() -> dict:
             with _http(token) as h:
                 applied, problems = _push(db, h, user, cfg)
                 got = _pull(db, h, user, cfg)
+                _pull_reference(db, h, user, cfg)
             conflicts = db.query(models.CloudItem).filter(models.CloudItem.status == "CONFLICT").count()
             errors = db.query(models.CloudItem).filter(models.CloudItem.status == "ERROR").count()
             _set(state="conflict" if conflicts else ("error" if errors else "synced"), pending=conflicts + errors, conflicts=conflicts,

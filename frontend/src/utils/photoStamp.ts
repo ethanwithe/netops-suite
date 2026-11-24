@@ -308,19 +308,27 @@ export function stampLines(cliente: string, place: Place | null, when = new Date
   return lines;
 }
 
-function wrap(ctx: CanvasRenderingContext2D, text: string, maxW: number): string[] {
+/** Divide un texto en varias líneas para que ninguna pase de `maxW` (corta por palabras y, si una sola no cabe, por letras). */
+export function wrap(ctx: CanvasRenderingContext2D, text: string, maxW: number): string[] {
   const out: string[] = [];
   let cur = "";
-  for (const word of text.split(/\s+/)) {
-    const test = cur ? `${cur} ${word}` : word;
-    if (ctx.measureText(test).width <= maxW || !cur) cur = test;
-    else {
-      out.push(cur);
-      cur = word;
+  const fits = (t: string) => ctx.measureText(t).width <= maxW;
+  const push = (word: string) => {
+    if (fits(word) || maxW <= 0) { cur = word; return; }
+    let chunk = "";
+    for (const ch of Array.from(word)) {
+      if (chunk && !fits(chunk + ch)) { out.push(chunk); chunk = ch; } else chunk += ch;
     }
+    cur = chunk;
+  };
+  for (const word of text.split(/\s+/).filter(Boolean)) {
+    const test = cur ? `${cur} ${word}` : word;
+    if (!cur) push(word);
+    else if (fits(test)) cur = test;
+    else { out.push(cur); push(word); }
   }
   if (cur) out.push(cur);
-  return out;
+  return out.length ? out : [""];
 }
 
 function loadImage(file: File): Promise<HTMLImageElement> {

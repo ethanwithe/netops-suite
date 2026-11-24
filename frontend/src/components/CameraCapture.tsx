@@ -45,6 +45,7 @@ interface Props {
   onDiscard?: (file: File, mode: "trash" | "delete") => void;
 }
 
+const PILL = "flex h-10 items-center gap-1.5 rounded-full bg-white/15 px-3 text-xs font-semibold text-white backdrop-blur transition active:scale-95";
 const GLASS = "grid h-10 w-10 place-items-center rounded-full bg-white/15 text-white backdrop-blur transition active:scale-90";
 
 export default function CameraCapture({ cliente = "", onCapture, onClose, onNative, multi = false, onDiscard }: Props) {
@@ -56,7 +57,8 @@ export default function CameraCapture({ cliente = "", onCapture, onClose, onNati
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [torch, setTorch] = useState(false);
-  const [hasTorch, setHasTorch] = useState(false);
+  const [hasTorch, setHasTorch] = useState(true);   // se muestra siempre; si el teléfono no la tiene, se avisa al tocarla
+  const [torchMsg, setTorchMsg] = useState("");
   const [busy, setBusy] = useState(false);
   const [flash, setFlash] = useState(false);
   const [hq, setHq] = useState(() => { try { return localStorage.getItem("netops.camHQ") === "1"; } catch { return false; } });
@@ -159,6 +161,11 @@ export default function CameraCapture({ cliente = "", onCapture, onClose, onNati
           await v.play().catch(() => undefined);
         }
         setReady(true);
+        // Muchos Android solo informan la linterna cuando la cámara ya está transmitiendo: se vuelve a consultar
+        window.setTimeout(() => {
+          const c2 = (track.getCapabilities?.() ?? {}) as FocusCaps;
+          if (c2.torch) { capsRef.current = { ...capsRef.current, ...c2 }; setHasTorch(true); }
+        }, 700);
       } catch (e) {
         const name = (e as DOMException)?.name;
         setError(
@@ -273,8 +280,10 @@ export default function CameraCapture({ cliente = "", onCapture, onClose, onNati
     try {
       await track.applyConstraints({ advanced: [{ torch: next } as MediaTrackConstraintSet] });
       setTorch(next);
+      setTorchMsg("");
     } catch {
-      /* el teléfono no la deja encender */
+      setTorchMsg("Este teléfono o navegador no deja encender el flash desde la cámara de la app. Prueba «Cámara del teléfono».");
+      window.setTimeout(() => setTorchMsg(""), 4500);
     }
   }
 
@@ -390,15 +399,18 @@ export default function CameraCapture({ cliente = "", onCapture, onClose, onNati
         )}
         <div className="flex items-center gap-2">
           {hasTorch && (
-            <button className={`${GLASS} ${torch ? "!bg-yellow-300 !text-black" : ""}`} onClick={toggleTorch} aria-label={torch ? "Apagar linterna" : "Encender linterna"} aria-pressed={torch}>
+            <button className={`${PILL} ${torch ? "!bg-yellow-300 !text-black" : ""}`} onClick={toggleTorch} aria-label={torch ? "Apagar el flash" : "Encender el flash"} aria-pressed={torch}>
               <svg viewBox="0 0 24 24" className="h-5 w-5" fill={torch ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinejoin="round"><path d="M13 2L5 14h6l-1 8 8-12h-6l1-8z" /></svg>
+              Flash
             </button>
           )}
-          <button className={`${GLASS} ${panel ? "!bg-white !text-black" : ""}`} onClick={() => setPanel((v) => !v)} aria-label="Sello: posición, letra, color y texto" aria-pressed={panel} title="Sello">
-            <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 20h4L19 9l-4-4L4 16v4zM13.5 6.5l4 4" /></svg>
+          <button className={`${PILL} ${panel ? "!bg-white !text-black" : ""}`} onClick={() => setPanel((v) => !v)} aria-label="Sello: posición, tipo de letra, color y texto" aria-pressed={panel}>
+            <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 7V5h16v2M12 5v14M9 19h6" /></svg>
+            Letra
           </button>
         </div>
       </div>
+      {torchMsg && <p role="status" className="mx-4 rounded-xl bg-black/70 p-2 text-center text-xs text-white">{torchMsg}</p>}
 
       <div ref={areaRef} className="relative flex-1 overflow-hidden" style={{ touchAction: "none" }} onClick={refocus}
         onPointerDown={onPtrDown} onPointerMove={onPtrMove} onPointerUp={onPtrUp} onPointerCancel={onPtrUp}>
@@ -431,6 +443,7 @@ export default function CameraCapture({ cliente = "", onCapture, onClose, onNati
               <div
                 className="flex max-w-full flex-col"
                 style={{
+                  overflowWrap: "anywhere",
                   alignItems: posH(sty.pos) === "r" ? "flex-end" : posH(sty.pos) === "c" ? "center" : "flex-start",
                   textAlign: posH(sty.pos) === "r" ? "right" : posH(sty.pos) === "c" ? "center" : "left",
                   fontFamily: fontOf(sty.font).family,

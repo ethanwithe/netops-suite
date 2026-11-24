@@ -126,7 +126,7 @@ export default function Layout() {
     if (!me?.id) return;
     const stop = startSync(me.id);
     // Con Internet, y sin molestar al abrir la app, se dejan en el equipo los generadores para poder crear PDF/ZIP/Word/PPTX sin conexión.
-    const t = window.setTimeout(() => { void initGenState().then(() => { if (navigator.onLine !== false) void warmGen(); }); }, 6000);
+    const t = import.meta.env.VITE_DESKTOP ? 0 : window.setTimeout(() => { void initGenState().then(() => { if (navigator.onLine !== false) void warmGen(); }); }, 6000);
     return () => { stop(); window.clearTimeout(t); };
   }, [me?.id]);
   // ubicación lista de antemano (solo si el permiso ya estaba concedido): la cámara y el sello no esperan
