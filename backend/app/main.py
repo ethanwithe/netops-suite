@@ -18,6 +18,7 @@ from app.routers import sync as sync_router
 from app.routers import gen as gen_router
 from app.routers import local_tools as local_router
 from app.routers import cloud as cloud_router
+from app.routers import designs as designs_router
 from app.routers import auth as auth_router, admin as admin_router, exports as exports_router, diagrams as diagrams_router, agenda as agenda_router, system as system_router, diagram_options as diagram_options_router
 from app import auth as authlib, models
 from app.services import security
@@ -87,6 +88,7 @@ app.include_router(sync_router.router)
 app.include_router(gen_router.router)
 app.include_router(local_router.router)
 app.include_router(cloud_router.router)
+app.include_router(designs_router.router)
 app.include_router(mascot.router)
 app.include_router(imageai.router)
 app.include_router(logos.router)

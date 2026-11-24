@@ -88,7 +88,12 @@ export function useOpciones() {
     [setRaw]
   );
   const reset = useCallback(() => setRaw(DEFAULT_OPCIONES), [setRaw]);
-  return { opciones, add, remove, rename, reset };
+  /** Aplica las opciones del diseño base: sus textos mandan y las que añadiste tú se conservan. */
+  const applyBase = useCallback((base: Opcion[]) => setRaw((prev) => {
+    const mine = cleanOpciones(prev);
+    return [...base, ...mine.filter((o) => !base.some((b) => b.id === o.id))];
+  }), [setRaw]);
+  return { opciones, add, remove, rename, reset, applyBase };
 }
 
 /** Si la opción de una fila fue borrada, la fila pasa a la primera que quede. */
@@ -347,7 +352,7 @@ function loadSections(v: unknown): Section[] | null {
   return out;
 }
 
-const uid = () => `c${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
+export const uid = () => `c${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
 
 function loadStampPos(v: unknown): { fx: number; fy: number; size: number; font?: string; color?: string; align?: "left" | "center" | "right" | "justify" } | undefined {
   const o = v as { fx?: unknown; fy?: unknown; size?: unknown; font?: unknown; color?: unknown; align?: unknown } | null;

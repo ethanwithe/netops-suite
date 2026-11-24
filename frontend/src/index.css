@@ -702,3 +702,17 @@ html[data-lite] .px-layer { transform: none; }
 @media (hover: none) { .btn-primary:active, .btn-secondary:active { transition-duration: 60ms; } }
 html { -webkit-tap-highlight-color: transparent; }
 body { overscroll-behavior-y: none; }
+
+/* Menús desplegables en celular: ocupan el ancho de la pantalla (con margen) en vez de salirse por el borde. */
+@media (max-width: 639px) {
+  .pop-mobile {
+    position: fixed !important;
+    left: .5rem !important;
+    right: .5rem !important;
+    width: auto !important;
+    max-width: none !important;
+    margin-top: .4rem !important;
+    max-height: calc(100dvh - 7rem);
+    overflow-y: auto;
+  }
+}

@@ -24,6 +24,7 @@ import TabBar, { TabGroup } from "./TabBar";
 import { initLiquid } from "../liquid";
 import { FABRICA, shortLabel } from "../diagram/groups";
 import { createGroup, useDiagramOptions, useGrupos } from "../store/diagramOptions";
+import { useUiLabels } from "../store/uiLabels";
 import { can, displayName, logout, useAuth } from "../store/auth";
 import { Avatar } from "../pages/ProfilePage";
 import { getActingClient, setActingClient } from "../api/client";
@@ -47,6 +48,8 @@ const TITLES: Record<string, string> = {
   "/admin/clientes": "Clientes de todos",
   "/admin/actividad": "Actividad",
   "/admin/reportes": "Reportes de Bit",
+  "/admin/nombres": "Nombres de la interfaz",
+  "/admin/sistema": "Sistema",
   "/grafica/iconos": "Iconos",
   "/plantillas": "Plantillas",
   "/checklist": "CheckList",
@@ -55,6 +58,7 @@ const TITLES: Record<string, string> = {
 
 export default function Layout() {
   const { me } = useAuth();
+  const { L } = useUiLabels();
   const { pathname } = useLocation();
   const [acting, setActing] = useState(getActingClient());
   useEffect(() => setActing(getActingClient()), [pathname]);
@@ -88,10 +92,10 @@ export default function Layout() {
   const ckShown = ckOpen || inCk;
   const ckSub = [
     ...ckTypes.map((t) => ({ to: checklistRoute(t.id), label: t.nombre })),
-    { to: "/checklist/saturador", label: "Saturador" },
+    { to: "/checklist/saturador", label: L("ck.saturador", "Saturador") },
   ];
   const fotoSub = [
-    ...FOTO_SUB.filter((o) => (o.to.endsWith("poder-judicial") ? can(me, "poder_judicial") : okFoto)),
+    ...FOTO_SUB.filter((o) => (o.to.endsWith("poder-judicial") ? can(me, "poder_judicial") : okFoto)).map((o) => ({ ...o, label: L(`rf.${o.to.split("/").pop()!.replace(/-/g, "_")}`, o.label) })),
     ...(okFoto ? custom.map((w) => ({ to: windowRoute(w.id), label: w.nombre })) : []),
   ];
   const grupos = useGrupos();
@@ -100,7 +104,8 @@ export default function Layout() {
     ...Object.fromEntries(grupos.map((g) => [`/grafica/${g.id}`, g.label])),
     ...Object.fromEntries(grupos.flatMap((g) => FABRICA.map((f) => [`/grafica/${g.id}/${f.slug}`, `${shortLabel(g)} · ${layout.labels[`${g.id}-${f.slug}`] || f.label}`]))),
   };
-  const titles: Record<string, string> = { ...TITLES, ...grTitles, "/clientes": "Mis clientes", ...Object.fromEntries(years.map((y) => [`/clientes/${y.year}`, `Clientes ${y.year}`])), ...Object.fromEntries(ckSub.map((o) => [o.to, o.label])), "/checklist": "CheckList", ...Object.fromEntries(custom.map((w) => [windowRoute(w.id), w.nombre])) };
+  const rfTitles = Object.fromEntries(FOTO_SUB.map((o) => [o.to, L(`rf.${o.to.split("/").pop()!.replace(/-/g, "_")}`, o.label)]));
+  const titles: Record<string, string> = { ...TITLES, ...rfTitles, ...grTitles, "/clientes": "Mis clientes", ...Object.fromEntries(years.map((y) => [`/clientes/${y.year}`, `Clientes ${y.year}`])), ...Object.fromEntries(ckSub.map((o) => [o.to, o.label])), "/checklist": "CheckList", ...Object.fromEntries(custom.map((w) => [windowRoute(w.id), w.nombre])) };
   const inGr = pathname.startsWith("/grafica");
   const [grOpen, setGrOpen] = useState(inGr);
   const grShown = grOpen || inGr;
@@ -154,7 +159,7 @@ export default function Layout() {
     ...(can(me, "checklist") ? [{ id: "ck", label: "CheckList", prefixes: ["/checklist"], items: ckSub }] : []),
     ...(okFoto || can(me, "poder_judicial") ? [{ id: "ft", label: "Fotos", prefixes: ["/fotografico"], items: fotoSub }] : []),
     { id: "cl", label: "Clientes", prefixes: ["/clientes"], items: [{ to: "/clientes", label: "Mis clientes" }, ...years.map((y) => ({ to: `/clientes/${y.year}`, label: `Clientes ${y.year}` }))] },
-    ...(me?.is_admin ? [{ id: "ad", label: "Admin", prefixes: ["/admin"], items: [{ to: "/admin/usuarios", label: "Usuarios" }, { to: "/admin/clientes", label: "Clientes de todos" }, { to: "/admin/actividad", label: "Actividad" }, { to: "/admin/reportes", label: "Reportes de Bit" }, ...(me.role === "superadmin" ? [{ to: "/admin/sistema", label: "Sistema" }] : [])] }] : []),
+    ...(me?.is_admin ? [{ id: "ad", label: "Admin", prefixes: ["/admin"], items: [{ to: "/admin/usuarios", label: "Usuarios" }, { to: "/admin/clientes", label: "Clientes de todos" }, { to: "/admin/actividad", label: "Actividad" }, { to: "/admin/reportes", label: "Reportes de Bit" }, ...(me.role === "superadmin" ? [{ to: "/admin/nombres", label: "Nombres" }, { to: "/admin/sistema", label: "Sistema" }] : [])] }] : []),
   ];
   const link = (isActive: boolean) => `side-item ${isActive ? "active" : ""}`;
   const sub = (isActive: boolean) => `side-item ${isActive ? "active" : ""}`;
@@ -223,11 +228,13 @@ export default function Layout() {
               <NavLink to="/admin/clientes" className={({ isActive }) => link(isActive)}><span className="block">Clientes de todos</span></NavLink>
               <NavLink to="/admin/actividad" className={({ isActive }) => link(isActive)}><span className="block">Actividad</span></NavLink>
               <NavLink to="/admin/reportes" className={({ isActive }) => link(isActive)}><span className="block">Reportes de Bit</span></NavLink>
+              {me.role === "superadmin" && <NavLink to="/admin/nombres" className={({ isActive }) => link(isActive)}><span className="block">Nombres de la interfaz</span></NavLink>}
+              {me.role === "superadmin" && <NavLink to="/admin/sistema" className={({ isActive }) => link(isActive)}><span className="block">Sistema</span></NavLink>}
             </>
           )}
           <div className="side-group">Operación</div>
           {can(me, "grafica") && (
-            <Group inside={inGr} shown={grShown} onToggle={() => setGrOpen(!grShown)} title="Gráfica" desc={`${grupos.map((g) => shortLabel(g)).join(" · ")} · iconos`}>
+            <Group inside={inGr} shown={grShown} onToggle={() => setGrOpen(!grShown)} title={L("grp.grafica", "Gráfica")} desc={`${grupos.map((g) => shortLabel(g)).join(" · ")} · iconos`}>
               {grSub.map((o) => subLink(o))}
               {me?.role === "superadmin" && addBtn("+ Nueva opción", () => void newGroup())}
             </Group>
@@ -235,22 +242,22 @@ export default function Layout() {
           {NAV.filter((n) => can(me, n.feature)).map((item) => (
             <NavLink key={item.to} to={item.to} className={({ isActive }) => link(isActive)}>
               <span>
-                <span className="block">{item.label}</span>
+                <span className="block">{L(`nav.${item.to.slice(1)}`, item.label)}</span>
                 <span className="block text-[11px] font-normal opacity-60">{item.desc}</span>
               </span>
             </NavLink>
           ))}
-          {can(me, "checklist") && <Group inside={inCk} shown={ckShown} onToggle={() => setCkOpen(!ckShown)} title="CheckList" desc={`${ckTypes.length} tipos · estilo Claro`}>
+          {can(me, "checklist") && <Group inside={inCk} shown={ckShown} onToggle={() => setCkOpen(!ckShown)} title={L("grp.checklist", "CheckList")} desc={`${ckTypes.length} tipos · estilo Claro`}>
             {ckSub.map((o) => subLink(o))}
             {can(me, "editar_catalogos") && addBtn("+ Nueva opción", () => setCreatingCk(true))}
           </Group>}
 
           <div className="side-group">Documentación</div>
-          {fotoSub.length > 0 && <Group inside={inFoto} shown={fotoShown} onToggle={() => setFotoOpen(!fotoShown)} title="Reporte fotográfico" desc={`${fotoSub.length} formatos`}>
+          {fotoSub.length > 0 && <Group inside={inFoto} shown={fotoShown} onToggle={() => setFotoOpen(!fotoShown)} title={L("grp.rf", "Reporte fotográfico")} desc={`${fotoSub.length} formatos`}>
             {fotoSub.map((o) => subLink(o))}
             {can(me, "editar_catalogos") && okFoto && addBtn("+ Nueva ventana", () => setCreating(true))}
           </Group>}
-          <Group inside={inCl} shown={clShown} onToggle={() => setClOpen(!clShown)} title="Mis clientes" desc="Por SOT · año y mes">
+          <Group inside={inCl} shown={clShown} onToggle={() => setClOpen(!clShown)} title={L("grp.clientes", "Mis clientes")} desc="Por SOT · año y mes">
             {subLink({ to: "/clientes", label: "Todos mis clientes" }, true)}
             {years.map((y) => subLink({ to: `/clientes/${y.year}`, label: `${y.year}  (${y.total})` }, true))}
             {addBtn("+ Nuevo año", newYear)}
@@ -282,7 +289,7 @@ export default function Layout() {
               {userMenu && (
                 <>
                   <div className="fixed inset-0 z-30" onClick={() => setUserMenu(false)} aria-hidden="true" />
-                  <div className="card absolute right-0 z-40 mt-1 w-56 space-y-1 p-2">
+                  <div className="pop-mobile card absolute right-0 z-40 mt-1 w-56 space-y-1 p-2">
                     <p className="truncate px-2 py-1 text-xs text-slate-500">@{me.username}</p>
                     <button className="block w-full rounded px-2 py-1.5 text-left text-sm hover:bg-slate-100" onClick={() => { setUserMenu(false); navigate("/perfil"); }}>Mi perfil</button>
                     <button className="block w-full rounded px-2 py-1.5 text-left text-sm text-red-600 hover:bg-red-50" onClick={() => void logout()}>Cerrar sesión</button>

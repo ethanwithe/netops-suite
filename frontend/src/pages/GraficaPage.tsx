@@ -198,7 +198,7 @@ function GraficaInner({ info, options, remote, reload }: { info: OptionInfo; opt
           <h2 className="page-title">Gráfica</h2>
           <p className="text-sm text-slate-500">{tpl.desc}</p>
         </div>
-        <select className="input w-auto" value={info.id} onChange={(e) => { const o = options.find((x) => x.id === e.target.value); if (o) navigate(`/grafica/${o.grupo}/${o.slug}`); }} aria-label="Opción de gráfica">
+        <select className="input w-auto max-w-full" value={info.id} onChange={(e) => { const o = options.find((x) => x.id === e.target.value); if (o) navigate(`/grafica/${o.grupo}/${o.slug}`); }} aria-label="Opción de gráfica">
           {options.map((o) => <option key={o.id} value={o.id}>{shortLabel(grupos.find((x) => x.id === o.grupo))} · {o.label}</option>)}
         </select>
       </div>

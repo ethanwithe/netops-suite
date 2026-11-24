@@ -73,7 +73,7 @@ function Versions({ ws }: { ws: WsApi }) {
       <button type="button" className="text-[11px] text-brand-600 hover:underline" onClick={toggle}>Recuperar copias anteriores</button>
       {msg && <span className="ml-2 text-[11px] text-emerald-600">{msg}</span>}
       {open && (
-        <div className="card absolute left-0 z-30 mt-1 max-h-64 w-64 space-y-1 overflow-y-auto p-2">
+        <div className="pop-mobile card absolute left-0 z-30 mt-1 max-h-64 w-64 space-y-1 overflow-y-auto p-2">
           {list === null ? <p className="text-xs text-slate-500">Cargando…</p> : list.length === 0 ? <p className="text-xs text-slate-500">Todavía no hay copias anteriores.</p> : list.map((v) => (
             <button key={v.id} type="button" className="block w-full rounded px-2 py-1 text-left text-xs hover:bg-slate-100" onClick={() => void pick(v)}>
               {fmt(v.saved_at)} <span className="text-slate-400">{v.saved_by}</span>

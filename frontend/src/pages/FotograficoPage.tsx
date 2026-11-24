@@ -49,6 +49,9 @@ import WorkspaceBar from "../components/WorkspaceBar";
 import ClientPicker from "../components/ClientPicker";
 import { syncClient, toISODate, useSotSync } from "../store/clients";
 import OpcionesManager from "../components/OpcionesManager";
+import { clearRfBase, mergeWithBase, saveRfBase, sectionsFromBase, useRfBase } from "../store/rfBase";
+import { useAuth } from "../store/auth";
+import { useUiLabels } from "../store/uiLabels";
 import ExtraGallery from "../components/ExtraGallery";
 
 
@@ -107,6 +110,7 @@ export default function FotograficoPage({
   onConfigure?: () => void;
 }) {
   // La pestaña activa se recuerda al ir a otra página y volver.
+  const { L } = useUiLabels();
   const [tab, setTab] = usePersistentState<"run" | "items" | "opc" | "sec">(`fotografico.tab.${tipo}`, "run");
   const [items, setItems] = useState<PhotoItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -168,7 +172,7 @@ export default function FotograficoPage({
     <div className="space-y-6">
       <div>
         <h2 className="page-title">
-          Reporte Fotográfico — {nombre ?? FOTO_TIPOS[tipo]}
+          Reporte Fotográfico — {nombre ?? L(`rf.${tipo}`, FOTO_TIPOS[tipo])}
         </h2>
         {onConfigure && (
           <button type="button" className="btn-secondary mt-1 text-xs" onClick={onConfigure}>
@@ -346,17 +350,52 @@ function SeccionesTab({ tipo, items }: { tipo: FotoTipo; items: PhotoItem[] }) {
     addSection(tipo, id, []);
   }
 
+  const { me } = useAuth();
+  const isSuper = me?.role === "superadmin";
+  const rf = useRfBase(tipo);
+  const [msg, setMsg] = useState("");
+  const [busy, setBusy] = useState(false);
+
   function restoreBase() {
+    if (rf.base) {
+      if (!confirm("¿Restaurar al diseño base de todos? Vuelven el orden, los títulos, los bloques y las celdas del diseño base. Tus fotos y textos se conservan; lo que agregaste y no está en el base queda al final de su sección.")) return;
+      manager.applyBase(rf.base.opciones);
+      setSections(tipo, mergeWithBase(sections, rf.base));
+      setMsg("Restaurado al diseño base de todos.");
+      return;
+    }
     if (!confirm("¿Restaurar el diseño base? Se vuelven a poner las secciones, bloques y celdas originales que hayas quitado. Las fotos y celdas marcadas que ya tienes se conservan.")) return;
     setSections(tipo, upgradeSections(tipo, sections, ordered, manager.opciones));
+    setMsg("Restaurado al diseño original.");
+  }
+
+  async function publishBase() {
+    if (!confirm("¿Poner lo que ves como diseño base PARA TODOS? Se guardan las secciones, títulos, bloques y descripciones (nunca las fotos). Quienes no tengan este reporte empezado partirán de aquí, y todos podrán «Restaurar diseño base».")) return;
+    setBusy(true); setMsg("");
+    try { rf.set(await saveRfBase(tipo, sections, manager.opciones)); setMsg("Diseño base guardado para todos."); }
+    catch (e) { setMsg(apiErrorMessage(e, "No se pudo guardar el diseño base.")); }
+    setBusy(false);
+  }
+
+  async function removeBase() {
+    if (!confirm("¿Quitar el diseño base de todos y volver al original de fábrica?")) return;
+    setBusy(true); setMsg("");
+    try { await clearRfBase(tipo); rf.set(null); setMsg("Se quitó el diseño base: todos vuelven al original."); }
+    catch (e) { setMsg(apiErrorMessage(e, "No se pudo quitar.")); }
+    setBusy(false);
   }
 
   if (s.sections === null) return <p className="flex items-center gap-2 text-sm text-slate-500"><Spinner /> Preparando secciones…</p>;
   return (
     <div className="space-y-3">
       <div className="card flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm text-slate-600">Cambia el título de cada sección, ordénalas, quítalas o agrega nuevas. El PDF lleva «REPORTE FOTOGRAFICO» + el título.</p>
-        <button className="btn-secondary text-xs" onClick={restoreBase}>Restaurar diseño base</button>
+        <p className="min-w-0 flex-1 text-sm text-slate-600">Cambia el título de cada sección, ordénalas, quítalas o agrega nuevas. El PDF lleva «REPORTE FOTOGRAFICO» + el título.{rf.base ? " Hay un diseño base de todos." : ""}</p>
+        <div className="flex flex-wrap items-center gap-2">
+          <button className="btn-secondary text-xs" onClick={restoreBase} disabled={busy}>Restaurar diseño base</button>
+          {isSuper && <button className="btn-secondary text-xs" onClick={() => void publishBase()} disabled={busy} title="Solo superadmin">Poner como diseño base para todos</button>}
+          {isSuper && rf.base && <button className="btn-secondary text-xs" onClick={() => void removeBase()} disabled={busy} title="Solo superadmin">Quitar diseño base de todos</button>}
+        </div>
+        {msg && <p className="w-full text-xs text-slate-600" role="status">{msg}</p>}
       </div>
       {sections.map((sec, si) => {
         const op = resolveOpcion(sec.lado, manager.opciones);
@@ -474,11 +513,17 @@ function RunTab({
   const [onlyUsed, setOnlyUsed] = useState(false);
 
   // Primera vez (o reporte guardado en el formato anterior): se arman las secciones con las descripciones actuales.
+  const rfBase = useRfBase(tipo);
   useEffect(() => {
-    if (s.sections === null) setSections(tipo, buildSections(tipo, ordered, s.rows, manager.opciones));
+    if (s.sections === null && !rfBase.loaded) return;          // se espera a saber si hay diseño base para todos
+    if (s.sections === null) {
+      const used = ordered.some((it) => { const r = s.rows[it.id]; return r && (r.incluir || r.imagePath); });   // reporte viejo con fotos: se conserva
+      if (rfBase.base && !used) { manager.applyBase(rfBase.base.opciones); setSections(tipo, sectionsFromBase(rfBase.base)); }
+      else setSections(tipo, buildSections(tipo, ordered, s.rows, manager.opciones));
+    }
     // Primer formato de secciones (sin bloques) -> con bloques, sin perder fotos ni textos.
     else if (s.sections.some((x) => x.cells.some((c) => c.bloque === undefined))) setSections(tipo, upgradeSections(tipo, s.sections, ordered, manager.opciones));
-  }, [s.sections, tipo, ordered, s.rows, manager.opciones]);
+  }, [s.sections, tipo, ordered, s.rows, manager.opciones, rfBase.loaded, rfBase.base]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const sections = s.sections ?? [];
 
