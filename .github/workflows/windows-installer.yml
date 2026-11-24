@@ -32,7 +32,7 @@ jobs:
           $data = Join-Path $env:RUNNER_TEMP "netops-data"
           $env:NETOPS_DATA_DIR = $data
           $out = Join-Path $env:RUNNER_TEMP "server.out"
-          $p = Start-Process -FilePath "backend\dist\netops-server.exe" -RedirectStandardOutput $out -PassThru -WindowStyle Hidden
+          $p = Start-Process -FilePath "backend\dist\netops-server\netops-server.exe" -RedirectStandardOutput $out -PassThru -WindowStyle Hidden
           $port = $null
           for ($i = 0; $i -lt 120 -and -not $port; $i++) {
             Start-Sleep -Seconds 1
@@ -41,6 +41,7 @@ jobs:
           }
           if (-not $port) { Get-Content $out -ErrorAction SilentlyContinue; throw "El servidor no arrancó" }
           Write-Host "Servidor en el puerto $port"
+          Write-Host "---- server.log ----"; Get-Content (Join-Path $data "server.log")
           $h = Invoke-RestMethod "http://127.0.0.1:$port/api/health"
           if ($h.status -ne "ok") { throw "health falló" }
           $idx = Invoke-WebRequest "http://127.0.0.1:$port/" -UseBasicParsing
@@ -64,11 +65,36 @@ jobs:
         shell: bash
         run: |
           mkdir -p frontend/src-tauri/binaries
-          cp backend/dist/netops-server.exe frontend/src-tauri/binaries/netops-server.exe
+          cp -r backend/dist/netops-server frontend/src-tauri/binaries/netops-server
           cd frontend
           npm install --no-save @tauri-apps/cli@2
           npx tauri icon public/icon-512.png
           npx tauri build
+
+      - name: "Prueba del instalador (instala, abre la ventana y comprueba que carga la interfaz)"
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem frontend\src-tauri\target\release\bundle\nsis\*.exe | Select-Object -First 1
+          Start-Process $setup.FullName -ArgumentList "/S" -Wait
+          $dir = Join-Path $env:LOCALAPPDATA "NetOps Suite"
+          Get-ChildItem $dir -ErrorAction SilentlyContinue | Format-Table Name, Length
+          $exe = Get-ChildItem $dir -Filter *.exe -ErrorAction SilentlyContinue | Where-Object { $_.Name -notmatch "uninstall|netops-server" } | Select-Object -First 1
+          if (-not $exe) { throw "No se instaló la aplicación" }
+          $t0 = Get-Date
+          $app = Start-Process $exe.FullName -PassThru
+          $log = Join-Path $env:LOCALAPPDATA "NetOpsSuite\server.log"
+          $ok = $false
+          for ($i = 0; $i -lt 90 -and -not $ok; $i++) {
+            Start-Sleep -Seconds 1
+            if ((Test-Path $log) -and (Select-String -Path $log -Pattern "interfaz cargada" -Quiet)) { $ok = $true }
+          }
+          Write-Host ("Tardó {0:N1} s desde que se abrió la app hasta que la interfaz cargó" -f ((Get-Date) - $t0).TotalSeconds)
+          Write-Host "---- server.log ----"
+          Get-Content $log -ErrorAction SilentlyContinue
+          Write-Host "---- shell.log ----"
+          Get-Content (Join-Path $env:LOCALAPPDATA "NetOpsSuite\shell.log") -ErrorAction SilentlyContinue
+          Get-Process | Where-Object { $_.Name -match "netops" } | Stop-Process -Force
+          if (-not $ok) { throw "La ventana no cargó la interfaz" }
 
       - uses: actions/upload-artifact@v4
         with:

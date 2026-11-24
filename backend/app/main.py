@@ -173,18 +173,37 @@ def _ensure_users_and_migrate(db) -> None:
         db.commit()
 
 
+def _phase(name: str, t0: float) -> None:
+    """App de escritorio: deja en server.log cuánto tardó cada paso del arranque."""
+    if os.getenv("NETOPS_DESKTOP"):
+        import time
+        try:
+            with open(os.path.join(os.environ.get("NETOPS_DATA_DIR", "."), "server.log"), "a", encoding="utf-8") as f:
+                f.write("         arranque: %-28s %.2fs\n" % (name, time.time() - t0))
+        except OSError:
+            pass
+
+
 @app.on_event("startup")
 def on_startup():
+    import time
+    t = time.time()
     Base.metadata.create_all(bind=engine)
+    _phase("tablas", t); t = time.time()
     _ensure_columns()
+    _phase("columnas", t); t = time.time()
     db = SessionLocal()
     try:
         _ensure_users_and_migrate(db)
+        _phase("usuarios", t); t = time.time()
         from app.services.diagram_seed import seed_diagram_icons
         seed_diagram_icons(db)
+        _phase("iconos de diagramas", t); t = time.time()
         db_seed.seed_if_empty(db)
+        _phase("datos base", t); t = time.time()
         db_seed.seed_photo_tipos(db)
         db_seed.seed_checklist_templates(db)
+        _phase("plantillas", t)
     finally:
         db.close()
 

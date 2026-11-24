@@ -9,6 +9,21 @@ import os
 import socket
 import sys
 import threading
+import time
+import traceback
+
+_T0 = time.time()
+_LOG = None
+
+
+def _log(msg: str) -> None:
+    """Registro en %LOCALAPPDATA%\\NetOpsSuite\\server.log (para saber qué tardó o falló al iniciar)."""
+    try:
+        if _LOG:
+            with open(_LOG, "a", encoding="utf-8") as f:
+                f.write("%7.2fs  %s\n" % (time.time() - _T0, msg))
+    except OSError:
+        pass
 
 
 def _data_dir() -> str:
@@ -33,9 +48,21 @@ def main() -> None:
     # Sin consola (ventana de Windows) stdout/stderr no existen: se evita que print() falle.
     for name in ("stdout", "stderr"):
         if getattr(sys, name) is None:
-            setattr(sys, name, open(os.devnull, "w"))
+            setattr(sys, name, open(os.devnull, "w", encoding="utf-8"))
+        else:
+            try:  # la consola de Windows usa otra codificación: se fuerza UTF-8 y nunca falla por un carácter
+                getattr(sys, name).reconfigure(encoding="utf-8", errors="replace")
+            except Exception:  # noqa: BLE001
+                pass
 
+    global _LOG
     data = _data_dir()
+    _LOG = os.path.join(data, "server.log")
+    try:
+        open(_LOG, "w").close()
+    except OSError:
+        pass
+    _log("inicio")
     os.environ.setdefault("NETOPS_LOCAL", "1")
     os.environ.setdefault("NETOPS_DATA_DIR", data)
     os.environ.setdefault("UPLOADS_DIR", os.path.join(data, "uploads"))
@@ -47,6 +74,7 @@ def main() -> None:
 
     from app.routers import local_tools
     from app.static_tools import puente, saturador
+    _log("consola y saturador cargados")
 
     # Consola y saturador locales: códigos propios, la página los recibe sola (no hay que pegar nada).
     local_tools.CODES["puente"] = puente.stored_code()
@@ -60,6 +88,7 @@ def main() -> None:
 
     import uvicorn
     from app.main import app
+    _log("aplicación importada")
 
     port = _free_port(int(os.getenv("NETOPS_PORT", "0") or 0))
     config = uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning")
@@ -68,11 +97,20 @@ def main() -> None:
     def _announce():
         while not server.started:
             threading.Event().wait(0.1)
+        _log("listo en el puerto %d" % port)
         print("NETOPS_READY %d" % port, flush=True)
 
     threading.Thread(target=_announce, daemon=True).start()
-    server.run()
+    try:
+        server.run()
+    except BaseException:  # noqa: BLE001
+        _log("ERROR:\n" + traceback.format_exc())
+        raise
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except BaseException:  # noqa: BLE001
+        _log("ERROR:\n" + traceback.format_exc())
+        raise
