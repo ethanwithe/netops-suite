@@ -3,6 +3,9 @@ import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import App from "./App";
 import "./index.css";
+import { installDownloadGuard } from "./utils/saveFile";
+
+installDownloadGuard();
 
 /** App de escritorio: la consola y el saturador viven dentro del programa; la página recibe sus códigos sola. */
 async function desktopSetup() {
