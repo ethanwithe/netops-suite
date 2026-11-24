@@ -1,7 +1,7 @@
 name: backend-tests
 on:
   push:
-    branches: [offline-sync-1]
+    branches: [offline-sync-1, ui-mejoras-4]
   pull_request:
 jobs:
   pytest:
