@@ -22,7 +22,8 @@ import AnnouncementBar from "./AnnouncementBar";
 import Backdrop from "./Backdrop";
 import TabBar, { TabGroup } from "./TabBar";
 import { initLiquid } from "../liquid";
-import { FABRICA, GRUPOS } from "../diagram/groups";
+import { FABRICA, shortLabel } from "../diagram/groups";
+import { createGroup, useDiagramOptions, useGrupos } from "../store/diagramOptions";
 import { can, displayName, logout, useAuth } from "../store/auth";
 import { Avatar } from "../pages/ProfilePage";
 import { getActingClient, setActingClient } from "../api/client";
@@ -47,8 +48,6 @@ const TITLES: Record<string, string> = {
   "/admin/actividad": "Actividad",
   "/admin/reportes": "Reportes de Bit",
   "/grafica/iconos": "Iconos",
-  ...Object.fromEntries(GRUPOS.map((g) => [`/grafica/${g.id}`, g.label])),
-  ...Object.fromEntries(GRUPOS.flatMap((g) => FABRICA.map((f) => [`/grafica/${g.id}/${f.slug}`, `${g.label.replace("Gráficas ", "")} · ${f.label}`]))),
   "/plantillas": "Plantillas",
   "/checklist": "CheckList",
   ...Object.fromEntries(FOTO_SUB.map((o) => [o.to, o.label])),
@@ -95,11 +94,22 @@ export default function Layout() {
     ...FOTO_SUB.filter((o) => (o.to.endsWith("poder-judicial") ? can(me, "poder_judicial") : okFoto)),
     ...(okFoto ? custom.map((w) => ({ to: windowRoute(w.id), label: w.nombre })) : []),
   ];
-  const titles: Record<string, string> = { ...TITLES, "/clientes": "Mis clientes", ...Object.fromEntries(years.map((y) => [`/clientes/${y.year}`, `Clientes ${y.year}`])), ...Object.fromEntries(ckSub.map((o) => [o.to, o.label])), "/checklist": "CheckList", ...Object.fromEntries(custom.map((w) => [windowRoute(w.id), w.nombre])) };
+  const grupos = useGrupos();
+  const { layout } = useDiagramOptions();
+  const grTitles: Record<string, string> = {
+    ...Object.fromEntries(grupos.map((g) => [`/grafica/${g.id}`, g.label])),
+    ...Object.fromEntries(grupos.flatMap((g) => FABRICA.map((f) => [`/grafica/${g.id}/${f.slug}`, `${shortLabel(g)} · ${layout.labels[`${g.id}-${f.slug}`] || f.label}`]))),
+  };
+  const titles: Record<string, string> = { ...TITLES, ...grTitles, "/clientes": "Mis clientes", ...Object.fromEntries(years.map((y) => [`/clientes/${y.year}`, `Clientes ${y.year}`])), ...Object.fromEntries(ckSub.map((o) => [o.to, o.label])), "/checklist": "CheckList", ...Object.fromEntries(custom.map((w) => [windowRoute(w.id), w.nombre])) };
   const inGr = pathname.startsWith("/grafica");
   const [grOpen, setGrOpen] = useState(inGr);
   const grShown = grOpen || inGr;
-  const grSub = [...GRUPOS.map((g) => ({ to: `/grafica/${g.id}`, label: g.label })), { to: "/grafica/iconos", label: "Iconos" }];
+  const grSub = [...grupos.map((g) => ({ to: `/grafica/${g.id}`, label: g.label })), { to: "/grafica/iconos", label: "Iconos" }];
+  async function newGroup() {
+    const name = prompt("Nombre de la nueva opción de Gráfica (por ejemplo: Mikrotik, Ubiquiti, Radio enlace).\nQueda al mismo nivel que Cisco, Huawei y Fortinet:");
+    if (!name?.trim()) return;
+    try { const id = await createGroup(name.trim()); navigate(`/grafica/${id}`); } catch { alert("No se pudo crear la opción."); }
+  }
   const inFoto = pathname.startsWith("/fotografico");
   const [fotoOpen, setFotoOpen] = useState(inFoto);
   const fotoShown = fotoOpen || inFoto;
@@ -217,8 +227,9 @@ export default function Layout() {
           )}
           <div className="side-group">Operación</div>
           {can(me, "grafica") && (
-            <Group inside={inGr} shown={grShown} onToggle={() => setGrOpen(!grShown)} title="Gráfica" desc="Cisco · Huawei · Fortinet · iconos">
+            <Group inside={inGr} shown={grShown} onToggle={() => setGrOpen(!grShown)} title="Gráfica" desc={`${grupos.map((g) => shortLabel(g)).join(" · ")} · iconos`}>
               {grSub.map((o) => subLink(o))}
+              {me?.role === "superadmin" && addBtn("+ Nueva opción", () => void newGroup())}
             </Group>
           )}
           {NAV.filter((n) => can(me, n.feature)).map((item) => (
