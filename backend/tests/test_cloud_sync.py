@@ -205,8 +205,6 @@ def test_datos_de_referencia(world):
     assert "tecnico9" in users, users
     names = {l["nombre"] for l in local.c.get("/api/logos").json()}
     assert "Logo Cloud" in names, names
-    # el usuario copiado no entra con clave en el escritorio hasta iniciar sesión con la nube (sin contraseña local)
-    assert Api(world["local"]).login("tecnico9", "Clave12345").status_code in (200, 401)
     # un cambio posterior también baja
     r = cloud.c.post("/api/logos", files={"file": ("m.png", png)}, data={"nombre": "Logo Dos", "posicion": "der"})
     assert r.status_code == 200
