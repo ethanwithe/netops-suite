@@ -351,7 +351,7 @@ function loadImage(file: File): Promise<HTMLImageElement> {
 export async function stampImage(file: File, lines: string[], style: StampStyle = getStampStyle()): Promise<File> {
   const img = await loadImage(file);
 
-  const MAX = 1600;
+  const MAX = 3200;
   const scale = Math.min(1, MAX / Math.max(img.naturalWidth, img.naturalHeight));
   const w = Math.round(img.naturalWidth * scale);
   const h = Math.round(img.naturalHeight * scale);
@@ -361,6 +361,7 @@ export async function stampImage(file: File, lines: string[], style: StampStyle 
   canvas.height = h;
   const ctx = canvas.getContext("2d");
   if (!ctx) return file;
+  ctx.imageSmoothingQuality = "high";
   ctx.drawImage(img, 0, 0, w, h);
 
   // Estilo del sello: letra, color, tamaño y posición elegidos (por defecto cursiva blanca abajo a la derecha, sin franja).
@@ -391,7 +392,7 @@ export async function stampImage(file: File, lines: string[], style: StampStyle 
   const top = V === "t" ? pad : V === "m" ? (h - blockH) / 2 : h - pad - blockH;
   rows.forEach((r, i) => ctx.fillText(r, x, Math.round(top + size * 0.85 + i * lead)));
 
-  const blob: Blob | null = await new Promise((res) => canvas.toBlob(res, "image/jpeg", 0.88));
+  const blob: Blob | null = await new Promise((res) => canvas.toBlob(res, "image/jpeg", 0.94));
   if (!blob) return file;
 
   const base = (file.name || "foto").replace(/\.[^.]+$/, "");

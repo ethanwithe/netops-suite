@@ -282,10 +282,10 @@ async function sha256(b: Blob): Promise<string> {
 }
 const extOf = (n: string, t: string) => { const m = /\.(png|jpe?g|gif|webp)$/i.exec(n); return (m ? m[0] : t.includes("png") ? ".png" : ".jpg").toLowerCase(); };
 
-const REPORT_PX = 1600;   // mismo tamaño que usa el PDF: la foto preparada se incrusta tal cual en cualquier equipo
+const REPORT_PX = 3200;   // alta calidad guardada; el PDF la ajusta igual en cualquier equipo (mismo código Python)
 
 /**
- * Deja la foto lista para el reporte: JPEG RGB de hasta 1600 px, con el giro ya aplicado (sin EXIF).
+ * Deja la foto lista para el reporte: JPEG RGB de hasta 3200 px, con el giro ya aplicado (sin EXIF).
  * Si ya cumple, no se toca. Con esto el PDF sale idéntico en el servidor, en Windows, en Android y en el navegador.
  */
 export async function preparePhoto(file: Blob): Promise<Blob> {
@@ -293,7 +293,7 @@ export async function preparePhoto(file: Blob): Promise<Blob> {
   try {
     const bmp = await createImageBitmap(file, { imageOrientation: "from-image" });
     const k = Math.min(1, REPORT_PX / Math.max(bmp.width, bmp.height));
-    if (k === 1 && file.type === "image/jpeg" && file.size <= 2.5 * 1024 * 1024 && !(file instanceof File && /orient/i.test(file.name))) {
+    if (k === 1 && file.type === "image/jpeg" && file.size <= 7 * 1024 * 1024 && !(file instanceof File && /orient/i.test(file.name))) {
       // JPEG pequeño: se mantiene, salvo que traiga giro EXIF (el navegador ya lo aplicó al decodificar → se vuelve a dibujar)
       if (!(await hasExifRotation(file))) { bmp.close(); return file; }
     }
@@ -306,7 +306,7 @@ export async function preparePhoto(file: Blob): Promise<Blob> {
     ctx.imageSmoothingQuality = "high";
     ctx.drawImage(bmp, 0, 0, w, h);
     bmp.close();
-    const out: Blob | null = await new Promise((res) => c.toBlob(res, "image/jpeg", 0.88));
+    const out: Blob | null = await new Promise((res) => c.toBlob(res, "image/jpeg", 0.93));
     return out ?? file;
   } catch { return file; }
 }

@@ -98,7 +98,7 @@ export default function CameraCapture({ cliente = "", onCapture, onClose, onNati
   }, []);
   const [busy, setBusy] = useState(false);
   const [flash, setFlash] = useState(false);
-  const [hq, setHq] = useState(() => { try { return localStorage.getItem("netops.camHQ") === "1"; } catch { return false; } });
+  const [hq, setHq] = useState(() => { try { return localStorage.getItem("netops.camHQ") !== "0"; } catch { return true; } });
   const [ring, setRing] = useState<{ x: number; y: number } | null>(null);
 
   // Vista previa en vivo del sello (para ver si taparía la serie del equipo)
@@ -167,8 +167,8 @@ export default function CameraCapture({ cliente = "", onCapture, onClose, onNati
           audio: false,
           video: {
             facingMode: { ideal: "environment" },
-            width: { ideal: 1920 },   // el sello se hace a 1600 px: pedir más solo retrasa la cámara
-            height: { ideal: 1440 },
+            width: { ideal: 2560 },
+            height: { ideal: 1920 },
           },
         });
         if (cancelled) {
@@ -190,6 +190,18 @@ export default function CameraCapture({ cliente = "", onCapture, onClose, onNati
           await track
             .applyConstraints({ advanced: [{ focusMode: "continuous" } as MediaTrackConstraintSet] })
             .catch(() => undefined);
+        }
+
+        // Exposición y balance de blancos continuos (fotos más claras y con color real)
+        const adv: Record<string, string>[] = [];
+        const capsAny = caps as unknown as Record<string, string[] | undefined>;
+        if (capsAny.exposureMode?.includes("continuous")) adv.push({ exposureMode: "continuous" });
+        if (capsAny.whiteBalanceMode?.includes("continuous")) adv.push({ whiteBalanceMode: "continuous" });
+        for (const a of adv) await track.applyConstraints({ advanced: [a as unknown as MediaTrackConstraintSet] }).catch(() => undefined);
+        // Sin ImageCapture (iPhone/Safari) el cuadro de video es la foto: se pide la mayor resolución que dé el sensor
+        const wMax = (caps as unknown as { width?: { max: number } }).width?.max, hMax = (caps as unknown as { height?: { max: number } }).height?.max;
+        if (!("ImageCapture" in window) && wMax && hMax) {
+          await track.applyConstraints({ width: { ideal: Math.min(wMax, 4096) }, height: { ideal: Math.min(hMax, 3072) } }).catch(() => undefined);
         }
 
         const v = videoRef.current;
@@ -378,14 +390,22 @@ export default function CameraCapture({ cliente = "", onCapture, onClose, onNati
 
       const digital = !hwZoom && zoomRef.current > 1.01 ? zoomRef.current : 1;
       if (hq && digital === 1) {
-        const IC = (window as unknown as { ImageCapture?: new (t: MediaStreamTrack) => { takePhoto: (o?: object) => Promise<Blob> } }).ImageCapture;
+        const IC = (window as unknown as { ImageCapture?: new (t: MediaStreamTrack) => { takePhoto: (o?: object) => Promise<Blob>; getPhotoCapabilities?: () => Promise<{ imageWidth?: { max: number }; imageHeight?: { max: number }; fillLightMode?: string[] }> } }).ImageCapture;
         if (IC) {
-          try { blob = await new IC(track).takePhoto(); } catch { blob = null; }
+          try {
+            const ic = new IC(track);
+            // foto del sensor completo con el enfoque, HDR y reducción de ruido propios del teléfono
+            const pc = await ic.getPhotoCapabilities?.().catch(() => undefined);
+            const opts: Record<string, unknown> = {};
+            if (pc?.imageWidth?.max && pc?.imageHeight?.max) { opts.imageWidth = pc.imageWidth.max; opts.imageHeight = pc.imageHeight.max; }
+            if (pc?.fillLightMode?.includes(torch ? "flash" : "off")) opts.fillLightMode = torch ? "flash" : "off";
+            blob = await ic.takePhoto(opts).catch(() => ic.takePhoto());
+          } catch { blob = null; }
         }
       }
 
       if (!blob) {
-        const MAX = 1600; // el sello también se hace a este tamaño
+        const MAX = 4096; // casi el sensor completo; el sello baja a 3200 px sin perder detalle útil
         // Con zoom digital se recorta el centro del cuadro, igual que se ve en pantalla.
         const sw = video.videoWidth / digital, sh = video.videoHeight / digital;
         const sx = (video.videoWidth - sw) / 2, sy = (video.videoHeight - sh) / 2;
@@ -394,14 +414,14 @@ export default function CameraCapture({ cliente = "", onCapture, onClose, onNati
         canvas.width = Math.round(sw * k);
         canvas.height = Math.round(sh * k);
         canvas.getContext("2d")?.drawImage(video, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
-        blob = await new Promise<Blob | null>((res) => rotated(canvas, tiltRef.current).toBlob(res, "image/jpeg", 0.92));
+        blob = await new Promise<Blob | null>((res) => rotated(canvas, tiltRef.current).toBlob(res, "image/jpeg", 0.95));
       } else if (tiltRef.current) {
         try {
           const bmp = await createImageBitmap(blob);
           const c0 = document.createElement("canvas");
           c0.width = bmp.width; c0.height = bmp.height;
           c0.getContext("2d")?.drawImage(bmp, 0, 0);
-          blob = await new Promise<Blob | null>((res) => rotated(c0, tiltRef.current).toBlob(res, "image/jpeg", 0.92)) ?? blob;
+          blob = await new Promise<Blob | null>((res) => rotated(c0, tiltRef.current).toBlob(res, "image/jpeg", 0.95)) ?? blob;
         } catch { /* se deja como vino */ }
       }
 
@@ -587,8 +607,8 @@ export default function CameraCapture({ cliente = "", onCapture, onClose, onNati
           </button>
           <div className="flex w-20 justify-end">
             <button className={`h-9 rounded-full px-3 text-xs font-semibold backdrop-blur ${hq ? "bg-yellow-300 text-black" : "bg-white/15 text-white"}`} onClick={toggleHq} aria-pressed={hq}
-              title="Rápida: toma el cuadro que ves (instantánea). Alta calidad: usa el sensor completo y tarda más.">
-              {hq ? "HQ" : "Rápida"}
+              title="Máx. calidad: sensor completo con el enfoque del teléfono (tarda un instante más). Rápida: toma el cuadro que ves.">
+              {hq ? "Máx. calidad" : "Rápida"}
             </button>
           </div>
         </div>
