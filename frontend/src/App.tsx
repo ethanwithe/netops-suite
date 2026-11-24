@@ -24,6 +24,7 @@ const BitReportsPage = lazy(() => import("./pages/BitReportsPage"));
 const AdminUsersPage = lazy(() => import("./pages/AdminUsersPage"));
 const ActivityPage = lazy(() => import("./pages/ActivityPage"));
 const AdminSystemPage = lazy(() => import("./pages/AdminSystemPage"));
+const AdminNamesPage = lazy(() => import("./pages/AdminNamesPage"));
 
 /** Muestra la página solo si el usuario tiene esa función (o es administrador). */
 function Need({ feature, admin, children }: { feature?: string; admin?: boolean; children: JSX.Element }) {
@@ -82,6 +83,7 @@ export default function App() {
         <Route path="/admin/clientes" element={<Need admin><ClientsPage all /></Need>} />
         <Route path="/admin/actividad" element={<Need admin><ActivityPage /></Need>} />
         <Route path="/admin/sistema" element={me.role === "superadmin" ? <AdminSystemPage /> : <div className="card text-sm text-slate-600">Solo el superadmin puede ver esta pantalla.</div>} />
+        <Route path="/admin/nombres" element={me.role === "superadmin" ? <AdminNamesPage /> : <div className="card text-sm text-slate-600">Solo el superadmin puede ver esta pantalla.</div>} />
         <Route path="/admin/reportes" element={<Need admin><BitReportsPage /></Need>} />
         <Route path="*" element={<Navigate to="/panel" replace />} />
       </Route>

@@ -39,3 +39,26 @@ def test_marcas_y_nombres(client):
     assert r.status_code == 200 and not [g for g in r.json()["groups"] if g["id"] == gid]
     assert not [o for o in client.get("/api/diagrams/options").json() if o["grupo"] == gid]
     assert client.delete("/api/diagrams/options/groups/cisco").status_code == 404
+
+
+def test_diseno_base_reporte_fotografico(client):
+    assert client.get("/api/designs/rf/gpon-cisco").json()["base"] is None
+    body = {"sections": [{"lado": "cliente", "id": "x", "cells": [{"descripcion": "Rack", "bloque": "EQUIPOS", "imagePath": "foto.jpg", "id": "c1"}]}],
+            "opciones": [{"id": "cliente", "label": "INSTALACION EN CLIENTE"}, {"id": "", "label": "sin id"}]}
+    r = client.put("/api/designs/rf/gpon-cisco", json=body)
+    assert r.status_code == 200, r.text
+    got = client.get("/api/designs/rf/gpon-cisco").json()["base"]
+    assert got["sections"] == [{"lado": "cliente", "cells": [{"descripcion": "Rack", "bloque": "EQUIPOS"}]}]   # sin fotos ni ids
+    assert got["opciones"] == [{"id": "cliente", "label": "INSTALACION EN CLIENTE"}]
+    assert client.put("/api/designs/rf/mala ruta", json=body).status_code in (400, 404)
+    assert client.put("/api/designs/rf/gpon-cisco", json={"sections": []}).status_code == 400
+    assert client.delete("/api/designs/rf/gpon-cisco").json()["base"] is None
+    assert client.get("/api/designs/rf/gpon-cisco").json()["base"] is None
+
+
+def test_nombres_de_la_interfaz(client):
+    r = client.put("/api/designs/labels", json={"key": "rf.fibra", "label": "Fibra dedicada"})
+    assert r.status_code == 200 and r.json()["labels"]["rf.fibra"] == "Fibra dedicada"
+    assert client.get("/api/designs/labels").json()["labels"]["rf.fibra"] == "Fibra dedicada"
+    assert client.put("/api/designs/labels", json={"key": "mala clave!", "label": "x"}).status_code == 400
+    assert "rf.fibra" not in client.put("/api/designs/labels", json={"key": "rf.fibra", "label": ""}).json()["labels"]
