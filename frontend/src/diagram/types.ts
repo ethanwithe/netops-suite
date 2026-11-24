@@ -59,7 +59,10 @@ export interface TableEl extends Base {
 export type El = TextEl | RectEl | LineEl | ImgEl | TableEl;
 export type ImageEl = ImgEl;
 
-export interface Doc { w: number; h: number; elements: El[] }
+/** Grupos de campos que se piden arriba del lienzo (datos del diagrama). */
+export type FieldGroups = { title: string; fields: { key: string; label: string; hint?: string; multiline?: boolean }[] }[];
+/** `fieldGroups` solo viaja en el diseño publicado / base de la opción (así «base para todos» incluye también los campos de arriba). */
+export interface Doc { w: number; h: number; elements: El[]; fieldGroups?: FieldGroups }
 
 export interface TemplateField { key: string; label: string; hint?: string; multiline?: boolean }
 export interface Template {
