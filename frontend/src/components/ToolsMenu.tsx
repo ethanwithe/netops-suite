@@ -49,7 +49,7 @@ export default function ToolsMenu() {
         Herramientas ▾
       </button>
       {open && (
-        <div role="menu" className="absolute right-0 top-full z-50 mt-2 w-64 animate-pop rounded-xl border border-slate-200 bg-white p-1 shadow-soft">
+        <div role="menu" className="pop-mobile absolute right-0 top-full z-50 mt-2 w-64 animate-pop rounded-xl border border-slate-200 bg-white p-1 shadow-soft">
           {item("terminal", "Terminal", t.connected, t.connected ? t.label : "Sin conexión")}
           {item("sat", "Saturación", dock.satRunning || dock.manualSat, dock.satRunning ? "Saturando ahora" : "Detenida")}
         </div>

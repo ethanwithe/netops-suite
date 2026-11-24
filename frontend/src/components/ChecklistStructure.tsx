@@ -224,6 +224,7 @@ export default function ChecklistStructure({
           >
             Borrar checklist
           </button>
+          {type.personal && type.has_base && <span className="w-full text-xs text-slate-500">Tienes tu propia versión de este checklist (con tus parámetros y secciones). Si el superadmin cambió el diseño base, «Restaurar a diseño base» te trae el de todos.</span>}
           {onRestore && <button className="btn-secondary text-sm" onClick={restore} disabled={busy} title="Vuelve a la versión base de este checklist">Restaurar a diseño base</button>}
           {isSuper && onSetBase && <button className="btn-secondary text-sm" onClick={setBase} disabled={busy} title="Solo superadmin">Poner como diseño base</button>}
           {isSuper && onPublish && <button className="btn-secondary text-sm" onClick={publish} disabled={busy} title="Solo superadmin">Actualizar cambios para todos</button>}
