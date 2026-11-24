@@ -44,7 +44,7 @@ export default function CloudStatus() {
         <span className="hidden sm:inline">☁ {state === "conflict" ? `${c.conflicts?.length ?? 0} conflicto(s)` : state === "synced" ? "Nube" : TEXT[state].replace("Nube: ", "")}</span>
       </button>
       {open && (
-        <div className="card absolute right-0 z-50 mt-2 w-[min(24rem,92vw)] space-y-2 p-3 text-xs text-slate-800" role="dialog" aria-label="Nube">
+        <div className="pop-mobile card absolute right-0 z-50 mt-2 w-[min(24rem,92vw)] space-y-2 p-3 text-xs text-slate-800" role="dialog" aria-label="Nube">
           <div className="flex items-center justify-between gap-2">
             <b className="text-sm">{TEXT[state]}</b>
             <button type="button" className="btn-primary !px-2.5 !py-1 text-xs" disabled={busy || !c.linked} onClick={() => void run(() => api.post("/cloud/sync"))}>{busy ? "Sincronizando…" : "Sincronizar ahora"}</button>

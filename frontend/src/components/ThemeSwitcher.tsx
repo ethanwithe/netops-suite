@@ -38,7 +38,7 @@ export default function ThemeSwitcher() {
         Tema: {current.label}
       </button>
       {open && (
-        <div role="menu" className="absolute right-0 top-full z-50 mt-2 max-h-[80vh] w-64 animate-pop overflow-y-auto rounded-xl border border-slate-200 bg-white p-1 shadow-soft">
+        <div role="menu" className="pop-mobile absolute right-0 top-full z-50 mt-2 max-h-[80vh] w-64 animate-pop overflow-y-auto rounded-xl border border-slate-200 bg-white p-1 shadow-soft">
           {view === "look" ? <LookPanel onBack={() => setView("themes")} /> : <>
           {THEME_OPTIONS.map((o) => (
             <button

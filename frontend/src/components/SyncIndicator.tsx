@@ -47,7 +47,7 @@ export default function SyncIndicator() {
         <span className="hidden sm:inline">{text}</span>
       </button>
       {open && (
-        <div className="card absolute right-0 z-50 mt-2 w-[min(22rem,92vw)] space-y-2 p-3 text-xs" role="dialog" aria-label="Sincronización">
+        <div className="pop-mobile card absolute right-0 z-50 mt-2 w-[min(22rem,92vw)] space-y-2 p-3 text-xs" role="dialog" aria-label="Sincronización">
           <div className="flex items-center justify-between">
             <b className="text-sm">{st.online ? "En línea" : "Sin conexión"}</b>
             <button type="button" className="btn-primary !px-2.5 !py-1 text-xs" disabled={!st.online || st.running} onClick={() => void syncNow(true)}>{st.running ? "Sincronizando…" : "Sincronizar ahora"}</button>

@@ -289,7 +289,7 @@ export default function Layout() {
               {userMenu && (
                 <>
                   <div className="fixed inset-0 z-30" onClick={() => setUserMenu(false)} aria-hidden="true" />
-                  <div className="card absolute right-0 z-40 mt-1 w-56 space-y-1 p-2">
+                  <div className="pop-mobile card absolute right-0 z-40 mt-1 w-56 space-y-1 p-2">
                     <p className="truncate px-2 py-1 text-xs text-slate-500">@{me.username}</p>
                     <button className="block w-full rounded px-2 py-1.5 text-left text-sm hover:bg-slate-100" onClick={() => { setUserMenu(false); navigate("/perfil"); }}>Mi perfil</button>
                     <button className="block w-full rounded px-2 py-1.5 text-left text-sm text-red-600 hover:bg-red-50" onClick={() => void logout()}>Cerrar sesión</button>

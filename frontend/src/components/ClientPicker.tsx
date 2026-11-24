@@ -24,7 +24,7 @@ export default function ClientPicker({ onPick }: { onPick: (c: ClientRecord) => 
         Elegir cliente guardado
       </button>
       {open && (
-        <div className="absolute left-0 top-full z-20 mt-1 w-[min(92vw,26rem)] rounded-lg border border-slate-200 bg-white p-2 shadow-lg">
+        <div className="pop-mobile absolute left-0 top-full z-20 mt-1 w-[min(92vw,26rem)] rounded-lg border border-slate-200 bg-white p-2 shadow-lg">
           <input className="input w-full" autoFocus placeholder="Buscar por SOT o nombre..." value={q} onChange={(e) => setQ(e.target.value)} />
           <ul className="mt-2 max-h-64 space-y-1 overflow-y-auto">
             {loading && <li className="px-2 py-1 text-xs text-slate-400">Buscando...</li>}
