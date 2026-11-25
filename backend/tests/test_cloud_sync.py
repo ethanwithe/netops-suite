@@ -255,6 +255,16 @@ def test_cambios_visibles_y_archivos(world):
     assert g.status_code == 200 and g.content == pdf2
 
 
+def test_interruptor(world):
+    """El interruptor de la barra pausa y reanuda la sincronización automática."""
+    local = Api(world["local"])
+    local.use_token()
+    st = local.c.post("/api/cloud/pause", json={"paused": True}).json()
+    assert st["paused"] is True and st["state"] == "paused", st
+    st = local.c.post("/api/cloud/pause", json={"paused": False}).json()
+    assert st["paused"] is False and st["state"] in ("synced", "conflict"), st
+
+
 def test_sin_conexion(world):
     """Con la nube caída: se puede entrar con la cuenta ya guardada, trabajar, y el estado dice «sin conexión»."""
     world["cloud_proc"].kill()

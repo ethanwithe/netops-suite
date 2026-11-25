@@ -9,7 +9,6 @@ export const UI_NAMES: { group: string; key: string; def: string; where?: string
   { group: "Menú", key: "grp.rf", def: "Reporte fotográfico", where: "Grupo del menú" },
   { group: "Menú", key: "grp.clientes", def: "Mis clientes", where: "Grupo del menú" },
   { group: "Menú", key: "nav.plantillas", def: "Plantillas", where: "Opción del menú" },
-  { group: "Menú", key: "ck.saturador", def: "Saturador", where: "Dentro de CheckList" },
   { group: "Reporte fotográfico (ventanas de fábrica)", key: "rf.gpon_ont", def: "GPON con ONT" },
   { group: "Reporte fotográfico (ventanas de fábrica)", key: "rf.gpon_modulo", def: "GPON con módulo" },
   { group: "Reporte fotográfico (ventanas de fábrica)", key: "rf.fibra", def: "Fibra convencional" },

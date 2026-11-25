@@ -25,21 +25,41 @@ def _strip_ansi(data: bytes) -> bytes:
     return ANSI_RE.sub(b"", data)
 
 
-def _read_chunk(chan, quiet_time=1.2, max_time=20, on_more_send=b" "):
-    """Lee del canal hasta que no llegue nada nuevo durante 'quiet_time' segundos,
-    manejando prompts de paginación tipo '--More--' enviando espacio."""
-    end_by = time.time() + max_time
+PROMPT_LINE = re.compile(r"[^\n]{1,80}[>\]#$]$")
+
+
+def _prompt_of(text):
+    """Último renglón que parece prompt (p. ej. «Router#», «<Huawei>») o ''."""
+    lines = [l.rstrip() for l in text.splitlines() if l.strip()]
+    last = lines[-1] if lines else ""
+    return last.strip() if PROMPT_LINE.fullmatch(last.strip()) else ""
+
+
+def _read_chunk(chan, quiet_time=1.2, max_time=20, on_more_send=b" ", prompt=""):
+    """Lee la salida de un comando. Con el prompt del equipo conocido espera a que vuelva a aparecer (aunque el
+    equipo tarde minutos, como un «show ip route» grande); si no, termina tras 'quiet_time' sin datos nuevos.
+    Maneja '--More--' enviando espacio."""
+    end_by = time.time() + (max(max_time, 600) if prompt else max_time)
     buf = b""
     last_data = time.time()
+    more_at = -1
     while time.time() < end_by:
         if chan.recv_ready():
             chunk = chan.recv(65535)
             buf += chunk
             last_data = time.time()
-            if any(p in buf[-200:] for p in MORE_PATTERNS):
+            if any(p in buf[-200:] for p in MORE_PATTERNS) and len(buf) != more_at:
+                more_at = len(buf)
                 chan.send(on_more_send)
         else:
-            if time.time() - last_data > quiet_time:
+            quiet = time.time() - last_data
+            if prompt:
+                text = _strip_ansi(buf).decode(errors="ignore").rstrip()
+                if text.endswith(prompt) and quiet > 0.8:
+                    break
+                if quiet > 120:
+                    break
+            elif quiet > quiet_time:
                 break
             time.sleep(0.1)
     return _strip_ansi(buf).decode(errors="ignore")
@@ -69,7 +89,9 @@ def run_automatic_session(host, user, password, port, disable_paging_cmds,
 
     chan = client.invoke_shell()
     time.sleep(1)
-    _read_chunk(chan, quiet_time=0.8, max_time=4)  # banner/login inicial
+    banner = _read_chunk(chan, quiet_time=0.8, max_time=4)  # banner/login inicial
+    chan.send("\n")
+    prompt = _prompt_of(_read_chunk(chan, quiet_time=0.8, max_time=4)) or _prompt_of(banner)
 
     for cmd in (disable_paging_cmds or []):
         log(f"Configurando terminal: {cmd}")
@@ -81,13 +103,13 @@ def run_automatic_session(host, user, password, port, disable_paging_cmds,
         key, label, cmd = config_test
         log(f"Ejecutando: {label} ({cmd})")
         chan.send(cmd + "\n")
-        config_text = _read_chunk(chan, quiet_time=1.5, max_time=30)
+        config_text = _read_chunk(chan, quiet_time=1.5, max_time=30, prompt=prompt)
 
     results = []
     for key, label, cmd in tests:
         log(f"Ejecutando: {label} ({cmd})")
         chan.send(cmd + "\n")
-        output = _read_chunk(chan, quiet_time=1.3, max_time=20)
+        output = _read_chunk(chan, quiet_time=1.3, max_time=20, prompt=prompt)
         results.append((key, label, cmd, output))
 
     if save_cmds:

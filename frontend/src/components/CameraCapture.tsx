@@ -89,7 +89,9 @@ export default function CameraCapture({ cliente = "", onCapture, onClose, onNati
       if (Math.hypot(gx, gy) < 4.5) return;                       // teléfono casi plano: no se cambia
       const dev = (Math.atan2(gx, gy) * 180) / Math.PI;
       const scr = screen.orientation?.angle ?? (window as unknown as { orientation?: number }).orientation ?? 0;
-      const rel = ((Math.round((((dev - scr) % 360) + 360) % 360 / 90) * 90) % 360) as 0 | 90 | 180 | 270;
+      // giro (horario) que hay que dar al cuadro para dejarlo derecho: si la pantalla ya giró sola (dev = scr) es 0
+      // Si la pantalla ya giró sola (modo horizontal), la imagen y el sello ya están derechos: no se corrige nada.
+      const rel = (Math.abs(scr) % 180 !== 0 ? 0 : (Math.round((((scr - dev) % 360) + 360) % 360 / 90) * 90) % 360) as 0 | 90 | 180 | 270;
       if (rel === cand) votes++; else { cand = rel; votes = 1; }
       if (votes >= 4 && rel !== tiltRef.current) { tiltRef.current = rel; setTilt(rel); }
     };

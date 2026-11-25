@@ -63,6 +63,8 @@ export interface SyncStatus {
   lastSync: string;
   lastError: string;
   needsLogin: boolean;
+  /** Sincronización automática encendida (se puede apagar desde el interruptor de la barra). */
+  auto: boolean;
 }
 
 const uuid = () => (crypto.randomUUID ? crypto.randomUUID() : "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => { const r = (Math.random() * 16) | 0; return (c === "x" ? r : (r & 3) | 8).toString(16); }));
@@ -71,8 +73,17 @@ export function deviceId(): string {
   try { let d = localStorage.getItem(DEVICE_KEY); if (!d) { d = uuid(); localStorage.setItem(DEVICE_KEY, d); } return d; } catch { return "device"; }
 }
 
+// ------------------------------------------------------------------ interruptor de sincronización automática
+const AUTO_KEY = "netops.sync.auto";
+export function isAutoSync(): boolean { try { return localStorage.getItem(AUTO_KEY) !== "0"; } catch { return true; } }
+export function setAutoSync(v: boolean): void {
+  try { localStorage.setItem(AUTO_KEY, v ? "1" : "0"); } catch { /* sin almacenamiento */ }
+  setStatus({ auto: v });
+  if (v) void syncNow(true);     // al encender, sincroniza ya
+}
+
 // ------------------------------------------------------------------ estado observable
-let status: SyncStatus = { online: typeof navigator === "undefined" ? true : navigator.onLine, running: false, pendingOps: 0, pendingPhotos: 0, pendingOutputs: 0, errors: 0, conflicts: [], lastSync: "", lastError: "", needsLogin: false };
+let status: SyncStatus = { online: typeof navigator === "undefined" ? true : navigator.onLine, running: false, pendingOps: 0, pendingPhotos: 0, pendingOutputs: 0, errors: 0, conflicts: [], lastSync: "", lastError: "", needsLogin: false, auto: isAutoSync() };
 const subs = new Set<() => void>();
 function setStatus(p: Partial<SyncStatus>) { status = { ...status, ...p }; subs.forEach((f) => f()); }
 export const getSyncStatus = () => status;
@@ -155,6 +166,7 @@ const httpStatus = (e: unknown) => (e as { response?: { status?: number } })?.re
 let running = false;
 export async function syncNow(manual = false): Promise<void> {
   if (running) return;
+  if (!manual && !isAutoSync()) return;        // pausada con el interruptor: solo sincroniza al encenderlo o con «Sincronizar ahora»
   if (typeof navigator !== "undefined" && navigator.onLine === false) { setStatus({ online: false }); return; }
   running = true;
   setStatus({ running: true });

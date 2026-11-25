@@ -21,20 +21,21 @@ function ago(iso: string): string {
 }
 
 /** Indicador global: conexión, pendientes, fotos, última sincronización, errores y «Sincronizar ahora». */
-export default function SyncIndicator() {
+export default function SyncIndicator({ embedded = false }: { embedded?: boolean }) {
   const st = useSyncStatus();
   const [open, setOpen] = useState(false);
   const [ops, setOps] = useState<QueuedOp[]>([]);
   const gen = useSyncExternalStore(subscribeGen, getGenState, getGenState);
   const [always, setAlways] = useState(getGenMode() === "always");
+  const shown = open || embedded;
   useEffect(() => {
-    if (!open) return;
+    if (!shown) return;
     let dead = false;
     const load = () => { void listOps().then((o) => { if (!dead) setOps(o); }); };
     load();
     const t = window.setInterval(load, 2000);
     return () => { dead = true; window.clearInterval(t); };
-  }, [open, st.pendingOps, st.pendingPhotos, st.running]);
+  }, [shown, st.pendingOps, st.pendingPhotos, st.running]);
 
   const pending = st.pendingOps + st.pendingPhotos + st.pendingOutputs;
   const tone = !st.online ? "bg-slate-500" : st.conflicts.length ? "bg-orange-500" : st.errors || st.needsLogin ? "bg-red-500" : pending ? "bg-amber-500" : "bg-emerald-500";
@@ -42,12 +43,14 @@ export default function SyncIndicator() {
 
   return (
     <div className="relative">
+      {!embedded && (
       <button type="button" onClick={() => setOpen((o) => !o)} className="flex items-center gap-1.5 rounded-full border border-white/20 px-2.5 py-1 text-[11px] font-semibold" title="Estado de conexión y sincronización" aria-expanded={open}>
         <span className={`h-2 w-2 rounded-full ${tone} ${st.running ? "animate-pulse" : ""}`} />
         <span className="hidden sm:inline">{text}</span>
       </button>
-      {open && (
-        <div className="pop-mobile card absolute right-0 z-50 mt-2 w-[min(22rem,92vw)] space-y-2 p-3 text-xs" role="dialog" aria-label="Sincronización">
+      )}
+      {shown && (
+        <div className={embedded ? "space-y-2 text-xs" : "pop-mobile card absolute right-0 z-50 mt-2 w-[min(22rem,92vw)] space-y-2 p-3 text-xs"} role={embedded ? undefined : "dialog"} aria-label="Sincronización">
           <div className="flex items-center justify-between">
             <b className="text-sm">{st.online ? "En línea" : "Sin conexión"}</b>
             <button type="button" className="btn-primary !px-2.5 !py-1 text-xs" disabled={!st.online || st.running} onClick={() => void syncNow(true)}>{st.running ? "Sincronizando…" : "Sincronizar ahora"}</button>
