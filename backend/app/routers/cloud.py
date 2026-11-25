@@ -10,6 +10,7 @@ from app import models
 from app.auth import current_user
 from app.database import get_db
 from app.routers.local_tools import DESKTOP
+from app.services import client_access as ca
 from app.services import cloud_sync as cs
 
 router = APIRouter(prefix="/api/cloud", tags=["nube"])
@@ -23,7 +24,10 @@ def _status(db: Session, user: models.User) -> dict:
     items = cs.conflicts(db, user) if linked else []
     return {"enabled": True, "url": cs.cloud_url(), "linked": linked, "state": cs.STATE["state"] if linked else "unlinked", "running": bool(cs.STATE.get("running")),
             "last_sync": cs.STATE.get("last_sync", ""), "error": cs.STATE.get("error", ""),
-            "pending": cs.pending_count(db) if linked else 0, "conflicts": items}
+            "pending": cs.pending_count(db) if linked else 0, "conflicts": items,
+            "user": user.username, "linked_users": sorted((cfg.get("linked") or {}).keys()),
+            "sent": cs.STATE.get("sent", 0), "received": cs.STATE.get("received", 0),
+            "local": {"clients": ca.count_clients(db, user.id)}}
 
 
 @router.get("/status")
@@ -36,6 +40,15 @@ def sync_now(user: models.User = Depends(current_user), db: Session = Depends(ge
     if not DESKTOP:
         raise HTTPException(404, "No disponible.")
     cs.sync_once(force=True)
+    return _status(db, user)
+
+
+@router.post("/repair")
+def repair(user: models.User = Depends(current_user), db: Session = Depends(get_db)):
+    """Vuelve a comparar todo con la nube desde cero."""
+    if not DESKTOP:
+        raise HTTPException(404, "No disponible.")
+    cs.repair()
     return _status(db, user)
 
 

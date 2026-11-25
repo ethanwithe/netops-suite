@@ -212,6 +212,49 @@ def test_datos_de_referencia(world):
     assert "Logo Dos" in {l["nombre"] for l in local.c.get("/api/logos").json()}
 
 
+def test_cambios_visibles_y_archivos(world):
+    """Un cambio hecho en la nube se ve en la pantalla local (marca de cambio), los PDF viajan en ambos sentidos
+    y la sesión se renueva."""
+    import datetime as dt
+    cloud, local = Api(world["cloud"]), Api(world["local"])
+    cloud.use_token()
+    local.use_token()
+    # 1) sesión renovable
+    r = cloud.c.post("/api/auth/refresh")
+    assert r.status_code == 200 and r.json()["token"], r.text
+    # 2) la nube crea un cliente con un PDF generado; el escritorio lo baja con su archivo
+    cid = uuid.uuid4().hex
+    pdf = b"%PDF-1.4 cloud " * 40
+    r = cloud.c.post("/api/sync/outputs", files={"file": ("rep-nube.pdf", pdf)}, data={"name": "rep-nube.pdf"})
+    assert r.status_code == 200, r.text
+    d = client_data("OUT1", "Cliente con PDF")
+    d["reportes"] = [{"filename": "rep-nube.pdf", "url": "/api/files/outputs/rep-nube.pdf", "tipo": "foto", "nombre": "Reporte"}]
+    assert cloud.push("client", cid, d)["status"] == "applied"
+    assert local.sync()["state"] in ("synced", "conflict")
+    f = local.c.get("/api/files/outputs/rep-nube.pdf")
+    assert f.status_code == 200 and f.content == pdf
+    # 3) un cambio posterior de la nube aparece en la lectura local «desde» una marca anterior (lo que usa la pantalla)
+    t0 = (dt.datetime.utcnow() - dt.timedelta(seconds=1)).isoformat() + "Z"
+    time.sleep(1.2)
+    v = cloud.pull("client")[cid]["version"]
+    d2 = client_data("OUT1", "Cliente editado en la nube")
+    d2["reportes"] = d["reportes"]
+    assert cloud.push("client", cid, d2, base=v)["status"] == "applied"
+    assert local.sync()["state"] in ("synced", "conflict")
+    seen = {i["id"]: i for i in local.c.get("/api/sync/pull", params={"entity": "client", "since": t0, "limit": 200}).json()["items"]}
+    assert cid in seen and seen[cid]["data"]["nombre"] == "Cliente editado en la nube", seen.keys()
+    # 4) escritorio -> nube: un PDF hecho aquí queda también en la nube
+    cid2 = uuid.uuid4().hex
+    pdf2 = b"%PDF-1.4 local " * 30
+    assert local.c.post("/api/sync/outputs", files={"file": ("rep-local.pdf", pdf2)}, data={"name": "rep-local.pdf"}).status_code == 200
+    d3 = client_data("OUT2", "Cliente local con PDF")
+    d3["reportes"] = [{"filename": "rep-local.pdf", "url": "/api/files/outputs/rep-local.pdf", "tipo": "foto", "nombre": "Reporte"}]
+    assert local.push("client", cid2, d3)["status"] == "applied"
+    assert local.sync()["state"] in ("synced", "conflict")
+    g = cloud.c.get("/api/files/outputs/rep-local.pdf")
+    assert g.status_code == 200 and g.content == pdf2
+
+
 def test_sin_conexion(world):
     """Con la nube caída: se puede entrar con la cuenta ya guardada, trabajar, y el estado dice «sin conexión»."""
     world["cloud_proc"].kill()

@@ -1148,7 +1148,20 @@ export default function ImageAnnotator({ imageUrl, baseUrl, stamp, onClose, onSa
       const ctx = out.getContext("2d")!;
       ctx.drawImage(full, 0, 0);
       renderObjects(ctx, objs, 1, unitOf(out), full);
-      const blob: Blob | null = await new Promise((res) => out.toBlob(res, "image/jpeg", 0.92));
+      const encode = (c: HTMLCanvasElement) => new Promise<Blob | null>((res) => c.toBlob(res, "image/jpeg", 0.92));
+      // Las otras imágenes (sin sello, base sin marcas) se codifican a la vez que la principal: antes eran una tras otra.
+      const plain0 = objs.filter((o) => !(o.k === "text" && o.stamp));
+      const stampObj = objs.find((o) => o.k === "text" && o.stamp);
+      let out2: HTMLCanvasElement | null = null;
+      if (stamp && stampObj) {
+        out2 = document.createElement("canvas");
+        out2.width = full.width; out2.height = full.height;
+        const c2 = out2.getContext("2d")!;
+        c2.drawImage(full, 0, 0);
+        renderObjects(c2, plain0, 1, unitOf(out2), full);
+      }
+      const needBase = !!plain0.length;
+      const [blob, b2pre, bbPre] = await Promise.all([encode(out), out2 ? encode(out2) : Promise.resolve(null), needBase ? (full === out ? Promise.resolve(null) : encode(full)) : Promise.resolve(null)]);
       if (!blob) throw new Error("No se pudo crear la imagen.");
       const data = await uploadPhoto(blob, "editada.jpg");
       // Imagen sin marcas (recortes y ajustes ya aplicados) + marcas: así al volver a editar todo se puede mover o cambiar.
@@ -1157,7 +1170,7 @@ export default function ImageAnnotator({ imageUrl, baseUrl, stamp, onClose, onSa
         try {
           let baseUrl2 = cleanUrl || (plain.length ? "" : data.url);
           if (!baseUrl2) {
-            const bb: Blob | null = await new Promise((res) => full.toBlob(res, "image/jpeg", 0.92));
+            const bb: Blob | null = bbPre ?? await new Promise((res) => full.toBlob(res, "image/jpeg", 0.92));
             if (bb) {
               baseUrl2 = (await uploadPhoto(bb, "base.jpg")).url;
             }
@@ -1171,12 +1184,7 @@ export default function ImageAnnotator({ imageUrl, baseUrl, stamp, onClose, onSa
       const st = objs.find((o): o is Extract<Obj, { k: "text" }> => o.k === "text" && !!o.stamp);
       let clean = { path: data.path, url: data.url };
       if (st) {
-        const out2 = document.createElement("canvas");
-        out2.width = full.width; out2.height = full.height;
-        const c2 = out2.getContext("2d")!;
-        c2.drawImage(full, 0, 0);
-        renderObjects(c2, objs.filter((o) => !(o.k === "text" && o.stamp)), 1, unitOf(out2), full);
-        const b2: Blob | null = await new Promise((res) => out2.toBlob(res, "image/jpeg", 0.92));
+        const b2: Blob | null = b2pre;
         if (!b2) throw new Error("No se pudo crear la imagen.");
         const r2 = await uploadPhoto(b2, "sin-sello.jpg");
         clean = { path: r2.path, url: r2.url };

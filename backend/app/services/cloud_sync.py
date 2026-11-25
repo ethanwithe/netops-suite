@@ -22,12 +22,13 @@ from concurrent.futures import ThreadPoolExecutor
 import time
 import uuid
 from pathlib import Path
+from urllib.parse import quote, unquote
 from typing import Any, Optional
 
 import httpx
 
 from app import models
-from app.config import UPLOADS_DIR
+from app.config import OUTPUTS_DIR, UPLOADS_DIR
 from app.database import SessionLocal
 from app.routers import sync as S
 from app.services import client_access as ca, reference_sync, security
@@ -214,7 +215,7 @@ def login_via_cloud(db, username: str, password: str):
     cfg.setdefault("device_id", uuid.uuid4().hex)
     cfg.setdefault("linked", {})[user.username] = user.id
     if token:
-        cfg["token"], cfg["user_id"] = protect_secret(token), user.id
+        cfg["token"], cfg["user_id"], cfg["token_at"] = protect_secret(token), user.id, time.time()
     save_cfg(cfg)
     kick()
     return "ok", user
@@ -227,6 +228,15 @@ def _hash(data: Any) -> str:
 
 def photo_names(obj: Any) -> list[str]:
     return sorted(set(m.group(1) for m in PHOTO_RE.finditer(json.dumps(obj, ensure_ascii=False, default=str))))
+
+
+OUT_RE = re.compile(r"/api/files/outputs/([^\"'\s?#)\\]+)")
+
+
+def output_names(obj: Any) -> list[str]:
+    """Archivos generados (PDF, ZIP, Word...) que menciona un dato (p. ej. los reportes de un cliente)."""
+    txt = json.dumps(obj, ensure_ascii=False, default=str)
+    return sorted({unquote(m.group(1)) for m in OUT_RE.finditer(txt)})
 
 
 def _local_row(db, ent: str, eid: str):
@@ -266,6 +276,36 @@ def _upload_photos(h: httpx.Client, db, names: list[str]) -> None:
                 raise Offline("La foto llegó dañada: se reintenta.")
 
 
+def _upload_outputs(h: httpx.Client, db, names: list[str]) -> None:
+    """PDF/ZIP/Word generados aquí: se suben para que también se puedan abrir desde la web y otros equipos."""
+    for n in names:
+        p = OUTPUTS_DIR / n
+        if db.get(models.CloudItem, ("output", n)) or not p.is_file():
+            continue
+        content = p.read_bytes()
+        if len(content) > 60 * 1024 * 1024:
+            continue
+        r = _call(h, "POST", "/api/sync/outputs", files={"file": (n, content)}, data={"name": n})
+        if r.status_code == 200:
+            db.add(models.CloudItem(entity="output", id=n, synced_hash=hashlib.sha256(content).hexdigest(), status="SYNCED"))
+            db.commit()
+
+
+def _download_outputs(h: httpx.Client, names: list[str]) -> None:
+    for n in names:
+        dest = OUTPUTS_DIR / n
+        if dest.is_file():
+            continue
+        try:
+            r = _call(h, "GET", "/api/files/outputs/" + quote(n))
+        except (Offline, NeedLogin):
+            raise
+        if r.status_code == 200 and r.content:
+            tmp = dest.with_suffix(dest.suffix + ".part")
+            tmp.write_bytes(r.content)
+            os.replace(tmp, dest)
+
+
 def _download_photos(h: httpx.Client, names: list[str]) -> None:
     todo = [n for n in dict.fromkeys(names) if not (UPLOADS_DIR / n).is_file()]
     if not todo:
@@ -292,6 +332,7 @@ def _apply_remote(db, user: models.User, item: dict):
         if item.get("deleted"):
             if row and not row.deleted_at:
                 row.deleted_at, row.deleted_by = now, "nube"
+                row.updated_at, row.version = now, (row.version or 0) + 1
             return row
         if row is None:
             row = models.Client(id=eid, sot=d.get("sot", ""), datos={}, reportes=[], owner_id=user.id, version=1)
@@ -307,6 +348,7 @@ def _apply_remote(db, user: models.User, item: dict):
                 have[r["filename"]] = r
         row.reportes = list(have.values())[-150:]
         row.deleted_at = row.deleted_by = None
+        row.updated_at, row.version = now, (row.version or 0) + 1      # marca de cambio: así la pantalla local lo ve y baja
         db.flush()
         return row
     if ent == "workspace":
@@ -318,6 +360,7 @@ def _apply_remote(db, user: models.User, item: dict):
             w = models.UserWorkspace(client_id=cid, key=key, state={}, version=1)
             db.add(w)
         w.label, w.route, w.state, w.updated_by = d.get("label", ""), d.get("route", ""), d.get("state") or {}, "nube"
+        w.updated_at, w.version = now, (w.version or 0) + 1
         db.flush()
         return w
     c = db.get(models.ChecklistUserCopy, eid)
@@ -325,6 +368,7 @@ def _apply_remote(db, user: models.User, item: dict):
         c = models.ChecklistUserCopy(id=eid, user_id=user.id, tpl_id=d.get("tpl_id", ""), nombre="", data={}, version=1)
         db.add(c)
     c.tpl_id, c.nombre, c.data = d.get("tpl_id", c.tpl_id), d.get("nombre", ""), d.get("data") or {}
+    c.updated_at, c.version = now, (c.version or 0) + 1
     db.flush()
     return c
 
@@ -409,6 +453,7 @@ def _push(db, h: httpx.Client, user: models.User, cfg: dict) -> tuple[int, int]:
         for op in batch:
             if op["action"] == "upsert":
                 _upload_photos(h, db, photo_names(op["data"]))    # primero las fotos: así quien baje el dato ya las encuentra
+                _upload_outputs(h, db, output_names(op["data"]))
         body = {"device_id": cfg.get("device_id", ""), "ops": [{k: v for k, v in op.items() if not k.startswith("_")} for op in batch]}
         r = _call(h, "POST", "/api/sync/push", json=body)
         if r.status_code != 200:
@@ -503,6 +548,7 @@ def _pull_item(db, h: httpx.Client, user: models.User, it: dict) -> int:
         return 0
     if t and t.remote_version == it["version"]:
         _download_photos(h, photo_names(it.get("data")))
+        _download_outputs(h, output_names(it.get("data")))
         return 0
     if row is not None and _local_changed(db, ent, row, t):
         same = t is None and _hash(DATA[ent](row)) == _hash(it.get("data")) and not it.get("deleted")
@@ -513,12 +559,40 @@ def _pull_item(db, h: httpx.Client, user: models.User, it: dict) -> int:
             db.commit()
             return 0
     _download_photos(h, photo_names(it.get("data")))
+    _download_outputs(h, output_names(it.get("data")))
     _apply_remote(db, user, it)
     _mark_synced(db, ent, eid, int(it["version"]))
     return 1
 
 
 # ------------------------------------------------------------------ ciclo completo
+def _renew_token(h: httpx.Client, cfg: dict) -> None:
+    """La sesión con la nube dura 14 días; se renueva cada día de uso para que nunca pida volver a entrar."""
+    if time.time() - float(cfg.get("token_at") or 0) < 86400:
+        return
+    r = _call(h, "POST", "/api/auth/refresh")
+    if r.status_code == 200 and r.json().get("token"):
+        cfg["token"], cfg["token_at"] = protect_secret(r.json()["token"]), time.time()
+        save_cfg(cfg)
+        h.headers["Authorization"] = "Bearer " + r.json()["token"]
+
+
+def repair() -> dict:
+    """«Reparar»: se vuelve a comparar todo con la nube desde cero (no borra nada; lo pendiente se conserva)."""
+    cfg = load_cfg()
+    for k in ("cursors", "ref"):
+        cfg.pop(k, None)
+    save_cfg(cfg)
+    db = SessionLocal()
+    try:
+        for t in db.query(models.CloudItem).filter(models.CloudItem.status == "ERROR").all():
+            db.delete(t)
+        db.commit()
+    finally:
+        db.close()
+    return sync_once(force=True)
+
+
 def sync_once(force: bool = False) -> dict:
     if force:
         _ref_at[0] = 0.0
@@ -544,6 +618,7 @@ def _sync_locked(force: bool = False) -> dict:
                 _set(state="needs_login")
                 return dict(STATE)
             with _http(token) as h:
+                _renew_token(h, cfg)
                 applied, problems = _push(db, h, user, cfg)
                 got = _pull(db, h, user, cfg)
                 _pull_reference(db, h, user, cfg)
