@@ -54,3 +54,14 @@ export function mergeWithBase(current: Section[], base: RfBase): Section[] {
   for (const c of current) if (!out.some((o) => o.lado === c.lado)) out.push(c);                  // secciones propias
   return out;
 }
+
+/** Huella del diseño base: cuando cambia, cada equipo lo carga una vez (sin pisar fotos ni textos). */
+export function baseStamp(base: RfBase): string {
+  const t = JSON.stringify(base);
+  let h = 5381;
+  for (let i = 0; i < t.length; i++) h = ((h << 5) + h + t.charCodeAt(i)) | 0;
+  return `${t.length}-${(h >>> 0).toString(36)}`;
+}
+const SK = (tipo: string) => `rf_base_applied:${tipo}`;
+export function appliedStamp(tipo: string): string { try { return localStorage.getItem(SK(tipo)) ?? ""; } catch { return ""; } }
+export function markApplied(tipo: string, stamp: string): void { try { localStorage.setItem(SK(tipo), stamp); } catch { /* sin almacenamiento */ } }

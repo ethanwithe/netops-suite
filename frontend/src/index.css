@@ -707,12 +707,14 @@ body { overscroll-behavior-y: none; }
 @media (max-width: 639px) {
   .pop-mobile {
     position: fixed !important;
+    top: auto !important;      /* «top-full» (100%) sacaba el menú fuera de la pantalla: queda donde lo deja el botón */
+    bottom: auto !important;
     left: .5rem !important;
     right: .5rem !important;
     width: auto !important;
     max-width: none !important;
     margin-top: .4rem !important;
-    max-height: calc(100dvh - 7rem);
+    max-height: min(70dvh, calc(100dvh - 7rem));
     overflow-y: auto;
   }
 }

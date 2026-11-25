@@ -49,7 +49,7 @@ import WorkspaceBar from "../components/WorkspaceBar";
 import ClientPicker from "../components/ClientPicker";
 import { syncClient, toISODate, useSotSync } from "../store/clients";
 import OpcionesManager from "../components/OpcionesManager";
-import { clearRfBase, mergeWithBase, saveRfBase, sectionsFromBase, useRfBase } from "../store/rfBase";
+import { appliedStamp, baseStamp, clearRfBase, markApplied, mergeWithBase, saveRfBase, sectionsFromBase, useRfBase } from "../store/rfBase";
 import { useAuth } from "../store/auth";
 import { useUiLabels } from "../store/uiLabels";
 import ExtraGallery from "../components/ExtraGallery";
@@ -372,7 +372,7 @@ function SeccionesTab({ tipo, items }: { tipo: FotoTipo; items: PhotoItem[] }) {
   async function publishBase() {
     if (!confirm("¿Poner lo que ves como diseño base PARA TODOS? Se guardan las secciones, títulos, bloques y descripciones (nunca las fotos). Quienes no tengan este reporte empezado partirán de aquí, y todos podrán «Restaurar diseño base».")) return;
     setBusy(true); setMsg("");
-    try { rf.set(await saveRfBase(tipo, sections, manager.opciones)); setMsg("Diseño base guardado para todos."); }
+    try { const nb = await saveRfBase(tipo, sections, manager.opciones); markApplied(tipo, baseStamp(nb)); rf.set(nb); setMsg("Diseño base guardado para todos."); }
     catch (e) { setMsg(apiErrorMessage(e, "No se pudo guardar el diseño base.")); }
     setBusy(false);
   }
@@ -518,8 +518,14 @@ function RunTab({
     if (s.sections === null && !rfBase.loaded) return;          // se espera a saber si hay diseño base para todos
     if (s.sections === null) {
       const used = ordered.some((it) => { const r = s.rows[it.id]; return r && (r.incluir || r.imagePath); });   // reporte viejo con fotos: se conserva
-      if (rfBase.base && !used) { manager.applyBase(rfBase.base.opciones); setSections(tipo, sectionsFromBase(rfBase.base)); }
+      if (rfBase.base && !used) { markApplied(tipo, baseStamp(rfBase.base)); manager.applyBase(rfBase.base.opciones); setSections(tipo, sectionsFromBase(rfBase.base)); }
       else setSections(tipo, buildSections(tipo, ordered, s.rows, manager.opciones));
+    }
+    // El diseño base de todos cambió desde la última vez que este equipo lo cargó: se aplica solo (las fotos y textos se conservan).
+    else if (rfBase.base && baseStamp(rfBase.base) !== appliedStamp(tipo)) {
+      markApplied(tipo, baseStamp(rfBase.base));
+      manager.applyBase(rfBase.base.opciones);
+      setSections(tipo, mergeWithBase(s.sections, rfBase.base));
     }
     // Primer formato de secciones (sin bloques) -> con bloques, sin perder fotos ni textos.
     else if (s.sections.some((x) => x.cells.some((c) => c.bloque === undefined))) setSections(tipo, upgradeSections(tipo, s.sections, ordered, manager.opciones));

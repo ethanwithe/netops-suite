@@ -255,6 +255,31 @@ def test_cambios_visibles_y_archivos(world):
     assert g.status_code == 200 and g.content == pdf2
 
 
+def test_ediciones_por_rutas_normales(world):
+    """Lo que se hace en la pantalla del escritorio (rutas normales, no /api/sync) también llega a la nube."""
+    cloud, local = Api(world["cloud"]), Api(world["local"])
+    cloud.use_token()
+    local.use_token()
+    sot = "9" + uuid.uuid4().hex[:6].translate(str.maketrans("abcdef", "123456"))
+    r = local.c.post("/api/clients", json={"sot": sot, "nombre": "Pantalla local", "fecha": "2026-11-02"})
+    assert r.status_code == 200, r.text
+    cid = r.json()["id"]
+    ws = {"sot": sot, "key": "foto-1", "label": "Fotos 1", "route": "/fotografico", "state": {"fotos": [], "nota": "uno"}}
+    r = local.c.put("/api/clients/workspace", json=ws)
+    assert r.status_code == 200, r.text
+    assert local.sync()["state"] in ("synced", "conflict")
+    assert cid in cloud.pull("client"), "el cliente creado en el escritorio no llegó a la nube"
+    wid = cid + "|foto-1"
+    assert cloud.pull("workspace")[wid]["data"]["state"]["nota"] == "uno"
+    ws["state"] = {"fotos": [], "nota": "dos"}
+    assert local.c.put("/api/clients/workspace", json=ws).status_code == 200
+    r = local.c.put(f"/api/clients/{cid}", json={"sot": sot, "nombre": "Editado en pantalla", "fecha": "2026-11-02", "datos": {"ip": "1.1.1.1"}})
+    assert r.status_code == 200, r.text
+    assert local.sync()["state"] in ("synced", "conflict")
+    assert cloud.pull("workspace")[wid]["data"]["state"]["nota"] == "dos"
+    assert cloud.pull("client")[cid]["data"]["nombre"] == "Editado en pantalla"
+
+
 def test_interruptor(world):
     """El interruptor de la barra pausa y reanuda la sincronización automática."""
     local = Api(world["local"])

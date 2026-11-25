@@ -201,6 +201,9 @@ def publish_template(tpl_id: str, payload: schemas.ChecklistTemplateIn, user: mo
     row.nombre = nombre[:80]
     row.data = _clean_template(payload.data)
     db.query(models.ChecklistUserCopy).filter_by(user_id=user.id, tpl_id=tpl_id).delete()
+    # Las versiones personales de los demás se igualan a lo publicado: así todos ven el cambio completo (y la sincronización lo lleva a sus dispositivos).
+    for c in db.query(models.ChecklistUserCopy).filter(models.ChecklistUserCopy.tpl_id == tpl_id, models.ChecklistUserCopy.user_id != user.id).all():
+        c.nombre, c.data = row.nombre, row.data
     db.commit()
     return _view_one(db, user, tpl_id)
 
