@@ -25,7 +25,7 @@ def _status(db: Session, user: models.User) -> dict:
     return {"enabled": True, "url": cs.cloud_url(), "linked": linked, "state": cs.STATE["state"] if linked else "unlinked", "running": bool(cs.STATE.get("running")),
             "last_sync": cs.STATE.get("last_sync", ""), "error": cs.STATE.get("error", ""),
             "pending": cs.pending_count(db) if linked else 0, "conflicts": items,
-            "user": user.username, "linked_users": sorted((cfg.get("linked") or {}).keys()),
+            "paused": bool(cfg.get("paused")), "user": user.username, "linked_users": sorted((cfg.get("linked") or {}).keys()),
             "sent": cs.STATE.get("sent", 0), "received": cs.STATE.get("received", 0),
             "local": {"clients": ca.count_clients(db, user.id)}}
 
@@ -40,6 +40,19 @@ def sync_now(user: models.User = Depends(current_user), db: Session = Depends(ge
     if not DESKTOP:
         raise HTTPException(404, "No disponible.")
     cs.sync_once(force=True)
+    return _status(db, user)
+
+
+class PauseIn(BaseModel):
+    paused: bool
+
+
+@router.post("/pause")
+def pause(p: PauseIn, user: models.User = Depends(current_user), db: Session = Depends(get_db)):
+    """Enciende o apaga la sincronización automática con la nube."""
+    if not DESKTOP:
+        raise HTTPException(404, "No disponible.")
+    cs.set_paused(p.paused)
     return _status(db, user)
 
 

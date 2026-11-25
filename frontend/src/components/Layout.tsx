@@ -8,8 +8,7 @@ import NewChecklistModal from "./NewChecklistModal";
 import { checklistRoute, createChecklistType, useChecklistTypes } from "../store/checklistTypes";
 import { usePersistentState } from "../store/persistentState";
 import ThemeSwitcher from "./ThemeSwitcher";
-import SyncIndicator from "./SyncIndicator";
-import CloudStatus from "./CloudStatus";
+import SyncToggle from "./SyncToggle";
 import { startSync } from "../sync/engine";
 import { initGenState, warmGen } from "../gen/local";
 import ToolsMenu from "./ToolsMenu";
@@ -276,8 +275,7 @@ export default function Layout() {
           <span className="truncate font-display text-sm font-semibold text-slate-800">{titles[pathname] ?? "NetOps Suite"}</span>
           <div className="flex-1" />
           {can(me, "checklist") && <ToolsMenu />}
-          <SyncIndicator />
-          <CloudStatus />
+          <SyncToggle />
           <ThemeSwitcher />
           {me && (
             <div className="relative">

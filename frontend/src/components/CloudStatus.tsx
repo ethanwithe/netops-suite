@@ -2,18 +2,18 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "../api/client";
 
 interface Conflict { entity: string; id: string; label: string; reason: string; server_updated_at: string; server_deleted: boolean }
-interface Cloud { enabled: boolean; url?: string; linked?: boolean; state?: string; running?: boolean; last_sync?: string; error?: string; pending?: number; conflicts?: Conflict[]; user?: string; sent?: number; received?: number; local?: { clients: number } }
+interface Cloud { enabled: boolean; paused?: boolean; url?: string; linked?: boolean; state?: string; running?: boolean; last_sync?: string; error?: string; pending?: number; conflicts?: Conflict[]; user?: string; sent?: number; received?: number; local?: { clients: number } }
 
 const TEXT: Record<string, string> = {
   synced: "Nube: sincronizado", syncing: "Nube: sincronizando…", offline: "Nube: sin conexión (se sube solo al volver)",
-  conflict: "Nube: hay conflictos", error: "Nube: error", needs_login: "Nube: inicia sesión con Internet", unlinked: "Nube: sin vincular", idle: "Nube",
+  conflict: "Nube: hay conflictos", paused: "Nube: en pausa", error: "Nube: error", needs_login: "Nube: inicia sesión con Internet", unlinked: "Nube: sin vincular", idle: "Nube",
 };
 const TONE: Record<string, string> = {
-  synced: "bg-emerald-500", syncing: "bg-sky-500 animate-pulse", offline: "bg-slate-400", conflict: "bg-orange-500", error: "bg-red-500", needs_login: "bg-red-500", unlinked: "bg-slate-400", idle: "bg-slate-400",
+  synced: "bg-emerald-500", syncing: "bg-sky-500 animate-pulse", offline: "bg-slate-400", conflict: "bg-orange-500", paused: "bg-slate-400", error: "bg-red-500", needs_login: "bg-red-500", unlinked: "bg-slate-400", idle: "bg-slate-400",
 };
 
 /** Solo en la app de escritorio: estado de la sincronización con la nube y resolución de conflictos. */
-export default function CloudStatus() {
+export default function CloudStatus({ embedded = false }: { embedded?: boolean }) {
   const [c, setC] = useState<Cloud | null>(null);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -39,12 +39,14 @@ export default function CloudStatus() {
 
   return (
     <div className="relative">
+      {!embedded && (
       <button type="button" onClick={() => setOpen((o) => !o)} className="flex items-center gap-1.5 rounded-full border border-white/20 px-2.5 py-1 text-[11px] font-semibold" title={TEXT[state]} aria-expanded={open}>
         <span className={`h-2 w-2 rounded-full ${TONE[state]}`} />
         <span className="hidden sm:inline">☁ {state === "conflict" ? `${c.conflicts?.length ?? 0} conflicto(s)` : state === "synced" ? "Nube" : TEXT[state].replace("Nube: ", "")}</span>
       </button>
-      {open && (
-        <div className="pop-mobile card absolute right-0 z-50 mt-2 w-[min(24rem,92vw)] space-y-2 p-3 text-xs text-slate-800" role="dialog" aria-label="Nube">
+      )}
+      {(open || embedded) && (
+        <div className={embedded ? "space-y-2 border-t border-slate-200 pt-2 text-xs text-slate-800" : "pop-mobile card absolute right-0 z-50 mt-2 w-[min(24rem,92vw)] space-y-2 p-3 text-xs text-slate-800"} role={embedded ? undefined : "dialog"} aria-label="Nube">
           <div className="flex items-center justify-between gap-2">
             <b className="text-sm">{TEXT[state]}</b>
             <button type="button" className="btn-primary !px-2.5 !py-1 text-xs" disabled={busy || !c.linked} onClick={() => void run(() => api.post("/cloud/sync"))}>{busy ? "Sincronizando…" : "Sincronizar ahora"}</button>
