@@ -206,7 +206,7 @@ function Inner({ type }: { type: CkType }) {
           continue;
         }
         setLog(`(${n}/${todo.length}) ${cmd}`);
-        const out = await sess.run(cmd, { maxMs: it.modo === "texto" ? 180000 : 60000 });
+        const out = await sess.run(cmd, { maxMs: 900000 });
         setRow(it.id, { texto: out });
         if (isSatItem(it)) {
           const rt = parseRates(out);

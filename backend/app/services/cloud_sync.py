@@ -523,15 +523,18 @@ def sync_once(force: bool = False) -> dict:
     if force:
         _ref_at[0] = 0.0
     with _run_lock:          # un solo ciclo a la vez (el automático y el «Sincronizar ahora» esperan su turno)
-        return _sync_locked()
+        return _sync_locked(force)
 
 
-def _sync_locked() -> dict:
+def _sync_locked(force: bool = False) -> dict:
     try:
         cfg = load_cfg()
         token = _token(cfg)
         if not cloud_url() or not token:
             _set(state="needs_login" if cfg.get("linked") else "idle")
+            return dict(STATE)
+        if cfg.get("paused") and not force:
+            _set(state="paused")
             return dict(STATE)
         _set(running=True)
         db = SessionLocal()
@@ -641,3 +644,14 @@ def start_agent() -> None:
             _kick.clear()
 
     threading.Thread(target=loop, daemon=True, name="cloud-sync").start()
+
+
+def set_paused(paused: bool) -> dict:
+    """Interruptor de la barra: apagado = no se sincroniza solo; encendido = sincroniza ya y sigue en automático."""
+    cfg = load_cfg()
+    cfg["paused"] = bool(paused)
+    save_cfg(cfg)
+    if paused:
+        _set(state="paused")
+        return dict(STATE)
+    return sync_once(force=True)

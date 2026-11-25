@@ -41,8 +41,18 @@ export abstract class ConsoleSession {
 
   async run(cmd: string, opts: { maxMs?: number } = {}): Promise<string> {
     if (!this.connected) throw new Error("La consola no está conectada.");
-    const maxMs = opts.maxMs ?? 90000;
+    const maxMs = opts.maxMs ?? 900000;      // 15 min: un «show ip route» de un banco puede tardar minutos; se corta con «Detener»
     const prompt = promptOf(this.recent);
+
+    // Cada ejecución sale por separado: antes de enviar se deja terminar lo que el equipo aún estuviera escribiendo del comando anterior
+    // (si no, esa cola caía dentro de la captura siguiente) y se descarta.
+    const s0 = Date.now();
+    let seen = this.buf.length;
+    let quietSince = Date.now();
+    while (Date.now() - s0 < 4000 && Date.now() - quietSince < 300) {
+      await sleep(60);
+      if (this.buf.length !== seen) { seen = this.buf.length; quietSince = Date.now(); }
+    }
     this.buf = "";
     await this.write(cmd + "\r");
 
@@ -52,7 +62,7 @@ export abstract class ConsoleSession {
     let moreSeen = 0;
     while (Date.now() - t0 < maxMs) {
       if (this.stopRequested || !this.connected) break;
-      await sleep(150);
+      await sleep(120);
       if (this.buf.length !== lastLen) {
         lastLen = this.buf.length;
         lastChange = Date.now();
@@ -68,10 +78,17 @@ export abstract class ConsoleSession {
       }
       const quiet = Date.now() - lastChange;
       const clean = this.buf.replace(ANSI, "");
-      if (quiet > 600 && clean.length > cmd.length && PROMPT.test(clean.replace(/[ \t]+$/, " "))) break;
-      if (quiet > 4000) break; // comandos largos sin prompt claro (p. ej. ping)
+      const trimmed = clean.replace(/[ \t\r\n]+$/, "");
+      const gotSome = clean.length > cmd.length;
+      // 1) Se conoce el prompt del equipo: la salida termina cuando ese mismo prompt vuelve a aparecer al final (da igual cuánto tarde).
+      if (prompt && gotSome && quiet > 600 && trimmed.endsWith(prompt.trim())) break;
+      // 2) El prompt cambió (p. ej. entró a otro modo): un prompt genérico al final y 5 s en silencio.
+      if (gotSome && quiet > 5000 && PROMPT.test(clean.replace(/[ \t]+$/, " "))) break;
+      // 3) No se conoce el prompt: 8 s sin nada nuevo (comandos como ping). Con prompt conocido solo se rinde tras 2 min de silencio total.
+      if (!prompt && quiet > 8000) break;
+      if (prompt && quiet > 120000) break;
     }
-    return withPrompt(cleanOutput(this.buf), cmd, prompt);
+    return withPrompt(trimToEcho(cleanOutput(this.buf), cmd), cmd, prompt);
   }
 
   /** Envía bytes tal cual (una tecla, Tab, Ctrl+C…): para el «teclado directo» del CLI. */
@@ -156,6 +173,20 @@ export function cleanOutput(raw: string): string {
     .replace(/\x08+/g, "")
     .replace(/\n{3,}/g, "\n\n")
     .trimEnd();
+}
+
+/** Quita lo que llegó antes del eco del comando (restos tardíos del comando anterior), conservando el prompt de esa línea. */
+export function trimToEcho(out: string, cmd: string): string {
+  const c = cmd.trim();
+  if (!c) return out;
+  const i = out.indexOf(c);
+  if (i <= 0 || i > 4000) return out;
+  const before = out.slice(0, i);
+  const lineStart = before.lastIndexOf("\n") + 1;
+  const sameLine = before.slice(lineStart);
+  // si antes del eco solo hay un prompt corto (p. ej. «Router#»), no hay nada que quitar
+  if (!before.slice(0, lineStart).trim()) return out;
+  return sameLine + out.slice(i);
 }
 
 /** Prompt del equipo (p. ej. «Router#», «<Huawei>») según lo último que escribió la consola, o "". */

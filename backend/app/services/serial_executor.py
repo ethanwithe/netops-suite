@@ -23,20 +23,40 @@ def _strip_ansi(data: bytes) -> bytes:
     return ANSI_RE.sub(b"", data)
 
 
-def _read_chunk(ser, quiet_time=1.2, max_time=20, on_more_send=b" "):
-    end_by = time.time() + max_time
+PROMPT_LINE = re.compile(r"[^\n]{1,80}[>\]#$]$")
+
+
+def _prompt_of(text):
+    """Último renglón que parece prompt (p. ej. «Router#», «<Huawei>») o ''."""
+    lines = [l.rstrip() for l in text.splitlines() if l.strip()]
+    last = lines[-1] if lines else ""
+    return last.strip() if PROMPT_LINE.fullmatch(last.strip()) else ""
+
+
+def _read_chunk(ser, quiet_time=1.2, max_time=20, on_more_send=b" ", prompt=""):
+    """Igual que en SSH: con el prompt conocido espera a que vuelva a aparecer (comandos largos), si no, por silencio."""
+    end_by = time.time() + (max(max_time, 600) if prompt else max_time)
     buf = b""
     last_data = time.time()
+    more_at = -1
     while time.time() < end_by:
         n = ser.in_waiting
         if n:
             chunk = ser.read(n)
             buf += chunk
             last_data = time.time()
-            if any(p in buf[-200:] for p in MORE_PATTERNS):
+            if any(p in buf[-200:] for p in MORE_PATTERNS) and len(buf) != more_at:
+                more_at = len(buf)
                 ser.write(on_more_send)
         else:
-            if time.time() - last_data > quiet_time:
+            quiet = time.time() - last_data
+            if prompt:
+                text = _strip_ansi(buf).decode(errors="ignore").rstrip()
+                if text.endswith(prompt) and quiet > 0.8:
+                    break
+                if quiet > 120:
+                    break
+            elif quiet > quiet_time:
                 break
             time.sleep(0.1)
     return _strip_ansi(buf).decode(errors="ignore")
@@ -60,7 +80,7 @@ def run_automatic_session_serial(com_port, baudrate, disable_paging_cmds,
                          stopbits=serial.STOPBITS_ONE)
     time.sleep(0.5)
     ser.write(b"\r\n")
-    _read_chunk(ser, quiet_time=0.8, max_time=4)
+    prompt = _prompt_of(_read_chunk(ser, quiet_time=0.8, max_time=4))
 
     for cmd in (disable_paging_cmds or []):
         log(f"Configurando terminal: {cmd}")
@@ -72,13 +92,13 @@ def run_automatic_session_serial(com_port, baudrate, disable_paging_cmds,
         key, label, cmd = config_test
         log(f"Ejecutando: {label} ({cmd})")
         ser.write((cmd + "\r\n").encode())
-        config_text = _read_chunk(ser, quiet_time=1.5, max_time=30)
+        config_text = _read_chunk(ser, quiet_time=1.5, max_time=30, prompt=prompt)
 
     results = []
     for key, label, cmd in tests:
         log(f"Ejecutando: {label} ({cmd})")
         ser.write((cmd + "\r\n").encode())
-        output = _read_chunk(ser, quiet_time=1.3, max_time=20)
+        output = _read_chunk(ser, quiet_time=1.3, max_time=20, prompt=prompt)
         results.append((key, label, cmd, output))
 
     if save_cmds:

@@ -92,7 +92,6 @@ export default function Layout() {
   const ckShown = ckOpen || inCk;
   const ckSub = [
     ...ckTypes.map((t) => ({ to: checklistRoute(t.id), label: t.nombre })),
-    { to: "/checklist/saturador", label: L("ck.saturador", "Saturador") },
   ];
   const fotoSub = [
     ...FOTO_SUB.filter((o) => (o.to.endsWith("poder-judicial") ? can(me, "poder_judicial") : okFoto)).map((o) => ({ ...o, label: L(`rf.${o.to.split("/").pop()!.replace(/-/g, "_")}`, o.label) })),
