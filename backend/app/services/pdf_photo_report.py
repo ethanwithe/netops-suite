@@ -10,9 +10,11 @@ Cada foto lleva su leyenda "ITEM N: descripción" debajo. La numeración
 reinicia en 1 dentro de cada lado (cada lado es una sección con su título).
 """
 
+import hashlib
 import io
 import logging
 import os
+import tempfile
 
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.units import cm
@@ -55,13 +57,19 @@ CAPTION_MAX_LINES = 3
 # IMÁGENES
 # ============================================================
 
-def fix_img(path):
-    """Abre la imagen aplicando la orientación EXIF. None si no se puede."""
+def fix_img(path, max_px=None):
+    """Abre la imagen aplicando la orientación EXIF. None si no se puede.
+    Con max_px, un JPEG grande se decodifica ya a escala reducida (2-4 veces más rápido, sin pérdida visible para ese tamaño)."""
     try:
         if not path or not os.path.isfile(path):
             return None
 
         with Image.open(path) as im:
+            if max_px and im.format == "JPEG":
+                try:
+                    im.draft("RGB", (max_px, max_px))
+                except Exception:  # noqa: BLE001
+                    pass
             img = ImageOps.exif_transpose(im)
             img.load()
             return img
@@ -69,6 +77,49 @@ def fix_img(path):
     except Exception as exc:
         logger.warning("No se pudo abrir la imagen %s: %s", path, exc)
         return None
+
+
+# Caché en disco de fotos ya reducidas para el PDF (la 2.ª vez que se genera el mismo informe sale casi al instante)
+_CACHE_DIR = os.path.join(tempfile.gettempdir(), "netops-photo-cache")
+
+
+def _cache_key(path):
+    try:
+        st = os.stat(path)
+        return hashlib.sha1(f"{path}|{st.st_size}|{int(st.st_mtime)}|{MAX_PHOTO_PX}|{JPEG_QUALITY}".encode()).hexdigest()
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _cache_read(key):
+    if not key:
+        return None
+    try:
+        with open(os.path.join(_CACHE_DIR, key + ".jpg"), "rb") as fh:
+            return fh.read()
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _cache_write(key, data):
+    if not key:
+        return
+    try:
+        os.makedirs(_CACHE_DIR, exist_ok=True)
+        tmp = os.path.join(_CACHE_DIR, key + ".tmp")
+        with open(tmp, "wb") as fh:
+            fh.write(data)
+        os.replace(tmp, os.path.join(_CACHE_DIR, key + ".jpg"))
+        names = os.listdir(_CACHE_DIR)
+        if len(names) > 800:   # límite: se borran las más antiguas
+            old = sorted((os.path.join(_CACHE_DIR, n) for n in names), key=os.path.getmtime)[:200]
+            for f in old:
+                try:
+                    os.remove(f)
+                except OSError:
+                    pass
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def _raw_prepared_jpeg(path):
@@ -101,7 +152,13 @@ def _prepare_photo(path):
     if raw is not None:
         return ImageReader(io.BytesIO(raw))
 
-    img = fix_img(path)
+    # Foto grande ya preparada antes (misma foto, mismo tamaño y fecha): se reutiliza, no se vuelve a reducir
+    ck = _cache_key(path)
+    hit = _cache_read(ck)
+    if hit is not None:
+        return ImageReader(io.BytesIO(hit))
+
+    img = fix_img(path, MAX_PHOTO_PX)
     if img is None:
         return None
 
@@ -119,7 +176,8 @@ def _prepare_photo(path):
         img.thumbnail((MAX_PHOTO_PX, MAX_PHOTO_PX), Image.Resampling.LANCZOS)
 
         buf = io.BytesIO()
-        img.save(buf, "JPEG", quality=JPEG_QUALITY, optimize=True)
+        img.save(buf, "JPEG", quality=JPEG_QUALITY)
+        _cache_write(ck, buf.getvalue())
         buf.seek(0)
         return ImageReader(buf)
 

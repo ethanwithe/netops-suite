@@ -38,6 +38,11 @@ def _stream(src) -> Tuple[io.BytesIO, int, int]:
     except Exception:
         pass
     im = Image.open(io.BytesIO(raw))
+    if im.format == "JPEG":
+        try:
+            im.draft("RGB", (1800, 1800))     # decodifica ya reducida: mucho más rápido con fotos grandes
+        except Exception:  # noqa: BLE001
+            pass
     im = ImageOps.exif_transpose(im)
     im.load()
     if im.width > 1800:

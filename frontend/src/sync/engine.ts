@@ -344,12 +344,41 @@ export async function uploadPhoto(file: Blob | File, name = "foto.jpg"): Promise
   const url = `/api/files/uploads/${path}`;
   const q: QueuedPhoto = { user_id: me, photo_id, name: path, blob: small, sha256: await sha256(small), size: small.size, state: "PENDING_SYNC", tries: 0, next_at: 0, created_at: Date.now() };
   await dbPut("photos", q);                       // primero en el equipo: no se pierde aunque se cierre la app
-  await refreshCounts();
-  if (navigator.onLine !== false) {
-    try { await sendPhoto(q); return { path, url, pending: false }; } catch (e) { if (!isNetErr(e) && httpStatus(e) !== 401) { /* queda en cola con su error */ } }
-  }
-  scheduleKick(3000);
+  void refreshCounts();
+  // La pantalla no espera a la red: la foto ya está a salvo aquí y se ve desde este equipo (ver public/sw.js); sube por detrás.
+  // Antes de generar un PDF/ZIP se espera a que terminen de subir (ver flushPhotos).
+  if (navigator.onLine !== false) void sendOnce(q).catch(() => undefined);
+  else scheduleKick(3000);
   return { path, url, pending: true };
+}
+
+// Subidas de fotos en segundo plano: hasta 3 a la vez y nunca la misma dos veces.
+const inflight = new Map<string, Promise<void>>();
+let active = 0;
+const waiters: Array<() => void> = [];
+function sendOnce(q: QueuedPhoto): Promise<void> {
+  let p = inflight.get(q.photo_id);
+  if (!p) {
+    p = (async () => {
+      if (active >= 3) await new Promise<void>((r) => waiters.push(r));
+      active++;
+      try { await sendPhoto(q); } finally { active--; waiters.shift()?.(); }
+    })().finally(() => inflight.delete(q.photo_id));
+    inflight.set(q.photo_id, p);
+  }
+  return p;
+}
+
+/** Espera a que las fotos pendientes terminen de subir (para que el PDF/ZIP del servidor las incluya). Sin conexión no espera. */
+export async function flushPhotos(maxMs = 120_000): Promise<void> {
+  const end = Date.now() + maxMs;
+  while (navigator.onLine !== false && Date.now() < end) {
+    let pend: QueuedPhoto[] = [];
+    try { pend = (await dbAll<QueuedPhoto>("photos")).filter(mine); } catch { return; }
+    if (!pend.length) return;
+    const res = await Promise.allSettled(pend.map((q) => sendOnce(q)));
+    if (res.every((r) => r.status === "rejected")) return;     // no hay forma de subirlas ahora: se sigue sin esperar
+  }
 }
 
 async function sendPhoto(q: QueuedPhoto) {
@@ -360,14 +389,14 @@ async function sendPhoto(q: QueuedPhoto) {
   const { data } = await api.post("/sync/photos", form, { headers: { "Content-Type": "multipart/form-data" } });
   if (q.sha256 && data.sha256 !== q.sha256) throw new Error("La foto no llegó completa.");   // verificada: solo entonces se libera
   await dbDel("photos", q.photo_id);
-  await refreshCounts();
+  void refreshCounts();
 }
 
 async function pushPhotos() {
   const now = Date.now();
   for (const q of (await dbAll<QueuedPhoto>("photos")).filter(mine).sort((a, b) => a.created_at - b.created_at)) {
     if (q.next_at > now || q.tries >= 8) continue;
-    try { await sendPhoto(q); } catch (e) {
+    try { await sendOnce(q); } catch (e) {
       if (isNetErr(e) || httpStatus(e) === 401) throw e;
       const tries = q.tries + 1;
       await dbPut("photos", { ...q, state: "SYNC_ERROR", tries, next_at: Date.now() + backoff(tries), error: errText(e) });

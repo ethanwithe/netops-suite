@@ -397,9 +397,15 @@ export default function CameraCapture({ cliente = "", onCapture, onClose, onNati
             // foto del sensor completo con el enfoque, HDR y reducción de ruido propios del teléfono
             const pc = await ic.getPhotoCapabilities?.().catch(() => undefined);
             const opts: Record<string, unknown> = {};
-            if (pc?.imageWidth?.max && pc?.imageHeight?.max) { opts.imageWidth = pc.imageWidth.max; opts.imageHeight = pc.imageHeight.max; }
+            if (pc?.imageWidth?.max && pc?.imageHeight?.max) {
+              // máximo útil: ~12 MP (4096 px de lado largo). Los sensores de 50-200 MP tardan segundos y la foto pesa 15 MB sin aportar detalle visible
+              const k = Math.min(1, 4096 / Math.max(pc.imageWidth.max, pc.imageHeight.max));
+              opts.imageWidth = Math.round(pc.imageWidth.max * k); opts.imageHeight = Math.round(pc.imageHeight.max * k);
+            }
             if (pc?.fillLightMode?.includes(torch ? "flash" : "off")) opts.fillLightMode = torch ? "flash" : "off";
-            blob = await ic.takePhoto(opts).catch(() => ic.takePhoto());
+            // si el teléfono tarda más de 3,5 s en la foto del sensor, se usa el cuadro de video (no se pierde el momento)
+            const slow = new Promise<null>((res) => window.setTimeout(() => res(null), 3500));
+            blob = await Promise.race([ic.takePhoto(opts).catch(() => ic.takePhoto()), slow]);
           } catch { blob = null; }
         }
       }

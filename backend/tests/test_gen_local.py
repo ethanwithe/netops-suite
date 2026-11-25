@@ -44,8 +44,8 @@ def work(tmp_path, photos):
 
 def norm_pdf(b: bytes) -> bytes:
     """Sin las marcas de fecha e identificador que cambian en cada generación."""
-    b = re.sub(rb"/CreationDate\s*\(D:[^)]*\)", b"", b)
-    b = re.sub(rb"/ModDate\s*\(D:[^)]*\)", b"", b)
+    b = re.sub(rb"/CreationDate\s*\(D(?::|\\072)[^)]*\)", b"", b)      # con «:» o escrito como \072
+    b = re.sub(rb"/ModDate\s*\(D(?::|\\072)[^)]*\)", b"", b)
     b = re.sub(rb"/ID\s*\[[^\]]*\]", b"", b)
     b = re.sub(rb"\(D:\d{14}[^)]*\)", b"()", b)          # cualquier otra marca de fecha (p. ej. la del adjunto)
     return b
