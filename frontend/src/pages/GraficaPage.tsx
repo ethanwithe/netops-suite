@@ -14,6 +14,7 @@ import type { Fields } from "../diagram/templates";
 import type { Doc, FieldGroups } from "../diagram/types";
 import { useUndo } from "../diagram/useUndo";
 import { useAuth } from "../store/auth";
+import { notify } from "../utils/saveFile";
 import { attachFile, toISODate, useSotSync } from "../store/clients";
 import { expandDatos } from "../store/clientLink";
 import type { ClientRecord } from "../store/clients";
@@ -51,6 +52,13 @@ export default function GraficaPage() {
   return <GraficaInner key={id} info={info} options={options} remote={remote} reload={reload} />;
 }
 
+function hashStamp(v: unknown): string {
+  const t = JSON.stringify(v);
+  let h = 5381;
+  for (let i = 0; i < t.length; i++) h = ((h << 5) + h + t.charCodeAt(i)) | 0;
+  return `${t.length}-${(h >>> 0).toString(36)}`;
+}
+
 function GraficaInner({ info, options, remote, reload }: { info: OptionInfo; options: OptionInfo[]; remote: OptionDetail | null; reload: () => Promise<void> }) {
   const tpl = templateFor(storageId(info.id), info.label);
   const grupos = useGrupos();
@@ -71,6 +79,21 @@ function GraficaInner({ info, options, remote, reload }: { info: OptionInfo; opt
     setGroups((gs) => gs.map((g, i) => (i === gi ? { ...g, fields: g.fields.map((f, j) => (j === fi ? { ...f, ...patch } : f)) } : g)));
   const baseDoc: Doc = useMemo(() => stripGroups(remote?.published ?? tpl.doc), [remote, tpl.doc]);     // lo que ven todos hasta que alguien edite su copia
   const doc = data.doc ?? baseDoc;
+  // Cuando el superadmin actualiza el diseño para todos, cada cuenta lo carga completo (dibujo y campos de arriba) una sola vez.
+  useEffect(() => {
+    const pub = remote?.published;
+    if (!pub) return;
+    const stamp = hashStamp(pub);
+    const k = `grafica_pub:${info.id}`;
+    let seen = "";
+    try { seen = localStorage.getItem(k) ?? ""; } catch { /* sin almacenamiento */ }
+    if (seen === stamp) return;
+    try { localStorage.setItem(k, stamp); } catch { /* sin almacenamiento */ }
+    if (data.doc || data.groups) {
+      setData((p) => ({ ...p, doc: null, groups: undefined }));
+      notify("Se cargó el diseño actualizado para todos.", "ok");
+    }
+  }, [remote]); // eslint-disable-line react-hooks/exhaustive-deps
   const hist = useUndo<Doc>(doc, useCallback((d: Doc) => setData((p) => ({ ...p, doc: d })), [setData]));
   const [open, setOpen] = useState(true);
   const [busy, setBusy] = useState<"" | "pptx" | "pdf">("");

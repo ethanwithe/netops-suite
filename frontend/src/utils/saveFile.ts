@@ -5,7 +5,7 @@
  * `installDownloadGuard()` hace que todos los enlaces/botones de descarga de la app pasen por aquí.
  */
 
-type Picker = (o: { suggestedName?: string; types?: { description: string; accept: Record<string, string[]> }[] }) => Promise<{
+type Picker = (o: { suggestedName?: string; startIn?: string; types?: { description: string; accept: Record<string, string[]> }[] }) => Promise<{
   name: string; createWritable: () => Promise<{ write: (b: Blob) => Promise<void>; close: () => Promise<void> }>;
 }>;
 
@@ -64,7 +64,11 @@ async function viaPicker(blob: Blob, name: string): Promise<"saved" | "cancelled
   const ext = (name.split(".").pop() || "").toLowerCase();
   const types = MIME[ext] ? [{ description: ext.toUpperCase(), accept: { [MIME[ext]]: ["." + ext] } }] : undefined;
   try {
-    const h = await pick({ suggestedName: name, types });
+    // startIn «downloads»: el selector abre en Descargas y no en una carpeta protegida del sistema
+    const h = await pick({ suggestedName: name, types, startIn: "downloads" }).catch((e) => {
+      if ((e as DOMException)?.name === "AbortError") throw e;
+      return pick({ suggestedName: name });          // algunos navegadores rechazan «types»/«startIn»
+    });
     const w = await h.createWritable();
     await w.write(blob);
     await w.close();
@@ -76,8 +80,19 @@ async function viaPicker(blob: Blob, name: string): Promise<"saved" | "cancelled
   }
 }
 
+/** Nombre válido en Windows/Android: sin símbolos raros, sin punto/espacio al final, largo razonable y siempre con extensión. */
+export function safeName(filename: string): string {
+  const raw = (filename || "archivo").normalize("NFC").replace(/[\u0000-\u001f\\/:*?"<>|%#&{}$!'`@+=~^;,\[\]]+/g, " ").replace(/\s+/g, " ").trim();
+  const dot = raw.lastIndexOf(".");
+  let base = dot > 0 ? raw.slice(0, dot) : raw;
+  const ext = dot > 0 ? raw.slice(dot + 1).replace(/[^A-Za-z0-9]/g, "").slice(0, 6) : "";
+  base = base.replace(/[. ]+$/g, "").slice(0, 100).trim() || "archivo";
+  if (/^(con|prn|aux|nul|com\d|lpt\d)$/i.test(base)) base += " 1";
+  return ext ? `${base}.${ext}` : base;
+}
+
 export async function saveFile(source: string | Blob, filename: string): Promise<void> {
-  const name = (filename || "archivo").replace(/[\\/:*?"<>|]+/g, "_");
+  const name = safeName(filename);
   let blob: Blob;
   try {
     if (typeof source === "string") {

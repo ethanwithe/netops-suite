@@ -421,8 +421,8 @@ def _push(db, h: httpx.Client, user: models.User, cfg: dict) -> tuple[int, int]:
     for ent, eid, row, ver, deleted in _collect(db, user):
         seen.add((ent, eid))
         t = tracked.get((ent, eid))
-        if t and t.status in ("CONFLICT", "ERROR") and t.local_version == ver:
-            continue
+        if t and t.status == "CONFLICT" and t.local_version == ver:
+            continue                                    # los conflictos esperan a que el usuario los resuelva; los errores se reintentan solos
         if t and t.status == "SYNCED" and t.local_version == ver:
             continue
         data = {"deleted": True} if deleted else DATA[ent](row)

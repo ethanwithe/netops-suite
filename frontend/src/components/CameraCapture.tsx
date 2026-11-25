@@ -183,7 +183,7 @@ export default function CameraCapture({ cliente = "", onCapture, onClose, onNati
 
         const caps = (track.getCapabilities?.() ?? {}) as FocusCaps;
         capsRef.current = caps;
-        setHasTorch(!!caps.torch);
+        if (caps.torch) setHasTorch(true);   // nunca se oculta el botón: Android a veces informa la linterna tarde
         setHwZoom(!!caps.zoom);
         if (caps.zoom) { zoomRef.current = caps.zoom.min <= 1 ? 1 : caps.zoom.min; setZoom(zoomRef.current); }
 
@@ -473,7 +473,7 @@ export default function CameraCapture({ cliente = "", onCapture, onClose, onNati
           </button>
         )}
         <div className="flex items-center gap-2">
-          {hasTorch && (
+          {(
             <button className={`${PILL} ${torch ? "!bg-yellow-300 !text-black" : ""}`} onClick={toggleTorch} aria-label={torch ? "Apagar el flash" : "Encender el flash"} aria-pressed={torch}>
               <svg viewBox="0 0 24 24" className="h-5 w-5" fill={torch ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinejoin="round"><path d="M13 2L5 14h6l-1 8 8-12h-6l1-8z" /></svg>
               Flash
