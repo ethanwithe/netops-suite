@@ -37,15 +37,25 @@ export interface ClientInput {
 
 export const listYears = () => api.get<{ year: number; total: number }[]>("/clients/years").then((r) => r.data);
 export const createYear = (year: number) => api.post("/clients/years", { year });
-export const listClients = (params: { year?: number; q?: string }) =>
-  api.get<ClientRecord[]>("/clients", { params }).then((r) => r.data).catch(async (e) => {
-    if ((e as { response?: unknown })?.response) throw e;
-    // Sin conexión: los clientes descargados o creados en este equipo.
-    const q = (params.q || "").trim().toLowerCase();
-    const rows = (await localClients()) as unknown as ClientRecord[];
-    return rows.filter((c) => (!params.year || String(c.fecha || "").startsWith(String(params.year))) && (!q || `${c.sot} ${c.nombre} ${c.cid}`.toLowerCase().includes(q)))
-      .map((c) => ({ ...c, datos: c.datos || {}, reportes: c.reportes || [], mine: true }));
-  });
+async function localFiltered(params: { year?: number; q?: string }): Promise<ClientRecord[]> {
+  const q = (params.q || "").trim().toLowerCase();
+  const rows = (await localClients()) as unknown as ClientRecord[];
+  return rows.filter((c) => (!params.year || String(c.fecha || "").startsWith(String(params.year))) && (!q || `${c.sot} ${c.nombre} ${c.cid}`.toLowerCase().includes(q)))
+    .map((c) => ({ ...c, datos: c.datos || {}, reportes: c.reportes || [], mine: true }))
+    .sort((a, b) => String(b.fecha || "").localeCompare(String(a.fecha || "")));
+}
+
+/** Mis clientes. Con conexión, los del servidor; si el servidor no responde o no devuelve ninguno, los que hay en este equipo. */
+export async function listClients(params: { year?: number; q?: string }): Promise<ClientRecord[]> {
+  let server: ClientRecord[] | null = null;
+  let failure: unknown;
+  try { server = (await api.get<ClientRecord[]>("/clients", { params })).data; } catch (e) { failure = e; }
+  if (server && server.length) return server;
+  const local = await localFiltered(params).catch(() => [] as ClientRecord[]);
+  if (local.length) return local;
+  if (server) return server;
+  throw failure;
+}
 export const createClient = (c: ClientInput) => api.post<ClientRecord>("/clients", c).then((r) => r.data);
 export const updateClient = (id: string, c: ClientInput) => api.put<ClientRecord>(`/clients/${id}`, c).then((r) => r.data);
 export const deleteClient = (id: string) => api.delete(`/clients/${id}`);

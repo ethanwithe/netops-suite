@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "../api/client";
 
 interface Conflict { entity: string; id: string; label: string; reason: string; server_updated_at: string; server_deleted: boolean }
-interface Cloud { enabled: boolean; url?: string; linked?: boolean; state?: string; running?: boolean; last_sync?: string; error?: string; pending?: number; conflicts?: Conflict[] }
+interface Cloud { enabled: boolean; url?: string; linked?: boolean; state?: string; running?: boolean; last_sync?: string; error?: string; pending?: number; conflicts?: Conflict[]; user?: string; sent?: number; received?: number; local?: { clients: number } }
 
 const TEXT: Record<string, string> = {
   synced: "Nube: sincronizado", syncing: "Nube: sincronizando…", offline: "Nube: sin conexión (se sube solo al volver)",
@@ -49,6 +49,9 @@ export default function CloudStatus() {
             <b className="text-sm">{TEXT[state]}</b>
             <button type="button" className="btn-primary !px-2.5 !py-1 text-xs" disabled={busy || !c.linked} onClick={() => void run(() => api.post("/cloud/sync"))}>{busy ? "Sincronizando…" : "Sincronizar ahora"}</button>
           </div>
+          <p className="text-slate-600">Cuenta: <b>{c.user}</b> · Clientes en este equipo: <b>{c.local?.clients ?? 0}</b> · Última vez: subió <b>{c.sent ?? 0}</b>, bajó <b>{c.received ?? 0}</b></p>
+          <button type="button" className="btn-secondary !px-2 !py-1 text-xs" disabled={busy || !c.linked} title="Vuelve a comparar todo con la nube desde cero. No borra nada."
+            onClick={() => void run(() => api.post("/cloud/repair"))}>Reparar: volver a comparar todo</button>
           <p className="text-slate-600">Servidor: <span className="font-mono">{c.url}</span><br />Última sincronización: <b>{when}</b></p>
           {!c.linked && <p className="text-amber-700">Esta cuenta aún no está vinculada con la nube. Cierra sesión y entra con tu usuario de la nube teniendo Internet.</p>}
           {state === "needs_login" && <p className="text-amber-700">La sesión con la nube venció. Cierra sesión y vuelve a entrar con Internet; lo que hiciste está guardado y se sube después.</p>}

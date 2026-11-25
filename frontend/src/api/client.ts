@@ -22,6 +22,15 @@ api.interceptors.request.use((cfg) => {
   return cfg;
 });
 
+// Antes de pedir un PDF/ZIP/Word al servidor se espera a que las fotos recién tomadas terminen de subir (suben por detrás para no hacer esperar).
+const GENERATES = /(pdf|zip|docx|pptx|package|report|evidence)/i;
+api.interceptors.request.use(async (cfg) => {
+  if ((cfg.method || "get").toLowerCase() === "post" && GENERATES.test(cfg.url || "") && !(cfg.url || "").startsWith("/sync")) {
+    try { await (await import("../sync/engine")).flushPhotos(); } catch { /* sin motor de sincronización */ }
+  }
+  return cfg;
+});
+
 installOfflineCache(api);
 installLocalGen(api);
 

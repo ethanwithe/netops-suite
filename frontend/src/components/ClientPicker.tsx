@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { apiErrorMessage } from "../api/client";
 import { listClients } from "../store/clients";
 import type { ClientRecord } from "../store/clients";
 
@@ -8,15 +9,20 @@ export default function ClientPicker({ onPick }: { onPick: (c: ClientRecord) => 
   const [q, setQ] = useState("");
   const [rows, setRows] = useState<ClientRecord[]>([]);
   const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState("");
+  const [tick, setTick] = useState(0);
 
   useEffect(() => {
     if (!open) return;
-    setLoading(true);
+    setLoading(true); setErr("");
+    let alive = true;
     const t = window.setTimeout(() => {
-      listClients({ q }).then((r) => setRows(r.slice(0, 30))).catch(() => setRows([])).finally(() => setLoading(false));
-    }, 250);
-    return () => window.clearTimeout(t);
-  }, [open, q]);
+      listClients({ q }).then((r) => { if (alive) setRows(r.slice(0, 50)); })
+        .catch((e) => { if (alive) { setRows([]); setErr(apiErrorMessage(e, "No se pudo cargar la lista de clientes.")); } })
+        .finally(() => { if (alive) setLoading(false); });
+    }, q ? 250 : 0);
+    return () => { alive = false; window.clearTimeout(t); };
+  }, [open, q, tick]);
 
   return (
     <div className="relative">
@@ -28,7 +34,10 @@ export default function ClientPicker({ onPick }: { onPick: (c: ClientRecord) => 
           <input className="input w-full" autoFocus placeholder="Buscar por SOT o nombre..." value={q} onChange={(e) => setQ(e.target.value)} />
           <ul className="mt-2 max-h-64 space-y-1 overflow-y-auto">
             {loading && <li className="px-2 py-1 text-xs text-slate-400">Buscando...</li>}
-            {!loading && rows.length === 0 && <li className="px-2 py-1 text-xs text-slate-400">No hay clientes guardados todavía.</li>}
+            {!loading && err && (
+              <li className="px-2 py-1 text-xs text-red-600">{err} <button type="button" className="underline" onClick={() => setTick((n) => n + 1)}>Reintentar</button></li>
+            )}
+            {!loading && !err && rows.length === 0 && <li className="px-2 py-1 text-xs text-slate-400">{q ? "Ningún cliente coincide con esa búsqueda." : "No hay clientes guardados para tu cuenta todavía."}</li>}
             {rows.map((c) => (
               <li key={c.id}>
                 <button type="button" className="w-full rounded px-2 py-1.5 text-left text-sm hover:bg-slate-100"

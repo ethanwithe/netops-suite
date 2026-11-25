@@ -82,6 +82,14 @@ def login(payload: LoginIn, request: Request, response: Response, db: Session = 
     return out
 
 
+@router.post("/refresh")
+def refresh(request: Request, user: models.User = Depends(current_user)):
+    """Renueva la sesión de las apps nativas (escritorio/Android): mientras se usen, no vence nunca."""
+    if request.headers.get("x-client") != "native":
+        raise HTTPException(400, "Solo para apps nativas.")
+    return {"token": security.make_token(user.id, user.token_version)}
+
+
 @router.post("/logout")
 def logout(request: Request, response: Response, db: Session = Depends(get_db)):
     user = user_from_token(db, token_from(request))
