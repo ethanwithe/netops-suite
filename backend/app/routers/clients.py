@@ -421,7 +421,7 @@ async def attach_file(request: Request, sot: str = Form(...), tipo: str = Form("
     safe = (clean_part(base) or "archivo")[:90] + (ext[:6] if re.fullmatch(r"\.[A-Za-z0-9]{1,5}", ext or "") else "")
     out = OUTPUTS_DIR / safe
     out.write_bytes(data)
-    filestore.save_output(out)
+    filestore.save_output(out, False)
     row = _find(db, user, s, request) or _mine_or_restore(db, user, s, "")
     url = f"/api/files/outputs/{quote(safe)}"
     _add_reporte(row, user, {"tipo": tipo, "nombre": nombre or safe, "filename": safe, "url": url})

@@ -72,7 +72,7 @@ def get_output(filename: str):
         "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
     }.get(ext) or mimetypes.guess_type(filename)[0] or "application/octet-stream"
-    return FileResponse(str(path), media_type=media, filename=filename)
+    return FileResponse(str(path), media_type=media, filename=filename, headers={"Cache-Control": "no-store"})
 
 
 @router.get("/telegram/status")

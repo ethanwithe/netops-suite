@@ -410,6 +410,20 @@ def _collect(db, user: models.User) -> list[tuple]:
     return out
 
 
+def _local_is_newer(row, t) -> bool:
+    """Conflicto por versión: gana lo editado más tarde. True si lo de este equipo es más nuevo que lo que tiene la nube."""
+    info = t.info or {}
+    if info.get("reason", "version") != "version":
+        return False
+    srv = (info.get("server") or {}).get("updated_at") or ""
+    try:
+        s_at = dt.datetime.fromisoformat(srv.replace("Z", "+00:00")).replace(tzinfo=None)
+    except ValueError:
+        return False
+    l_at = getattr(row, "updated_at", None)
+    return bool(l_at and l_at > s_at)
+
+
 def _op_id(ent: str, eid: str, h: str, base: Optional[int]) -> str:
     return hashlib.sha256(f"{ent}|{eid}|{h}|{base}".encode()).hexdigest()[:40]   # igual en cada reintento => idempotente
 
@@ -421,8 +435,9 @@ def _push(db, h: httpx.Client, user: models.User, cfg: dict) -> tuple[int, int]:
     for ent, eid, row, ver, deleted in _collect(db, user):
         seen.add((ent, eid))
         t = tracked.get((ent, eid))
-        if t and t.status == "CONFLICT" and t.local_version == ver:
-            continue                                    # los conflictos esperan a que el usuario los resuelva; los errores se reintentan solos
+        newer = bool(t and t.status == "CONFLICT" and _local_is_newer(row, t))
+        if t and t.status == "CONFLICT" and t.local_version == ver and not newer:
+            continue                                    # los conflictos donde la nube es más nueva esperan al usuario; los errores se reintentan solos
         if t and t.status == "SYNCED" and t.local_version == ver:
             continue
         data = {"deleted": True} if deleted else DATA[ent](row)
@@ -433,9 +448,12 @@ def _push(db, h: httpx.Client, user: models.User, cfg: dict) -> tuple[int, int]:
         if deleted and not (t and t.remote_version):
             continue                                    # se creó y se borró sin llegar a la nube
         base = t.remote_version if (t and t.remote_version) else None
-        queued.append({"op_id": _op_id(ent, eid, hh, base), "entity": ent, "entity_id": eid,
-                       "action": "delete" if deleted else "upsert", "base_version": base,
-                       "data": {} if deleted else data, "_h": hh, "_ver": ver})
+        op = {"op_id": _op_id(ent, eid, hh, base), "entity": ent, "entity_id": eid,
+              "action": "delete" if deleted else "upsert", "base_version": base,
+              "data": {} if deleted else data, "_h": hh, "_ver": ver}
+        if newer:
+            op["force"] = True          # lo último que se editó gana: si lo de aquí es más nuevo que lo de la nube, se envía igual
+        queued.append(op)
     # registros que existían en la nube y ya no están aquí (ventana o copia borradas)
     for (ent, eid), t in tracked.items():
         if ent in ("workspace", "checklist_copy") and t.remote_version and (ent, eid) not in seen and t.status == "SYNCED" and _local_row(db, ent, eid) is None:
