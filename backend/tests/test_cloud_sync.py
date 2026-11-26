@@ -280,6 +280,23 @@ def test_ediciones_por_rutas_normales(world):
     assert cloud.pull("client")[cid]["data"]["nombre"] == "Editado en pantalla"
 
 
+def test_misma_sot_en_nube_y_escritorio(world):
+    """Un cliente creado en el escritorio con una SOT que la nube ya tenía se une: sus ventanas llegan al cliente de la nube."""
+    cloud, local = Api(world["cloud"]), Api(world["local"])
+    cloud.use_token()
+    local.use_token()
+    sot = "8" + uuid.uuid4().hex[:6].translate(str.maketrans("abcdef", "123456"))
+    a, b = uuid.uuid4().hex, uuid.uuid4().hex
+    assert cloud.push("client", a, client_data(sot, "En la nube"))["status"] == "applied"
+    assert local.push("client", b, client_data(sot, "En el escritorio"))["status"] == "applied"
+    wkey = "foto:fibra"
+    assert local.push("workspace", f"{b}|{wkey}", {"client_id": b, "key": wkey, "label": "Fotos", "route": "/fotografico/fibra", "state": {"nota": "desde escritorio"}})["status"] == "applied"
+    st = local.sync()
+    assert st["state"] in ("synced", "conflict"), st
+    got = cloud.pull("workspace").get(f"{a}|{wkey}")
+    assert got and got["data"]["state"]["nota"] == "desde escritorio", "la ventana del escritorio no llegó al cliente de la nube"
+
+
 def test_interruptor(world):
     """El interruptor de la barra pausa y reanuda la sincronización automática."""
     local = Api(world["local"])

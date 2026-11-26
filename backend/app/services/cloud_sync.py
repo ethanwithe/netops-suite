@@ -424,6 +424,41 @@ def _local_is_newer(row, t) -> bool:
     return bool(l_at and l_at > s_at)
 
 
+def _merge_duplicate(db, user: models.User, old_id: str, srv: dict) -> None:
+    """Cliente creado aquí con una SOT que la nube ya tenía: se adopta el de la nube y se le pasan las ventanas y datos de este."""
+    new_id = srv["id"]
+    _apply_remote(db, user, srv)
+    db.commit()
+    _mark_synced(db, "client", new_id, int(srv.get("version") or 1))
+    old, new = db.get(models.Client, old_id), db.get(models.Client, new_id)
+    if old is None or new is None:
+        return
+    new.datos = {**(old.datos or {}), **(new.datos or {})}
+    have = {r.get("filename"): r for r in (new.reportes or []) if isinstance(r, dict)}
+    for r in old.reportes or []:
+        if isinstance(r, dict) and r.get("filename") and r["filename"] not in have:
+            have[r["filename"]] = r
+    new.reportes = list(have.values())[-150:]
+    for w in db.query(models.UserWorkspace).filter(models.UserWorkspace.client_id == old_id).all():
+        cur = db.get(models.UserWorkspace, (new_id, w.key))
+        if cur is None:
+            db.add(models.UserWorkspace(client_id=new_id, key=w.key, label=w.label, route=w.route, state=w.state or {}, updated_by=w.updated_by, version=1))
+        else:
+            loser, win = (cur, w) if (w.updated_at or dt.datetime.min) > (cur.updated_at or dt.datetime.min) else (w, cur)
+            db.add(models.WorkspaceVersion(client_id=new_id, key=w.key, label=loser.label or "", state=loser.state or {}, saved_by="fusión"))
+            if win is w:
+                cur.label, cur.route, cur.state = w.label, w.route, w.state or {}
+        db.delete(w)
+        old_t = db.get(models.CloudItem, ("workspace", S.ws_id(old_id, w.key)))
+        if old_t:
+            db.delete(old_t)
+    db.query(models.WorkspaceVersion).filter(models.WorkspaceVersion.client_id == old_id).update({"client_id": new_id})
+    for sh in db.query(models.ClientShare).filter(models.ClientShare.client_id == old_id).all():
+        db.delete(sh)
+    old.deleted_at, old.deleted_by = dt.datetime.utcnow(), "fusión"
+    db.commit()
+
+
 def _op_id(ent: str, eid: str, h: str, base: Optional[int]) -> str:
     return hashlib.sha256(f"{ent}|{eid}|{h}|{base}".encode()).hexdigest()[:40]   # igual en cada reintento => idempotente
 
@@ -436,7 +471,8 @@ def _push(db, h: httpx.Client, user: models.User, cfg: dict) -> tuple[int, int]:
         seen.add((ent, eid))
         t = tracked.get((ent, eid))
         newer = bool(t and t.status == "CONFLICT" and _local_is_newer(row, t))
-        if t and t.status == "CONFLICT" and t.local_version == ver and not newer:
+        dup = bool(t and t.status == "CONFLICT" and (t.info or {}).get("reason") == "duplicate_sot")
+        if t and t.status == "CONFLICT" and t.local_version == ver and not newer and not dup:
             continue                                    # los conflictos donde la nube es más nueva esperan al usuario; los errores se reintentan solos
         if t and t.status == "SYNCED" and t.local_version == ver:
             continue
@@ -494,6 +530,18 @@ def _push(db, h: httpx.Client, user: models.User, cfg: dict) -> tuple[int, int]:
                     t.remote_version, t.local_version, t.synced_hash = int(res.get("version") or 1), op["_ver"], op["_h"]
                     t.status, t.info = "SYNCED", None
                 applied += 1
+            elif res["status"] == "conflict" and ent == "client" and res.get("reason") == "duplicate_sot" and (res.get("server") or {}).get("id") not in (None, eid):
+                # La misma SOT ya existe en la nube con otro identificador: se unen (las ventanas de aquí pasan al cliente de la nube)
+                try:
+                    _merge_duplicate(db, user, eid, res["server"])
+                    t.status, t.info, t.local_version = "SYNCED", None, op["_ver"]
+                    applied += 1
+                except Exception as e:  # noqa: BLE001
+                    db.rollback()
+                    t = _tracked(db, ent, eid, create=True)
+                    t.status, t.local_version = "ERROR", op["_ver"]
+                    t.info = {"error": f"No se pudo unir con el cliente de la nube: {e}"[:200]}
+                    problems += 1
             elif res["status"] == "conflict":
                 t.status, t.local_version = "CONFLICT", op["_ver"]
                 t.info = {"server": res.get("server"), "reason": res.get("reason", "version"), "action": op["action"]}
