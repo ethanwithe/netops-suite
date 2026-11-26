@@ -297,6 +297,24 @@ def test_misma_sot_en_nube_y_escritorio(world):
     assert got and got["data"]["state"]["nota"] == "desde escritorio", "la ventana del escritorio no llegó al cliente de la nube"
 
 
+def test_cambios_de_catalogos_suben(world):
+    """Lo que el administrador cambia en el escritorio (diseños, opciones, ajustes) también queda en la nube."""
+    cloud, local = Api(world["cloud"]), Api(world["local"])
+    cloud.use_token()
+    local.use_token()
+    local.sync()                                         # punto de partida
+    body = {"sections": [{"lado": "SECCION DEL ESCRITORIO", "cells": [{"descripcion": "uno", "bloque": ""}]}], "opciones": []}
+    r = local.c.put("/api/designs/rf/fibra", json=body)
+    assert r.status_code == 200, r.text
+    assert local.sync()["state"] in ("synced", "conflict")
+    got = cloud.c.get("/api/designs/rf/fibra").json()["base"]
+    assert got and got["sections"][0]["lado"] == "SECCION DEL ESCRITORIO", "el diseño base hecho en el escritorio no subió a la nube"
+    # y si se quita en el escritorio, se quita en la nube
+    assert local.c.delete("/api/designs/rf/fibra").status_code == 200
+    assert local.sync()["state"] in ("synced", "conflict")
+    assert cloud.c.get("/api/designs/rf/fibra").json()["base"] is None
+
+
 def test_interruptor(world):
     """El interruptor de la barra pausa y reanuda la sincronización automática."""
     local = Api(world["local"])

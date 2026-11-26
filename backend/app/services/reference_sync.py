@@ -172,3 +172,56 @@ def apply(db, snap: dict, self_id: str) -> dict:
         for pre in ("items:", "logos:", "logo:"):
             cache.delete_prefix(pre)
     return done
+
+
+# ------------------------------------------------------------------ escritorio -> nube (cambios de catálogos, diseños y ajustes)
+PUSHABLE = FULL + ("app_settings",)
+
+
+def _pk(M) -> str:
+    return inspect(M).primary_key[0].key
+
+
+def row_hashes(db, table: str, user: models.User) -> dict:
+    """{id: huella} de cada fila local (para saber qué cambió desde la última vez que coincidía con la nube)."""
+    M = _model(table)
+    pk = _pk(M)
+    return {str(d[pk]): hashlib.sha1(json.dumps(d, sort_keys=True, default=str).encode()).hexdigest() for d in _rows(db, table, user)}
+
+
+def local_state(db, table: str, user: models.User) -> dict:
+    return {"sig": _signature(db, table, user), "rows": row_hashes(db, table, user)}
+
+
+def apply_push(db, table: str, upserts: list, deletes: list) -> dict:
+    """Nube: aplica fila por fila lo que cambió en el escritorio (solo admin; los ajustes con claves/secretos se ignoran)."""
+    if table not in PUSHABLE:
+        raise KeyError(table)
+    M = _model(table)
+    pk = _pk(M)
+    n_up = n_del = 0
+    for d in upserts:
+        if pk not in d:
+            continue
+        if table == "app_settings" and any(w in str(d[pk]).lower() for w in SECRET_WORDS):
+            continue
+        row = db.get(M, d[pk])
+        if not row:
+            row = M(**{pk: d[pk]})
+            db.add(row)
+        for k, v in _fill(M, d).items():
+            if k != pk:
+                setattr(row, k, v)
+        n_up += 1
+    db.flush()
+    for key in deletes:
+        if table == "app_settings" and any(w in str(key).lower() for w in SECRET_WORDS):
+            continue
+        row = db.get(M, key)
+        if row:
+            db.delete(row)
+            n_del += 1
+    db.commit()
+    for pre in ("items:", "logos:", "logo:"):
+        cache.delete_prefix(pre)
+    return {"upserts": n_up, "deletes": n_del}
