@@ -497,6 +497,7 @@ def _push(db, h: httpx.Client, user: models.User, cfg: dict) -> tuple[int, int]:
                            "action": "delete", "base_version": t.remote_version, "data": {}, "_h": "deleted", "_ver": 0})
     db.commit()
     applied = problems = 0
+    merged: set[str] = set()
     i = 0
     while i < len(queued):
         batch, size = [], 0
@@ -518,6 +519,8 @@ def _push(db, h: httpx.Client, user: models.User, cfg: dict) -> tuple[int, int]:
             if not res:
                 continue
             ent, eid = op["entity"], op["entity_id"]
+            if ent == "workspace" and eid.partition("|")[0] in merged:
+                continue                                # su cliente se unió al de la nube en esta misma tanda: sus ventanas ya se movieron
             t = _tracked(db, ent, eid, create=True)
             if res["status"] == "applied":
                 if op["action"] == "delete":
@@ -534,6 +537,7 @@ def _push(db, h: httpx.Client, user: models.User, cfg: dict) -> tuple[int, int]:
                 # La misma SOT ya existe en la nube con otro identificador: se unen (las ventanas de aquí pasan al cliente de la nube)
                 try:
                     _merge_duplicate(db, user, eid, res["server"])
+                    merged.add(eid)
                     t.status, t.info, t.local_version = "SYNCED", None, op["_ver"]
                     applied += 1
                 except Exception as e:  # noqa: BLE001
