@@ -157,6 +157,7 @@ def test_flujo_completo(world):
     assert len([i for i in cloud.pull("client").values() if i["data"]["sot"] == "B2"]) == 1
 
     # 4) Conflicto: se edita lo mismo en la nube y en el escritorio -> nunca se pisa; se elige «la de la nube»
+    local.c.post("/api/cloud/pause", json={"paused": True})      # sin el ciclo automático en medio de la prueba
     va = local.pull("client")[cid_a]["version"]
     vc = cloud.pull("client")[cid_a]["version"]
     assert cloud.push("client", cid_a, client_data("A1", "Versión de la nube"), base=vc)["status"] == "applied"
@@ -178,6 +179,7 @@ def test_flujo_completo(world):
     st = local.c.post("/api/cloud/resolve", json={"entity": "client", "id": cid_a, "resolution": "mine"}).json()
     assert st["state"] == "synced" and not st["conflicts"], st
     assert cloud.pull("client")[cid_a]["data"]["nombre"] == "Escritorio 2"
+    local.c.post("/api/cloud/pause", json={"paused": False})
 
     # 6) Cambio hecho en la nube -> baja solo
     vc = cloud.pull("client")[cid_a]["version"]
