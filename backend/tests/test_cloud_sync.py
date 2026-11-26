@@ -162,7 +162,7 @@ def test_flujo_completo(world):
     vc = cloud.pull("client")[cid_a]["version"]
     assert cloud.push("client", cid_a, client_data("A1", "Versión de la nube"), base=vc)["status"] == "applied"
     assert local.push("client", cid_a, client_data("A1", "Versión del escritorio"), base=va)["status"] == "applied"
-    st = local.sync()
+    st = local.c.post("/api/cloud/pause", json={"paused": False}).json()      # al encender, sincroniza ya
     assert st["state"] == "conflict" and len(st["conflicts"]) == 1, st
     assert cloud.pull("client")[cid_a]["data"]["nombre"] == "Versión de la nube"          # la nube no se tocó
     assert local.pull("client")[cid_a]["data"]["nombre"] == "Versión del escritorio"      # lo local tampoco
@@ -171,15 +171,15 @@ def test_flujo_completo(world):
     assert local.pull("client")[cid_a]["data"]["nombre"] == "Versión de la nube"
 
     # 5) Otro conflicto, ahora se elige «la mía»: se aplica en la nube
+    local.c.post("/api/cloud/pause", json={"paused": True})
     va = local.pull("client")[cid_a]["version"]
     vc = cloud.pull("client")[cid_a]["version"]
     assert cloud.push("client", cid_a, client_data("A1", "Nube 2"), base=vc)["status"] == "applied"
     assert local.push("client", cid_a, client_data("A1", "Escritorio 2"), base=va)["status"] == "applied"
-    assert local.sync()["state"] == "conflict"
+    assert local.c.post("/api/cloud/pause", json={"paused": False}).json()["state"] == "conflict"
     st = local.c.post("/api/cloud/resolve", json={"entity": "client", "id": cid_a, "resolution": "mine"}).json()
     assert st["state"] == "synced" and not st["conflicts"], st
     assert cloud.pull("client")[cid_a]["data"]["nombre"] == "Escritorio 2"
-    local.c.post("/api/cloud/pause", json={"paused": False})
 
     # 6) Cambio hecho en la nube -> baja solo
     vc = cloud.pull("client")[cid_a]["version"]
