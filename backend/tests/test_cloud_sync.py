@@ -157,11 +157,12 @@ def test_flujo_completo(world):
     assert len([i for i in cloud.pull("client").values() if i["data"]["sot"] == "B2"]) == 1
 
     # 4) Conflicto: se edita lo mismo en la nube y en el escritorio -> nunca se pisa; se elige «la de la nube»
+    local.c.post("/api/cloud/pause", json={"paused": True})      # sin el ciclo automático en medio de la prueba
     va = local.pull("client")[cid_a]["version"]
     vc = cloud.pull("client")[cid_a]["version"]
     assert cloud.push("client", cid_a, client_data("A1", "Versión de la nube"), base=vc)["status"] == "applied"
     assert local.push("client", cid_a, client_data("A1", "Versión del escritorio"), base=va)["status"] == "applied"
-    st = local.sync()
+    st = local.c.post("/api/cloud/pause", json={"paused": False}).json()      # al encender, sincroniza ya
     assert st["state"] == "conflict" and len(st["conflicts"]) == 1, st
     assert cloud.pull("client")[cid_a]["data"]["nombre"] == "Versión de la nube"          # la nube no se tocó
     assert local.pull("client")[cid_a]["data"]["nombre"] == "Versión del escritorio"      # lo local tampoco
@@ -170,11 +171,12 @@ def test_flujo_completo(world):
     assert local.pull("client")[cid_a]["data"]["nombre"] == "Versión de la nube"
 
     # 5) Otro conflicto, ahora se elige «la mía»: se aplica en la nube
+    local.c.post("/api/cloud/pause", json={"paused": True})
     va = local.pull("client")[cid_a]["version"]
     vc = cloud.pull("client")[cid_a]["version"]
     assert cloud.push("client", cid_a, client_data("A1", "Nube 2"), base=vc)["status"] == "applied"
     assert local.push("client", cid_a, client_data("A1", "Escritorio 2"), base=va)["status"] == "applied"
-    assert local.sync()["state"] == "conflict"
+    assert local.c.post("/api/cloud/pause", json={"paused": False}).json()["state"] == "conflict"
     st = local.c.post("/api/cloud/resolve", json={"entity": "client", "id": cid_a, "resolution": "mine"}).json()
     assert st["state"] == "synced" and not st["conflicts"], st
     assert cloud.pull("client")[cid_a]["data"]["nombre"] == "Escritorio 2"
@@ -295,6 +297,24 @@ def test_misma_sot_en_nube_y_escritorio(world):
     assert st["state"] in ("synced", "conflict"), st
     got = cloud.pull("workspace").get(f"{a}|{wkey}")
     assert got and got["data"]["state"]["nota"] == "desde escritorio", "la ventana del escritorio no llegó al cliente de la nube"
+
+
+def test_cambios_de_catalogos_suben(world):
+    """Lo que el administrador cambia en el escritorio (diseños, opciones, ajustes) también queda en la nube."""
+    cloud, local = Api(world["cloud"]), Api(world["local"])
+    cloud.use_token()
+    local.use_token()
+    local.sync()                                         # punto de partida
+    body = {"sections": [{"lado": "SECCION DEL ESCRITORIO", "cells": [{"descripcion": "uno", "bloque": ""}]}], "opciones": []}
+    r = local.c.put("/api/designs/rf/fibra", json=body)
+    assert r.status_code == 200, r.text
+    assert local.sync()["state"] in ("synced", "conflict")
+    got = cloud.c.get("/api/designs/rf/fibra").json()["base"]
+    assert got and got["sections"][0]["lado"] == "SECCION DEL ESCRITORIO", "el diseño base hecho en el escritorio no subió a la nube"
+    # y si se quita en el escritorio, se quita en la nube
+    assert local.c.delete("/api/designs/rf/fibra").status_code == 200
+    assert local.sync()["state"] in ("synced", "conflict")
+    assert cloud.c.get("/api/designs/rf/fibra").json()["base"] is None
 
 
 def test_interruptor(world):

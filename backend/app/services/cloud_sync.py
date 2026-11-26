@@ -591,6 +591,47 @@ def _pull(db, h: httpx.Client, user: models.User, cfg: dict) -> int:
     return changed
 
 
+def _push_reference(db, h: httpx.Client, user: models.User, cfg: dict) -> bool:
+    """Lo que un administrador cambió aquí (nuevas opciones, diseños, catálogos, logos, ajustes) sube a la nube fila por fila."""
+    if user.role not in ("admin", "superadmin"):
+        return False
+    base = cfg.setdefault("refbase", {})
+    pushed = False
+    for t in reference_sync.PUSHABLE:
+        if t == "app_settings" and user.role != "superadmin":
+            continue
+        b = base.get(t)
+        if not b:                                       # primera vez: lo de ahora es el punto de partida
+            base[t] = reference_sync.local_state(db, t, user)
+            save_cfg(cfg)
+            continue
+        if reference_sync._signature(db, t, user) == b["sig"]:
+            continue
+        M = reference_sync._model(t)
+        pk = reference_sync._pk(M)
+        rows = reference_sync._rows(db, t, user)
+        cur = {str(d[pk]): hashlib.sha1(json.dumps(d, sort_keys=True, default=str).encode()).hexdigest() for d in rows}
+        ups = [d for d in rows if b["rows"].get(str(d[pk])) != cur[str(d[pk])]]
+        dels = [k for k in b["rows"] if k not in cur]
+        ok = True
+        for i in range(0, max(len(ups), 1), 40):
+            chunk = ups[i:i + 40]
+            if not chunk and not (i == 0 and dels):
+                break
+            r = _call(h, "POST", "/api/sync/reference/push", json={"table": t, "upserts": chunk, "deletes": dels if i == 0 else []})
+            if r.status_code != 200:
+                ok = False
+                _set(error=f"{t}: {r.status_code} {r.text[:120]}")
+                break
+        if ok:
+            base[t] = {"sig": reference_sync._signature(db, t, user), "rows": cur}
+            pushed = True
+        save_cfg(cfg)
+    if pushed:
+        _ref_at[0] = 0.0                                # se vuelve a bajar enseguida para quedar idénticos
+    return pushed
+
+
 def _pull_reference(db, h: httpx.Client, user: models.User, cfg: dict) -> None:
     """Usuarios, logos, catálogos y ajustes de la nube. Un fallo aquí no frena el resto de la sincronización."""
     try:
@@ -603,6 +644,11 @@ def _pull_reference(db, h: httpx.Client, user: models.User, cfg: dict) -> None:
         _ref_at[0] = time.time()
         done = reference_sync.apply(db, r.json().get("tables", {}), user.id)
         if done:
+            if user.role in ("admin", "superadmin"):
+                rb = cfg.setdefault("refbase", {})
+                for t in done:
+                    if t in reference_sync.PUSHABLE and (t != "app_settings" or user.role == "superadmin"):
+                        rb[t] = reference_sync.local_state(db, t, user)     # lo recién bajado coincide con la nube: nuevo punto de partida
             have.update(done)
             save_cfg(cfg)
     except (Offline, NeedLogin):
@@ -692,6 +738,13 @@ def _sync_locked(force: bool = False) -> dict:
                 return dict(STATE)
             with _http(token) as h:
                 _renew_token(h, cfg)
+                try:
+                    _push_reference(db, h, user, cfg)
+                except (Offline, NeedLogin):
+                    raise
+                except Exception as e:  # noqa: BLE001   (un problema con los catálogos no frena los datos de clientes)
+                    db.rollback()
+                    _set(error=f"catálogos: {type(e).__name__}: {str(e)[:120]}")
                 applied, problems = _push(db, h, user, cfg)
                 got = _pull(db, h, user, cfg)
                 _pull_reference(db, h, user, cfg)

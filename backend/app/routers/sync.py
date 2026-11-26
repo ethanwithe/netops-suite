@@ -463,6 +463,28 @@ class ReferenceIn(BaseModel):
     have: dict = Field(default_factory=dict)   # {tabla: huella} de lo que el dispositivo ya tiene
 
 
+class ReferencePushIn(BaseModel):
+    table: str
+    upserts: list[dict] = Field(default_factory=list, max_length=60)
+    deletes: list[str] = Field(default_factory=list, max_length=500)
+
+
+@router.post("/reference/push")
+def reference_push(p: ReferencePushIn, user: models.User = Depends(current_user), db: Session = Depends(get_db)):
+    """Escritorio -> nube: lo que un administrador cambió en catálogos, diseños, logos y ajustes (solo las filas que cambiaron)."""
+    if not security.is_admin(user) or (p.table == "app_settings" and user.role != "superadmin"):
+        raise HTTPException(403, "Solo un administrador puede cambiar esto.")
+    if p.table not in reference_sync.PUSHABLE:
+        raise HTTPException(400, "Tabla no permitida.")
+    try:
+        res = reference_sync.apply_push(db, p.table, p.upserts, p.deletes)
+    except Exception as e:  # noqa: BLE001
+        db.rollback()
+        raise HTTPException(400, f"No se pudo aplicar: {type(e).__name__}: {str(e)[:160]}")
+    log_activity(db, user, "sync_referencia", f"{p.table}: {res['upserts']} cambios, {res['deletes']} borrados")
+    return res
+
+
 @router.post("/reference")
 def reference(p: ReferenceIn, user: models.User = Depends(current_user), db: Session = Depends(get_db)):
     """Cuentas, logos, iconos, catálogos, diseños y ajustes de la nube (solo lo que cambió). Solo lectura."""
