@@ -556,6 +556,9 @@ def _push(db, h: httpx.Client, user: models.User, cfg: dict) -> tuple[int, int]:
                 problems += 1
             t.updated_at = dt.datetime.utcnow()
         db.commit()
+    if merged:                                          # lo que se movió al cliente de la nube se envía en este mismo ciclo
+        a2, p2 = _push(db, h, user, cfg)
+        applied, problems = applied + a2, problems + p2
     return applied, problems
 
 
