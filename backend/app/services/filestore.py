@@ -49,9 +49,46 @@ def save_upload(name: str, data: bytes) -> None:
     _store("upload", name, data)
 
 
-def save_output(path) -> None:
-    """Copia a la base de datos un PDF/ZIP recién generado en OUTPUTS_DIR."""
+def verify_output(path) -> None:
+    """Comprueba que el PDF/Word/ZIP recién generado esté completo; si no, lo borra y avisa (nunca se entrega un archivo vacío o cortado)."""
+    import zipfile
     p = Path(path)
+    ext = p.suffix.lower()
+    problem = ""
+    try:
+        size = p.stat().st_size
+        if size == 0:
+            problem = "vacío"
+        elif ext == ".pdf":
+            with open(p, "rb") as fh:
+                head = fh.read(5)
+                fh.seek(max(0, size - 2048))
+                tail = fh.read()
+            if head != b"%PDF-" or b"%%EOF" not in tail:
+                problem = "incompleto"
+        elif ext in (".docx", ".pptx", ".xlsx", ".zip"):
+            with zipfile.ZipFile(p) as z:
+                names = z.namelist()
+            if ext == ".docx" and "word/document.xml" not in names:
+                problem = "sin contenido"
+            elif ext == ".pptx" and "ppt/presentation.xml" not in names:
+                problem = "sin contenido"
+    except Exception:  # noqa: BLE001
+        problem = "dañado"
+    if problem:
+        try:
+            p.unlink()
+        except OSError:
+            pass
+        from fastapi import HTTPException
+        raise HTTPException(500, f"El archivo generado quedó {problem}. Inténtalo otra vez; si se repite, avísale al administrador.")
+
+
+def save_output(path, strict: bool = True) -> None:
+    """Copia a la base de datos un PDF/ZIP recién generado en OUTPUTS_DIR (antes comprueba que esté completo)."""
+    p = Path(path)
+    if strict:
+        verify_output(p)
     try:
         if p.is_file():
             _store("output", p.name, p.read_bytes())

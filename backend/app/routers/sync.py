@@ -455,7 +455,7 @@ async def push_output(file: UploadFile = File(...), name: str = Form(...), user:
         raise HTTPException(413, "El archivo es demasiado grande.")
     dest = OUTPUTS_DIR / name
     dest.write_bytes(content)
-    await run_in_threadpool(filestore.save_output, dest)
+    await run_in_threadpool(filestore.save_output, dest, False)
     return {"name": name, "sha256": hashlib.sha256(content).hexdigest(), "size": len(content)}
 
 

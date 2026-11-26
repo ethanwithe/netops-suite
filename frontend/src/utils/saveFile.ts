@@ -6,7 +6,7 @@
  */
 
 type Picker = (o: { suggestedName?: string; startIn?: string; types?: { description: string; accept: Record<string, string[]> }[] }) => Promise<{
-  name: string; createWritable: () => Promise<{ write: (b: Blob) => Promise<void>; close: () => Promise<void> }>;
+  name: string; getFile?: () => Promise<File>; createWritable: () => Promise<{ write: (b: Blob) => Promise<void>; close: () => Promise<void> }>;
 }>;
 
 const MIME: Record<string, string> = {
@@ -72,6 +72,11 @@ async function viaPicker(blob: Blob, name: string): Promise<"saved" | "cancelled
     const w = await h.createWritable();
     await w.write(blob);
     await w.close();
+    // Se comprueba lo que quedó escrito: si el visor integrado del programa no escribió bien, se descarga por el método normal.
+    try {
+      const f = await (h as unknown as { getFile: () => Promise<File> }).getFile();
+      if (f.size !== blob.size) throw new Error("tamaño distinto");
+    } catch { plainDownload(blob, name); toast(`Descargado: ${name} (carpeta Descargas)`, "ok"); return "saved"; }
     toast(`Guardado: ${h.name}`, "ok");
     return "saved";
   } catch (e) {
@@ -99,7 +104,13 @@ export async function saveFile(source: string | Blob, filename: string): Promise
       const r = await fetch(source, { credentials: "include" });
       if (!r.ok) throw new Error(String(r.status));
       blob = await r.blob();
+      if (blob.size === 0) {            // respuesta vacía (caché o corte): se pide de nuevo sin caché
+        const r2 = await fetch(source, { credentials: "include", cache: "no-store" });
+        if (!r2.ok) throw new Error(String(r2.status));
+        blob = await r2.blob();
+      }
     } else blob = source;
+    if (blob.size === 0) throw new Error("vacío");
   } catch {
     toast(`No se pudo descargar «${name}». Revisa la conexión e inténtalo otra vez.`, "error", undefined, 7000);
     return;
