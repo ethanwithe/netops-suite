@@ -8,6 +8,7 @@ import { adminPurge, adminRestore, exportClientUrl, exportClientsUrl, FORMATS, l
 import type { AdminUser } from "../store/admin";
 import { can, useAuth } from "../store/auth";
 import type { ClientInput, ClientRecord } from "../store/clients";
+import { useAutoRefresh } from "../store/useAutoRefresh";
 import { deleteWorkspace, listWorkspaces, requestOpen } from "../store/workspaces";
 import type { WorkspaceInfo } from "../store/workspaces";
 import { CAMPOS_DATOS } from "../store/clientLink";
@@ -32,8 +33,8 @@ export default function ClientsPage({ all = false }: { all?: boolean }) {
   const [users, setUsers] = useState<AdminUser[]>([]);
   useEffect(() => { if (all) listUsers().then(setUsers).catch(() => undefined); }, [all]);
 
-  const reload = useCallback(() => {
-    setLoading(true);
+  const reload = useCallback((silent?: unknown) => {
+    if (silent !== true) setLoading(true);
     const req = all
       ? listAllClients({ user_id: userId || undefined, month: monthFilter || undefined, year: y, q, deleted: trash })
       : trash ? listTrash() : listClients({ year: y, q });
@@ -47,6 +48,8 @@ export default function ClientsPage({ all = false }: { all?: boolean }) {
     const t = window.setTimeout(() => void reload(), q ? 250 : 0);
     return () => window.clearTimeout(t);
   }, [reload, q]);
+
+  useAutoRefresh(() => void reload(true), 15000, !editing);
 
   const perMonth = useMemo(() => {
     const c = Array(12).fill(0);
@@ -133,12 +136,9 @@ function ClientCard({ c, onEdit, showMonth, all, trash, users, onChanged, twins 
   const datos = Object.entries(c.datos || {});
   const navigate = useNavigate();
   const [wins, setWins] = useState<WorkspaceInfo[]>([]);
-  useEffect(() => {
-    if (!open) return;
-    let dead = false;
-    listWorkspaces(c.sot).then((w) => { if (!dead) setWins(w); }).catch(() => undefined);
-    return () => { dead = true; };
-  }, [open, c.sot]);
+  const loadWins = useCallback(() => { listWorkspaces(c.sot).then(setWins).catch(() => undefined); }, [c.sot]);
+  useEffect(() => { if (open) loadWins(); }, [open, loadWins]);
+  useAutoRefresh(loadWins, 15000, open);
   const when = (iso: string) => (iso ? new Date(iso + (iso.endsWith("Z") ? "" : "Z")).toLocaleString("es-PE", { dateStyle: "short", timeStyle: "short" }) : "");
   return (
     <div className="card space-y-2">
