@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { usePersistentState } from "../store/persistentState";
-import { connectTerminal, disconnectTerminal, sendRaw, termClear, termForget, termLog, getSession, useTerminal, vt, interruptCount, setBackMode, setKeepAlive, getHistory, clearHistory, termNote, watchFinish, isWatching, getLastOpts, reconnectTerminal } from "../store/terminal";
+import { connectTerminal, disconnectTerminal, sendRaw, termClear, termForget, termLog, getSession, useTerminal, vt, interruptCount, setBackMode, setKeepAlive, getHistory, clearHistory, termNote, watchFinish, isWatching, getLastOpts, reconnectTerminal, addTab, closeTab, selectTab, renameTab, sendRawTab, tabConnected, activeTabId, redraw } from "../store/terminal";
 import type { BackMode } from "../store/terminal";
 import { puenteEstado } from "../utils/puente";
 import type { PuenteEstado } from "../utils/puente";
@@ -8,6 +8,8 @@ import { webSerialSupported } from "../utils/webSerial";
 import TerminalView, { THEMES } from "./TerminalView";
 import { canvasBlob, termCanvas } from "../utils/termImage";
 import { notify, saveFile } from "../utils/saveFile";
+import { getRules, setRules } from "../utils/termColors";
+import type { HlRule } from "../utils/termColors";
 
 type Saved = { id: string; name: string; cmds: string };
 type Sesion = { id: string; name: string; via: "serial" | "ssh"; mode: "puente" | "navegador"; host: string; port: number; user: string; puerto: string; baud: number };
@@ -38,7 +40,10 @@ export default function TerminalWindow() {
   const [keep, setKeep] = usePersistentState("terminal.mantener", true);
   const [autoCopy, setAutoCopy] = usePersistentState("terminal.copiarAuto", true);
   const [back, setBack] = usePersistentState<BackMode>("terminal.retroceso", "auto");
-  const [panel, setPanel] = useState<"" | "cmds" | "multi" | "conn" | "hist">("");
+  const [panel, setPanel] = useState<"" | "cmds" | "multi" | "conn" | "hist" | "hl">("");
+  const [rules, setRulesState] = useState<HlRule[]>(() => getRules());
+  const [newWord, setNewWord] = useState("");
+  const [newColor, setNewColor] = useState("#ff6b6b");
   const [histQ, setHistQ] = useState("");
   const [delay, setDelay] = usePersistentState("terminal.pausa", 250);
   const [find, setFind] = useState<string | null>(null);
@@ -85,14 +90,35 @@ export default function TerminalWindow() {
     conn(s.mode, s.via, { host: s.host, port: s.port, user: s.user, puerto: s.puerto, baud: s.baud });
   }
 
-  async function sendLines(text: string, pause = delay) {
+  /** Variables en los comandos: {IP}, {VLAN}… se preguntan al enviar (se recuerda lo último); {FECHA} y {HORA} se ponen solas. */
+  function fillVars(text: string): string | null {
+    const now = new Date();
+    let out = text.replace(/\{FECHA\}/g, now.toISOString().slice(0, 10)).replace(/\{HORA\}/g, now.toTimeString().slice(0, 5));
+    const names = [...new Set([...out.matchAll(/\{([A-Z][A-Z0-9_]{0,24})\}/g)].map((m) => m[1]))];
+    if (!names.length) return out;
+    let memo: Record<string, string> = {};
+    try { memo = JSON.parse(localStorage.getItem("netops:terminal.vars") || "{}"); } catch { /* sin almacenamiento */ }
+    for (const n of names) {
+      const v = prompt(`Valor para {${n}}:`, memo[n] ?? "");
+      if (v === null) return null;
+      memo[n] = v;
+      out = out.split(`{${n}}`).join(v);
+    }
+    try { localStorage.setItem("netops:terminal.vars", JSON.stringify(memo)); } catch { /* sin almacenamiento */ }
+    return out;
+  }
+
+  async function sendLines(text0: string, pause = delay) {
     if (!connected || sending) return;
+    const text = fillVars(text0);
+    if (text == null) return;
+    const id = activeTabId();                       // todo va a la pestaña donde se pidió, aunque cambies de pestaña
     setSending(true);
     try {
-      const stopAt = interruptCount();
+      const stopAt = interruptCount(id);
       for (const raw of text.split("\n")) {
-        if (!getSession()?.connected || interruptCount() !== stopAt) break;       // Ctrl+C corta el envío de lo que faltaba
-        sendRaw(raw.replace(/\s+$/, "") + "\r");
+        if (!tabConnected(id) || interruptCount(id) !== stopAt) break;       // Ctrl+C corta el envío de lo que faltaba
+        sendRawTab(id, raw.replace(/\s+$/, "") + "\r");
         await sleep(pause);
       }
     } finally { setSending(false); }
@@ -152,6 +178,19 @@ export default function TerminalWindow() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col text-slate-800">
+      {/* pestañas: una conexión por pestaña */}
+      <div className="flex items-center gap-1 overflow-x-auto border-b border-slate-200 bg-slate-100 px-2 pt-1">
+        {t.tabs.map((x) => (
+          <span key={x.id} className={`group inline-flex items-center gap-1 rounded-t border border-b-0 px-2 py-0.5 text-[11px] ${x.id === t.active ? "border-slate-300 bg-white font-semibold text-slate-800" : "border-transparent text-slate-500 hover:bg-white/60"}`}>
+            <button type="button" className="inline-flex items-center gap-1" onClick={() => selectTab(x.id)} onDoubleClick={() => { const n = prompt("Nombre de la pestaña:", x.name); if (n) renameTab(x.id, n); }} title="Doble clic para renombrar">
+              <span className={`h-1.5 w-1.5 rounded-full ${x.connected ? "bg-green-500" : "bg-slate-300"}`} />
+              {x.name}{x.unread && x.id !== t.active ? <span className="h-1.5 w-1.5 rounded-full bg-sky-500" title="Hay salida nueva" /> : null}{x.watching ? " 🔔" : ""}
+            </button>
+            {(t.tabs.length > 1 || x.connected) && <button type="button" className="text-slate-400 hover:text-red-600" title="Cerrar pestaña (desconecta)" onClick={() => { if (!x.connected || confirm(`¿Cerrar «${x.name}» y desconectar?`)) void closeTab(x.id); }}>×</button>}
+          </span>
+        ))}
+        <button type="button" className="mb-0.5 rounded px-2 text-sm text-slate-500 hover:bg-white" title="Nueva pestaña (otra conexión a la vez)" onClick={() => { addTab(); setPanel("conn"); }}>+</button>
+      </div>
       {/* barra */}
       <div className="flex flex-wrap items-center gap-1.5 border-b border-slate-200 bg-slate-50 px-2 py-1.5">
         <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-medium ${connected ? "bg-green-100 text-green-700" : "bg-slate-200 text-slate-600"}`}>{connected ? `● ${t.label}` : "Sin conexión"}</span>
@@ -169,6 +208,7 @@ export default function TerminalWindow() {
         <span className="mx-1 h-4 w-px bg-slate-300" />
         <button className={btn} onClick={() => setPanel(panel === "cmds" ? "" : "cmds")}>Comandos</button>
         <button className={btn} onClick={() => setPanel(panel === "multi" ? "" : "multi")}>Enviar varios</button>
+        <button className={btn} onClick={() => setPanel(panel === "hl" ? "" : "hl")} title="Palabras que se pintan de un color (por ejemplo: un nombre de interfaz o un error)">Resaltar</button>
         <button className={btn} onClick={() => setPanel(panel === "hist" ? "" : "hist")} title="Lo que has escrito o enviado: clic para volver a enviarlo">Historial</button>
         <button className={btn} onClick={() => setFind(find === null ? "" : null)}>Buscar</button>
         <button className={btn} onClick={() => setFontSize(Math.max(9, fontSize - 1))} title="Letra más chica">A−</button>
@@ -266,7 +306,7 @@ export default function TerminalWindow() {
           {form && (
             <div className="space-y-1 rounded bg-slate-50 p-2">
               <input className="input w-full !py-0.5 text-xs" placeholder="Nombre" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-              <textarea className="input w-full font-mono text-xs" rows={3} placeholder="Un comando por línea" value={form.cmds} onChange={(e) => setForm({ ...form, cmds: e.target.value })} />
+              <textarea className="input w-full font-mono text-xs" rows={3} placeholder="Un comando por línea. Variables: {IP}, {VLAN}… se preguntan al enviar; {FECHA} y {HORA} se ponen solas" value={form.cmds} onChange={(e) => setForm({ ...form, cmds: e.target.value })} />
               <div className="flex gap-2">
                 <button className="btn-primary !py-0.5 text-xs" disabled={!form.cmds.trim()} onClick={() => { const it = { ...form, name: form.name.trim() || form.cmds.split("\n")[0].slice(0, 30) }; setSaved((l) => (l.some((x) => x.id === it.id) ? l.map((x) => (x.id === it.id ? it : x)) : [...l, it])); setForm(null); }}>Guardar</button>
                 <button className="btn-secondary !py-0.5 text-xs" onClick={() => setForm(null)}>Cancelar</button>
@@ -288,6 +328,28 @@ export default function TerminalWindow() {
               <select className="rounded border border-slate-300 bg-white px-1 py-0 text-xs" value={delay} onChange={(e) => setDelay(Number(e.target.value))}>
                 {[100, 250, 500, 1000, 2000].map((d) => <option key={d} value={d}>{d} ms</option>)}
               </select></label>
+          </div>
+        </div>
+      )}
+
+      {panel === "hl" && (
+        <div className="space-y-1.5 border-b border-slate-200 bg-white p-2 text-xs">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <input className="input !py-0.5 !w-44 text-xs" placeholder="Palabra a resaltar…" value={newWord} onChange={(e) => setNewWord(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter" && newWord.trim()) { const n = [...rules, { text: newWord.trim(), color: newColor }]; setRulesState(n); setRules(n); redraw(); setNewWord(""); } }} />
+            {["#ff6b6b", "#ffd54f", "#66ff66", "#4fc3f7", "#ce93d8", "#ffa94d", "#ffffff"].map((c) => (
+              <button key={c} type="button" aria-label={`Color ${c}`} onClick={() => setNewColor(c)} className={`h-5 w-5 rounded-full border ${newColor === c ? "ring-2 ring-slate-500" : "border-slate-300"}`} style={{ background: c }} />
+            ))}
+            <button className="btn-primary !py-0.5 text-xs" disabled={!newWord.trim()} onClick={() => { const n = [...rules, { text: newWord.trim(), color: newColor }]; setRulesState(n); setRules(n); redraw(); setNewWord(""); }}>Agregar</button>
+          </div>
+          <div className="flex flex-wrap gap-1">
+            {rules.length === 0 && <span className="text-slate-400">Sin palabras. Ejemplo: «down», «CRC», el nombre de una interfaz… (no distingue mayúsculas).</span>}
+            {rules.map((r, i) => (
+              <span key={`${r.text}${i}`} className="inline-flex items-center gap-1 rounded border border-slate-200 bg-slate-900 px-1.5 py-0.5 font-mono" style={{ color: r.color }}>
+                {r.text}
+                <button className="text-slate-400 hover:text-red-400" onClick={() => { const n = rules.filter((_, j) => j !== i); setRulesState(n); setRules(n); redraw(); }} aria-label="Quitar">×</button>
+              </span>
+            ))}
           </div>
         </div>
       )}

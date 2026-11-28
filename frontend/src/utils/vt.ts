@@ -3,7 +3,7 @@
  * texto, \r \n \b \t, mover el cursor, borrar línea/pantalla, borrar/insertar caracteres y colores SGR.
  * No usa librerías: la pantalla es una lista de líneas que se dibuja en HTML.
  */
-import { colorMap } from "./termColors";
+import { colorMap, customMap, rulesVersion } from "./termColors";
 
 export interface VCell { c: string; f: number; b: boolean }
 
@@ -159,11 +159,13 @@ export function lineHtml(l: VCell[], cursorAt = -1, paint: "dark" | "light" | ""
   let key = "";
   if (cursorAt < 0) {
     for (const c of l) key += c.c + c.f + (c.b ? "b" : "");
-    key += paint;
+    key += paint + rulesVersion;
     const hit = htmlCache.get(l);
     if (hit && hit.key === key) return hit.html;
   }
-  const auto = paint ? colorMap(l.map((c) => c.c).join(""), paint === "dark") : [];
+  const text = l.map((c) => c.c).join("");
+  const auto = paint ? colorMap(text, paint === "dark") : [];
+  const mine = customMap(text);
   let out = "", run = "", col = "#", b = false;
   const flush = () => {
     if (!run) return;
@@ -174,7 +176,7 @@ export function lineHtml(l: VCell[], cursorAt = -1, paint: "dark" | "light" | ""
   for (let x = 0; x < n; x++) {
     const c = l[x] ?? { c: " ", f: -1, b: false };
     if (x === cursorAt) { flush(); out += `<span class="vt-cur">${esc(c.c)}</span>`; col = "#"; continue; }
-    const k = c.f >= 0 ? colorOf(c.f) : (auto[x] || "");
+    const k = mine[x] || (c.f >= 0 ? colorOf(c.f) : (auto[x] || ""));
     if (k !== col || c.b !== b) { flush(); col = k; b = c.b; }
     run += c.c;
   }

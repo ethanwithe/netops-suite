@@ -42,3 +42,35 @@ export function colorMap(text: string, dark: boolean): string[] {
   }
   return out;
 }
+
+// ---- palabras resaltadas por el usuario (se guardan en este equipo) ----
+export interface HlRule { text: string; color: string }
+const HK = "netops:terminal.resaltado";
+let rules: HlRule[] = (() => { try { const v = JSON.parse(localStorage.getItem(HK) || "[]"); return Array.isArray(v) ? v.filter((r) => r && typeof r.text === "string" && typeof r.color === "string").slice(0, 60) : []; } catch { return []; } })();
+let rx: { re: RegExp; color: string }[] = [];
+export let rulesVersion = 0;
+const build = () => {
+  rx = rules.filter((r) => r.text).map((r) => ({ re: new RegExp(r.text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi"), color: r.color }));
+  rulesVersion++;
+};
+build();
+export const getRules = () => rules;
+export function setRules(next: HlRule[]) {
+  rules = next.slice(0, 60);
+  try { localStorage.setItem(HK, JSON.stringify(rules)); } catch { /* sin almacenamiento */ }
+  build();
+}
+/** Color por carácter de las palabras resaltadas (tienen prioridad sobre todo lo demás). */
+export function customMap(text: string): string[] {
+  const out: string[] = new Array(text.length).fill("");
+  if (!rx.length || !text) return out;
+  for (const { re, color } of rx) {
+    re.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(text))) {
+      if (!m[0]) { re.lastIndex++; continue; }
+      for (let i = m.index; i < m.index + m[0].length; i++) out[i] = color;
+    }
+  }
+  return out;
+}
