@@ -381,10 +381,10 @@ function Inner({ type }: { type: CkType }) {
 
           <div className="card flex flex-wrap items-center gap-3">
             <button className="btn-primary" onClick={() => generate("pdf")} disabled={!!busy}>
-              {busy === "pdf" ? "Generando PDF..." : "Generar PDF"}
+              {busy === "pdf" ? <span className="inline-flex items-center gap-2"><Spinner />Generando PDF…</span> : "Generar PDF"}
             </button>
             <button className="btn-secondary" onClick={() => generate("docx")} disabled={!!busy} title="El mismo CheckList en Word, editable">
-              {busy === "docx" ? "Generando Word..." : "Generar Word"}
+              {busy === "docx" ? <span className="inline-flex items-center gap-2"><Spinner />Generando Word…</span> : "Generar Word"}
             </button>
             {pdfError && <span className="text-sm text-red-600">{pdfError}</span>}
             {pdf && (

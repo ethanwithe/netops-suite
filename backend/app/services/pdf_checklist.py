@@ -24,6 +24,8 @@ from reportlab.pdfgen import canvas
 from app.services.logo_image import logo_reader
 from app.services.pdf_photo_report import prepare_photo
 
+_img_memo: dict = {}   # fotos ya preparadas (la pasada de medir y la de dibujar no las leen dos veces)
+
 PAGE_W, PAGE_H = letter
 MARGIN = 1.6 * cm
 HEADER_H = 2.9 * cm
@@ -123,6 +125,7 @@ def build_checklist_pdf(meta, sections, out_path, progress_cb=None):
         {"nombre", "modo": "texto"|"foto", "texto", "cmd", "images": [ruta, ...]}
     Devuelve (ruta, páginas).
     """
+    _img_memo.clear()
     top, bottom, content_w = _geometry()
     char_w = TEXT_SIZE * 0.6
     chars = max(40, int(content_w / char_w))
@@ -189,7 +192,7 @@ def build_checklist_pdf(meta, sections, out_path, progress_cb=None):
                 if images:
                     for path in images:
                         try:
-                            img = prepare_photo(path) or ImageReader(path)   # foto reducida (y en caché): PDF liviano y rápido
+                            img = _img_memo.get(path) or _img_memo.setdefault(path, prepare_photo(path) or ImageReader(path))   # foto reducida (y en caché): PDF liviano y rápido
                             iw, ih = img.getSize()
                         except Exception:
                             continue
