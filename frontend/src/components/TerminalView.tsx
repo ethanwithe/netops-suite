@@ -59,6 +59,9 @@ export default function TerminalView({ connected, theme, fontSize, hl, onSearchK
   const t = useTerminal();
   const box = useRef<HTMLDivElement>(null);
   const [focus, setFocus] = useState(false);
+  const autoCopyRef = useRef(autoCopy);
+  autoCopyRef.current = autoCopy;
+  const copyRef = useRef<() => unknown>(() => false);
   const stick = useRef(true);
   const th = THEMES[theme] ?? THEMES.Oscuro;
 
@@ -89,6 +92,34 @@ export default function TerminalView({ connected, theme, fontSize, hl, onSearchK
   // al abrir la terminal sin conexión aparece el indicador de comandos y el cursor ya está dentro de la pantalla
   useEffect(() => { shellInit(); box.current?.focus(); }, []);
 
+  // Al marcar texto solo se selecciona lo de la terminal (el resto de la página no se deja marcar) y soltar fuera también termina el arrastre
+  useEffect(() => {
+    const up = (e?: Event) => {
+      const was = document.body.classList.contains("vt-dragging");
+      document.body.classList.remove("vt-dragging"); setDragging(false);
+      // soltó el mouse fuera de la terminal: igual se copia lo marcado dentro
+      if (was && e && !box.current?.contains(e.target as Node) && autoCopyRef.current) window.setTimeout(() => copyRef.current(), 0);
+    };
+    document.addEventListener("mouseup", up);
+    window.addEventListener("blur", up);
+    return () => { document.removeEventListener("mouseup", up); window.removeEventListener("blur", up); document.body.classList.remove("vt-dragging"); };
+  }, []);
+
+  // Dentro de la ventana de la terminal el teclado se queda en la pantalla: un clic en un botón (o en la barra) no le quita el foco.
+  // Solo un clic fuera de la ventana lo suelta.
+  useEffect(() => {
+    const root = box.current?.parentElement;
+    if (!root) return;
+    const h = (e: MouseEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (!t || t.closest("input,textarea,select,[contenteditable=true]")) return;
+      if (String(window.getSelection())) return;           // no romper una selección hecha con el mouse
+      window.setTimeout(() => box.current?.focus({ preventScroll: true }), 0);
+    };
+    root.addEventListener("click", h);
+    return () => root.removeEventListener("click", h);
+  }, []);
+
   // mientras se arrastra el mouse para marcar texto la pantalla no se redibuja (si no, la selección se perdería con la salida que llega)
   const [dragging, setDragging] = useState(false);
   const lastHtml = useRef("");
@@ -108,8 +139,16 @@ export default function TerminalView({ connected, theme, fontSize, hl, onSearchK
   /** Copia al marcar (como MobaXterm): al soltar el mouse lo seleccionado ya está en el portapapeles. */
   const copySelection = () => {
     const sel = window.getSelection();
-    const txt = sel ? String(sel) : "";
-    if (!txt || !box.current || !sel?.anchorNode || !box.current.contains(sel.anchorNode)) return false;
+    if (!sel || !box.current || !sel.rangeCount || !sel.anchorNode || !box.current.contains(sel.anchorNode)) return false;
+    // si el puntero se salió de la terminal, solo cuenta lo que está dentro de ella
+    const r = sel.getRangeAt(0);
+    const br = document.createRange();
+    br.selectNodeContents(box.current);
+    if (r.compareBoundaryPoints(Range.START_TO_START, br) < 0) r.setStart(br.startContainer, br.startOffset);
+    if (r.compareBoundaryPoints(Range.END_TO_END, br) > 0) r.setEnd(br.endContainer, br.endOffset);
+    sel.removeAllRanges(); sel.addRange(r);
+    const txt = String(r);
+    if (!txt) return false;
     const clean = txt.replace(/\u00a0/g, " ").replace(/[ \t]+$/gm, "");
     void navigator.clipboard?.writeText(clean).catch(() => {
       const ta = document.createElement("textarea");        // sin permiso del portapapeles: método antiguo
@@ -120,6 +159,8 @@ export default function TerminalView({ connected, theme, fontSize, hl, onSearchK
     notify("Copiado", "ok", undefined, 900);
     return true;
   };
+
+  copyRef.current = copySelection;
 
   // Ctrl+C / Ctrl+Shift+6 también cuando el foco se quedó en otro lado de la página (la terminal está conectada)
   useEffect(() => {
@@ -156,8 +197,8 @@ export default function TerminalView({ connected, theme, fontSize, hl, onSearchK
       className={`vt-scroll min-h-0 flex-1 overflow-auto whitespace-pre p-2 font-mono leading-snug outline-none ${focus ? "vt-focus" : ""}`}
       style={{ background: th.bg, color: th.fg, fontSize }}
       onScroll={(e) => { const el = e.currentTarget; stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40; }}
-      onMouseDown={(e) => { if (e.button === 0) setDragging(true); }}
-      onMouseUp={() => { setDragging(false); if (autoCopy) window.setTimeout(copySelection, 0); }}
+      onMouseDown={(e) => { if (e.button === 0) { setDragging(true); document.body.classList.add("vt-dragging"); } }}
+      onMouseUp={() => { setDragging(false); document.body.classList.remove("vt-dragging"); if (autoCopy) window.setTimeout(copySelection, 0); }}
       onDoubleClick={() => { if (autoCopy) window.setTimeout(copySelection, 0); }}
       onFocus={() => setFocus(true)}
       onBlur={() => setFocus(false)}
