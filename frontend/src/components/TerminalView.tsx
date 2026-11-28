@@ -53,8 +53,8 @@ export const THEMES: Record<string, { bg: string; fg: string }> = {
 };
 
 /** Pantalla de la terminal: se escribe directo (sin cuadro de texto), como MobaXterm/PuTTY. */
-export default function TerminalView({ connected, theme, fontSize, hl, onSearchKey, autoCopy = true }: {
-  connected: boolean; theme: string; fontSize: number; hl?: number; onSearchKey?: () => void; autoCopy?: boolean;
+export default function TerminalView({ connected, theme, fontSize, hl, onSearchKey, autoCopy = true, onZoom }: {
+  connected: boolean; theme: string; fontSize: number; hl?: number; onSearchKey?: () => void; autoCopy?: boolean; onZoom?: (d: number) => void;
 }) {
   const t = useTerminal();
   const box = useRef<HTMLDivElement>(null);
@@ -76,6 +76,15 @@ export default function TerminalView({ connected, theme, fontSize, hl, onSearchK
     ro.observe(el);
     return () => ro.disconnect();
   }, [fontSize]);
+
+  // Ctrl + rueda del mouse: letra más grande o más chica
+  useEffect(() => {
+    const el = box.current;
+    if (!el || !onZoom) return;
+    const w = (e: WheelEvent) => { if (!e.ctrlKey) return; e.preventDefault(); onZoom(e.deltaY < 0 ? 1 : -1); };
+    el.addEventListener("wheel", w, { passive: false });
+    return () => el.removeEventListener("wheel", w);
+  }, [onZoom]);
 
   // al abrir la terminal sin conexión aparece el indicador de comandos y el cursor ya está dentro de la pantalla
   useEffect(() => { shellInit(); box.current?.focus(); }, []);

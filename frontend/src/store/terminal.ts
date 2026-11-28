@@ -7,12 +7,15 @@ import { PuenteSession } from "../utils/puente";
 import { SerialSession } from "../utils/webSerial";
 import type { ConsoleSession } from "../utils/webSerial";
 import { Vt } from "../utils/vt";
+import { notify as toast } from "../utils/saveFile";
 
 export const vt = new Vt();
 let session: ConsoleSession | null = null;
 let setupCmds: string[] = [];
 let fullLog = "";
 let state = { rev: 0, connected: false, status: "", label: "" };
+let lastOpts: ConnectOpts | null = null;
+export const getLastOpts = () => lastOpts;
 const listeners = new Set<() => void>();
 const rawListeners = new Set<(chunk: string) => void>();
 let timer: number | null = null;
@@ -52,10 +55,76 @@ export function setSetupCommands(c: string[]) { setupCmds = c; }
 let interrupts = 0;
 /** Cuántas veces se interrumpió (Ctrl+C, Ctrl+Shift+6, Ctrl+Z): los envíos de varios comandos se detienen al instante. */
 export const interruptCount = () => interrupts;
+// historial de comandos escritos o enviados (se guarda en este equipo)
+const HK = "netops:terminal.historial";
+let history: string[] = (() => { try { const v = JSON.parse(localStorage.getItem(HK) || "[]"); return Array.isArray(v) ? v.filter((x) => typeof x === "string").slice(-300) : []; } catch { return []; } })();
+let typed = "";
+export const getHistory = () => history;
+export function clearHistory() { history = []; try { localStorage.removeItem(HK); } catch { /* sin almacenamiento */ } bump(); }
+function remember(cmd: string) {
+  const c = cmd.trim();
+  if (!c || c.length > 400) return;
+  history = [...history.filter((x) => x !== c), c].slice(-300);
+  try { localStorage.setItem(HK, JSON.stringify(history)); } catch { /* sin almacenamiento */ }
+  schedule();
+}
+function track(s: string) {
+  for (const ch of s.replace(/\x1b\[[0-9;]*[A-Za-z~]/g, "\u0001")) {
+    if (ch === "\r" || ch === "\n") { remember(typed); typed = ""; }
+    else if (ch === "\x7f" || ch === "\x08") typed = typed.slice(0, -1);
+    else if (ch === "\x03" || ch === "\x1a" || ch === "\x15" || ch === "\x1b" || ch === "\u0001") typed = "";   // lo que sigue ya no se puede saber con certeza
+    else if (ch >= " ") typed += ch;
+  }
+}
 export function sendRaw(s: string) {
   lastIn = Date.now();
   if (/[\x03\x1a\x1e]/.test(s)) interrupts++;
+  track(s);
   void session?.raw(s);
+}
+
+/** Anota una línea gris con la hora en la pantalla y el registro (útil como evidencia). */
+export function termNote(t = "Marca") { mark(t); }
+
+// ---------------- aviso al terminar un comando largo ----------------
+let watching = false;
+let alertTimer: number | null = null;
+export const isWatching = () => watching;
+function beep() {
+  try {
+    const A = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    const ctx = new A();
+    [880, 1320].forEach((f, i) => {
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.frequency.value = f; o.connect(g); g.connect(ctx.destination);
+      g.gain.setValueAtTime(0.15, ctx.currentTime + i * 0.18);
+      g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + i * 0.18 + 0.16);
+      o.start(ctx.currentTime + i * 0.18); o.stop(ctx.currentTime + i * 0.18 + 0.17);
+    });
+    window.setTimeout(() => void ctx.close(), 900);
+  } catch { /* sin audio */ }
+}
+/** Una sola vez: cuando el equipo deje de sacar datos y vuelva el prompt, suena y avisa (aunque estés en otra pestaña). */
+export function watchFinish(on: boolean) {
+  watching = on;
+  if (alertTimer != null) { window.clearInterval(alertTimer); alertTimer = null; }
+  if (on) {
+    let seenOutput = false;
+    alertTimer = window.setInterval(() => {
+      const now = Date.now();
+      if (now - lastOut < 1500) { seenOutput = true; return; }
+      if (!seenOutput && now - lastIn > 8000) { /* nada en marcha todavía: se sigue esperando */ }
+      const last = (vt.lines[vt.cy] ?? []).map((c) => c.c).join("");
+      if (seenOutput && now - lastOut > 3000 && /[#>\]$]\s*$/.test(last)) {
+        watchFinish(false);
+        beep();
+        toast("Terminó el comando en la terminal.", "ok", undefined, 6000);
+        try { if (document.hidden && "Notification" in window && Notification.permission === "granted") new Notification("NetOps Suite", { body: "Terminó el comando en la terminal." }); } catch { /* sin permiso */ }
+      }
+    }, 1000);
+    try { if ("Notification" in window && Notification.permission === "default") void Notification.requestPermission(); } catch { /* sin permiso */ }
+  }
+  bump();
 }
 
 // ---------------- retroceso (Huawei/VRP no borra con DEL: pide Ctrl+H) ----------------
@@ -98,8 +167,11 @@ export interface ConnectOpts {
   host: string; port: number; user: string; pass: string;
 }
 
+export async function reconnectTerminal(): Promise<void> { if (lastOpts && !session) await connectTerminal(lastOpts); }
+
 export async function connectTerminal(o: ConnectOpts): Promise<void> {
   if (session) return;
+  lastOpts = o;
   const ssh = o.via === "ssh" && o.mode === "puente";
   const label = ssh ? `SSH ${o.user}@${o.host}` : o.mode === "navegador" ? "Consola (navegador)" : `Consola ${o.puerto}`;
   bump({ status: ssh ? "Conectando por SSH desde tu laptop…" : "Abriendo la consola…", label });
@@ -119,7 +191,7 @@ export async function connectTerminal(o: ConnectOpts): Promise<void> {
         : { kind: "serial", port: o.puerto, baud: o.baud });
       sess = ps;
     }
-    sess.onClose = (why) => { session = null; stopKeepAlive(); mark("Conexión cerrada: " + why); bump({ connected: false, status: why }); idleHook?.(); };
+    sess.onClose = (why) => { session = null; stopKeepAlive(); watchFinish(false); mark("Conexión cerrada: " + why); bump({ connected: false, status: why }); idleHook?.(); };
     session = sess;
     lastIn = lastOut = Date.now();
     startKeepAlive();
