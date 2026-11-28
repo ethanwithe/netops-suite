@@ -19,6 +19,7 @@ PAD = 14
 LEAD = 1.96                  # alto de línea / ancho de letra (igual que el texto del PDF: 8,0 pt / (6,8 pt × 0,6))
 
 _fonts: dict = {}
+_png_cache: dict = {}
 
 
 def _font(bold: bool = False):
@@ -41,6 +42,9 @@ def char_width() -> float:
 
 def render_lines(lines: List[str], first_is_prompt: bool = True, min_cols: int = 40) -> Tuple[bytes, int, int]:
     """PNG de las líneas dadas sobre fondo negro. -> (bytes, ancho px, alto px)."""
+    key = (tuple(lines), bool(first_is_prompt), min_cols)
+    if key in _png_cache:                         # PDF y Word del mismo CheckList: se dibuja una sola vez
+        return _png_cache[key]
     cw = char_width()
     lh = round(cw * LEAD)
     cols = max(min_cols, max((len(l) for l in lines), default=1))
@@ -58,8 +62,12 @@ def render_lines(lines: List[str], first_is_prompt: bool = True, min_cols: int =
             except Exception:  # noqa: BLE001
                 x += len(txt) * cw
     out = io.BytesIO()
-    im.save(out, "PNG", optimize=True)
-    return out.getvalue(), w, h
+    im.save(out, "PNG", compress_level=3)        # mismo resultado sin pérdida, mucho más rápido que optimize=True
+    data = out.getvalue()
+    _png_cache[key] = (data, w, h)
+    if len(_png_cache) > 64:
+        _png_cache.pop(next(iter(_png_cache)))
+    return data, w, h
 
 
 def dims(n_lines: int, cols: int) -> Tuple[int, int]:

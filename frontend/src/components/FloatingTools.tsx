@@ -1,6 +1,6 @@
 import { useState } from "react";
 import FloatWindow from "./FloatWindow";
-import SaturadorPanel from "./SaturadorPanel";
+import SaturadorPanel from "./SaturadorTabs";
 import TerminalWindow from "./TerminalWindow";
 import { setDock, useDock } from "../store/terminal";
 

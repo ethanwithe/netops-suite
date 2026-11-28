@@ -317,8 +317,8 @@ function GraficaInner({ info, options, remote, reload }: { info: OptionInfo; opt
       <Editor doc={doc} fields={fields} hist={hist} />
 
       <div className="flex flex-wrap items-center gap-2">
-        <button className="btn-primary" onClick={() => void download("pptx")} disabled={!!busy}>{busy === "pptx" ? "Generando…" : "Descargar PowerPoint (.pptx)"}</button>
-        <button className="btn-secondary" onClick={() => void download("pdf")} disabled={!!busy}>{busy === "pdf" ? "Generando…" : "Descargar PDF"}</button>
+        <button className="btn-primary" onClick={() => void download("pptx")} disabled={!!busy}>{busy === "pptx" ? <span className="inline-flex items-center gap-2"><Spinner />Generando…</span> : "Descargar PowerPoint (.pptx)"}</button>
+        <button className="btn-secondary" onClick={() => void download("pdf")} disabled={!!busy}>{busy === "pdf" ? <span className="inline-flex items-center gap-2"><Spinner />Generando…</span> : "Descargar PDF"}</button>
         <span className="text-xs text-slate-500">{baseName}.pptx</span>
       </div>
       <DesignBar doc={doc} groups={groups} sharedGroups={sharedGroups} remote={remote} factory={tpl.doc} optId={info.id} isSuper={me?.role === "superadmin"} hist={hist} reload={reload}

@@ -1,4 +1,4 @@
-import SaturadorPanel from "../components/SaturadorPanel";
+import SaturadorPanel from "../components/SaturadorTabs";
 
 /** Saturador bidireccional: se controla desde aquí, pero corre en tu laptop (agente local). */
 export default function SaturadorPage() {

@@ -254,7 +254,7 @@ function PackageBox({ c, onChanged }: { c: ClientRecord; onChanged: () => void }
         {cur && st && !st.stale && <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-medium text-emerald-700">Al día</span>}
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        <button className="btn-primary text-xs" onClick={() => void build()} disabled={busy}>{busy ? "Armando…" : cur ? "Actualizar y descargar" : "Armar y descargar"}</button>
+        <button className="btn-primary text-xs" onClick={() => void build()} disabled={busy}>{busy ? <span className="inline-flex items-center gap-2"><Spinner />Armando…</span> : cur ? "Actualizar y descargar" : "Armar y descargar"}</button>
         {cur?.url && <a className="btn-secondary text-xs" href={cur.url} download={cur.filename}>Descargar v{versions.length} ({cur.generado})</a>}
         {versions.length > 1 && <button className="text-xs text-brand-600 hover:underline" onClick={() => setOld(!old)}>{old ? "Ocultar versiones" : `Versiones anteriores (${versions.length - 1})`}</button>}
       </div>
