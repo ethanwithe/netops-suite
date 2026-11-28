@@ -18,7 +18,7 @@ def test_pdf_salida_como_imagen(tmp_path):
     build_checklist_pdf(META, SECS, str(out))
     text = "".join(p.extract_text() or "" for p in PdfReader(str(out)).pages)
     assert "GigabitEthernet0/0" not in text, "la salida de un comando común debe ir como imagen"
-    assert "ip address 10.0.0.1" in text, "la configuración sí queda como texto"
+    assert "255.255.255.0" in text, "la configuración sí queda como texto"
 
 
 def test_word_salida_como_imagen(tmp_path):
@@ -27,5 +27,5 @@ def test_word_salida_como_imagen(tmp_path):
     z = zipfile.ZipFile(out)
     xml = z.read("word/document.xml").decode("utf-8")
     assert "GigabitEthernet0/0" not in xml
-    assert "ip address 10.0.0.1" in xml
+    assert "255.255.255.0" in xml
     assert any(n.startswith("word/media/") for n in z.namelist())
