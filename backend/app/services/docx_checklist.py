@@ -212,18 +212,22 @@ def build_checklist_docx(meta: dict, sections: List[tuple], out_path: str) -> st
                     pp.add_run().add_picture(buf, width=Cm(wc))
                 continue
             if texto:
-                # sin captura pero con salida: bloque oscuro tipo terminal
-                tbl = doc.add_table(1, 1)
-                tbl.autofit = True
-                cell = tbl.rows[0].cells[0]
-                _shade(cell, "0C0C0C")
+                # sin captura pero con salida: imagen tipo terminal (en el Word generado no se puede editar como texto)
+                from app.services import term_image as TI
                 prompt = f"{meta.get('equipo') or 'equipo'}# {cmd}" if cmd else ""
-                lines = ([prompt] if prompt else []) + texto.replace("\r", "").split("\n")
-                cell.paragraphs[0].text = ""
-                for i, ln in enumerate(lines):
-                    lp = cell.paragraphs[0] if i == 0 else cell.add_paragraph()
-                    _tight(lp)
-                    _colored(lp, ln.replace("\t", "    "), True, i == 0)
+                lines = ([prompt] if prompt else []) + texto.replace("\r", "").replace("\t", "    ").split("\n")
+                cols = 110
+                for ci in range(0, len(lines), 55):            # tramos para que cada imagen quepa en la hoja
+                    chunk = []
+                    for ln in lines[ci:ci + 55]:
+                        while len(ln) > cols:                  # líneas largas: se parten como lo haría la terminal
+                            chunk.append(ln[:cols]); ln = ln[cols:]
+                        chunk.append(ln)
+                    png, w, h = TI.render_lines(chunk, ci == 0, cols)
+                    pp = doc.add_paragraph()
+                    _tight(pp, 0, 4)
+                    wc = min(content_w, 19.0 * w / h)
+                    pp.add_run().add_picture(io.BytesIO(png), width=Cm(wc))
                 continue
             sp = doc.add_paragraph()
             _tight(sp, 0, 6)
