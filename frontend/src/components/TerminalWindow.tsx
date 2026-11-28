@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { usePersistentState } from "../store/persistentState";
-import { connectTerminal, disconnectTerminal, sendRaw, termClear, termForget, termLog, getSession, useTerminal, vt } from "../store/terminal";
+import { connectTerminal, disconnectTerminal, sendRaw, termClear, termForget, termLog, getSession, useTerminal, vt, interruptCount, setBackMode, setKeepAlive } from "../store/terminal";
+import type { BackMode } from "../store/terminal";
 import { puenteEstado } from "../utils/puente";
 import type { PuenteEstado } from "../utils/puente";
 import { webSerialSupported } from "../utils/webSerial";
@@ -32,7 +33,9 @@ export default function TerminalWindow() {
   const [saved, setSaved] = usePersistentState<Saved[]>("checklist.cmds", []);
   const [theme, setTheme] = usePersistentState("terminal.tema", "Oscuro");
   const [fontSize, setFontSize] = usePersistentState("terminal.fuente", 13);
-  const [keep, setKeep] = useState(false);
+  const [keep, setKeep] = usePersistentState("terminal.mantener", true);
+  const [autoCopy, setAutoCopy] = usePersistentState("terminal.copiarAuto", true);
+  const [back, setBack] = usePersistentState<BackMode>("terminal.retroceso", "auto");
   const [panel, setPanel] = useState<"" | "cmds" | "multi" | "conn">("");
   const [find, setFind] = useState<string | null>(null);
   const [hl, setHl] = useState<number | undefined>();
@@ -56,12 +59,9 @@ export default function TerminalWindow() {
     return () => { alive = false; window.clearInterval(i); };
   }, [connected, code]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // mantener la sesión activa
-  useEffect(() => {
-    if (!connected || !keep) return;
-    const i = window.setInterval(() => sendRaw("\r"), 240000);
-    return () => window.clearInterval(i);
-  }, [connected, keep]);
+  // mantener la sesión abierta (lo hace el almacén de la terminal, también con esta ventana cerrada) y el retroceso
+  useEffect(() => { setKeepAlive(keep); }, [keep]);
+  useEffect(() => { setBackMode(back); }, [back]);
 
   useEffect(() => { if (connected) setPanel((p) => (p === "conn" ? "" : p)); }, [connected]);
 
@@ -85,8 +85,9 @@ export default function TerminalWindow() {
     if (!connected || sending) return;
     setSending(true);
     try {
+      const stopAt = interruptCount();
       for (const raw of text.split("\n")) {
-        if (!getSession()?.connected) break;
+        if (!getSession()?.connected || interruptCount() !== stopAt) break;       // Ctrl+C corta el envío de lo que faltaba
         sendRaw(raw.replace(/\s+$/, "") + "\r");
         await sleep(delay);
       }
@@ -246,12 +247,21 @@ export default function TerminalWindow() {
         </div>
       )}
 
-      <TerminalView connected={connected} theme={theme} fontSize={fontSize} hl={hl} onSearchKey={() => setFind(find ?? "")} />
+      <TerminalView connected={connected} theme={theme} fontSize={fontSize} hl={hl} autoCopy={autoCopy} onSearchKey={() => setFind(find ?? "")} />
 
       <div className="flex flex-wrap items-center gap-1 border-t border-slate-200 bg-slate-50 px-2 py-1">
         {keys.map(([l, seq]) => <button key={l} className={`${btn} font-mono`} disabled={!connected} onClick={() => sendRaw(seq)}>{l}</button>)}
-        <label className="ml-auto flex items-center gap-1 text-[11px] text-slate-600" title="Envía un Enter cada 4 minutos para que el equipo no cierre la sesión">
-          <input type="checkbox" checked={keep} onChange={(e) => setKeep(e.target.checked)} /> Mantener activa
+        <label className="ml-auto flex items-center gap-1 text-[11px] text-slate-600" title="Marcar texto lo copia solo (Ctrl+C siempre cancela; Ctrl+Shift+C copia; clic derecho pega)">
+          <input type="checkbox" checked={autoCopy} onChange={(e) => setAutoCopy(e.target.checked)} /> Copiar al marcar
+        </label>
+        <label className="flex items-center gap-1 text-[11px] text-slate-600" title="Retroceso: Auto usa Ctrl+H en Huawei (<equipo>) y DEL en el resto. Si no borra, prueba la otra opción.">
+          Borrar:
+          <select className="rounded border border-slate-300 bg-white px-1 py-0 text-[11px]" value={back} onChange={(e) => setBack(e.target.value as BackMode)}>
+            <option value="auto">Auto</option><option value="del">DEL</option><option value="bs">Ctrl+H</option>
+          </select>
+        </label>
+        <label className="flex items-center gap-1 text-[11px] text-slate-600" title="Si no usas la sesión, envía un espacio y su borrado cada 40 s para que el equipo no la cierre por inactividad (no se ve en pantalla)">
+          <input type="checkbox" checked={keep} onChange={(e) => setKeep(e.target.checked)} /> Mantener sesión abierta
         </label>
       </div>
     </div>

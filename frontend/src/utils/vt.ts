@@ -3,6 +3,8 @@
  * texto, \r \n \b \t, mover el cursor, borrar línea/pantalla, borrar/insertar caracteres y colores SGR.
  * No usa librerías: la pantalla es una lista de líneas que se dibuja en HTML.
  */
+import { colorMap } from "./termColors";
+
 export interface VCell { c: string; f: number; b: boolean }
 
 const ESC = "\x1b";
@@ -149,22 +151,35 @@ export class Vt {
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
-/** HTML de una línea (agrupa celdas con el mismo color) y, si lleva el cursor, lo marca. */
-export function lineHtml(l: VCell[], cursorAt = -1): string {
-  let out = "", run = "", f = -2, b = false;
+const htmlCache = new WeakMap<VCell[], { key: string; html: string }>();
+
+/** HTML de una línea (agrupa celdas con el mismo color) y, si lleva el cursor, lo marca.
+ *  `paint`: pinta con los colores de MobaXterm lo que el equipo mandó sin color (IPs, interfaces, up/down, errores, prompt…). */
+export function lineHtml(l: VCell[], cursorAt = -1, paint: "dark" | "light" | "" = ""): string {
+  let key = "";
+  if (cursorAt < 0) {
+    for (const c of l) key += c.c + c.f + (c.b ? "b" : "");
+    key += paint;
+    const hit = htmlCache.get(l);
+    if (hit && hit.key === key) return hit.html;
+  }
+  const auto = paint ? colorMap(l.map((c) => c.c).join(""), paint === "dark") : [];
+  let out = "", run = "", col = "#", b = false;
   const flush = () => {
     if (!run) return;
-    const col = f >= 0 ? colorOf(f) : "";
     out += col || b ? `<span style="${col ? `color:${col};` : ""}${b ? "font-weight:700" : ""}">${esc(run)}</span>` : esc(run);
     run = "";
   };
   const n = Math.max(l.length, cursorAt + 1);
   for (let x = 0; x < n; x++) {
     const c = l[x] ?? { c: " ", f: -1, b: false };
-    if (x === cursorAt) { flush(); out += `<span class="vt-cur">${esc(c.c)}</span>`; f = -2; continue; }
-    if (c.f !== f || c.b !== b) { flush(); f = c.f; b = c.b; }
+    if (x === cursorAt) { flush(); out += `<span class="vt-cur">${esc(c.c)}</span>`; col = "#"; continue; }
+    const k = c.f >= 0 ? colorOf(c.f) : (auto[x] || "");
+    if (k !== col || c.b !== b) { flush(); col = k; b = c.b; }
     run += c.c;
   }
   flush();
-  return out || " ";
+  const html = out || " ";
+  if (cursorAt < 0) htmlCache.set(l, { key, html });
+  return html;
 }

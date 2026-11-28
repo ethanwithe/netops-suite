@@ -31,8 +31,11 @@ const plain = (prev: string, chunk: string) => {
   return out;
 };
 
+let lastOut = 0;
+let lastIn = 0;
 /** Texto que llega del equipo (o notas propias). */
 export function feed(chunk: string) {
+  lastOut = Date.now();
   vt.write(chunk);
   fullLog = plain(fullLog, chunk).slice(-1_500_000);
   schedule();
@@ -46,7 +49,47 @@ export function termForget() { fullLog = ""; vt.clear(); bump(); }
 let idleHook: (() => void) | null = null;
 export function setIdleHook(f: () => void) { idleHook = f; }
 export function setSetupCommands(c: string[]) { setupCmds = c; }
-export function sendRaw(s: string) { void session?.raw(s); }
+let interrupts = 0;
+/** Cuántas veces se interrumpió (Ctrl+C, Ctrl+Shift+6, Ctrl+Z): los envíos de varios comandos se detienen al instante. */
+export const interruptCount = () => interrupts;
+export function sendRaw(s: string) {
+  lastIn = Date.now();
+  if (/[\x03\x1a\x1e]/.test(s)) interrupts++;
+  void session?.raw(s);
+}
+
+// ---------------- retroceso (Huawei/VRP no borra con DEL: pide Ctrl+H) ----------------
+export type BackMode = "auto" | "del" | "bs";
+let backMode: BackMode = "auto";
+export function setBackMode(m: BackMode) { backMode = m; }
+/** Lo que envía la tecla Retroceso. En «auto», un prompt tipo <equipo> o [equipo] (Huawei) usa Ctrl+H y el resto DEL. */
+export function backspaceSeq(): string {
+  if (backMode === "bs") return "\x08";
+  if (backMode === "del") return "\x7f";
+  const cur = vt.lines[vt.cy] ?? [];
+  const head = cur.slice(0, 70).map((c) => c.c).join("");
+  return /^(<[^<>\s]{1,60}>|\[[^\[\]\s]{1,60}\])/.test(head) ? "\x08" : "\x7f";
+}
+
+// ---------------- mantener la sesión abierta (los equipos cierran la sesión por inactividad) ----------------
+let keepOn = true;
+let keepTimer: number | null = null;
+export function setKeepAlive(on: boolean) { keepOn = on; }
+const KEEP_AFTER = 40_000;   // sin teclear ni recibir nada en 40 s
+function startKeepAlive() {
+  stopKeepAlive();
+  keepTimer = window.setInterval(() => {
+    if (!keepOn || !session?.connected) return;
+    const now = Date.now();
+    if (now - lastIn < KEEP_AFTER || now - lastOut < 4000) return;     // en uso, o un comando está sacando datos
+    const last = (vt.lines[vt.cy] ?? []).map((c) => c.c).join("");
+    if (/more/i.test(last)) return;                                    // paginación: un espacio avanzaría la hoja
+    lastIn = now;
+    // un espacio y su borrado: el equipo lo cuenta como actividad (reinicia el temporizador) y la pantalla no cambia
+    void session.raw(" " + backspaceSeq());
+  }, 10_000);
+}
+function stopKeepAlive() { if (keepTimer != null) { window.clearInterval(keepTimer); keepTimer = null; } }
 
 export interface ConnectOpts {
   mode: "puente" | "navegador";
@@ -76,8 +119,10 @@ export async function connectTerminal(o: ConnectOpts): Promise<void> {
         : { kind: "serial", port: o.puerto, baud: o.baud });
       sess = ps;
     }
-    sess.onClose = (why) => { session = null; mark("Conexión cerrada: " + why); bump({ connected: false, status: why }); idleHook?.(); };
+    sess.onClose = (why) => { session = null; stopKeepAlive(); mark("Conexión cerrada: " + why); bump({ connected: false, status: why }); idleHook?.(); };
     session = sess;
+    lastIn = lastOut = Date.now();
+    startKeepAlive();
     mark(`Conectado: ${label}`);
     bump({ connected: true, status: "Conectado. Preparando el equipo…" });
     for (const c of setupCmds) await sess.run(c, { maxMs: 8000 });
@@ -94,6 +139,7 @@ export async function disconnectTerminal(): Promise<void> {
   mark("Desconectado");
   const s = session;
   session = null;
+  stopKeepAlive();
   await s?.close();
   bump({ connected: false, status: "Desconectado." });
   idleHook?.();
