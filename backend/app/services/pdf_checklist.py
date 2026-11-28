@@ -12,6 +12,7 @@ PDF del CheckList de Claro, con el estilo de los ejemplos:
   - Pie: fecha a la derecha y número de página en un recuadro azul.
 """
 
+import io
 import textwrap
 
 from reportlab.lib.colors import HexColor
@@ -204,26 +205,25 @@ def build_checklist_pdf(meta, sections, out_path, progress_cb=None):
                     continue
 
                 if texto:
-                    # Ítem de foto sin captura subida: la salida se dibuja como terminal
+                    # Ítem de foto sin captura subida: la salida se entrega como IMAGEN tipo terminal (en el PDF no se puede editar)
+                    from app.services import term_image as TI
                     prompt = f"{meta.get('equipo') or 'equipo'}# {cmd}" if cmd else ""
                     lines = _wrap(prompt + ("\n" if prompt else "") + texto, chars - 2)
-                    pad = 0.25 * cm
+                    cols = max(chars - 2, 40)
+                    wpx, _ = TI.dims(1, cols)
+                    scale = content_w / wpx                       # puntos por píxel
+                    lhp, padp = TI.line_px() * scale, TI.PAD * scale
                     i = 0
                     while i < len(lines):
-                        room = int((y - bottom - 2 * pad) / TEXT_LEAD)
+                        room = int((y - bottom - 2 * padp) / lhp)
                         if room < 6:
                             new_page()
                             continue
                         chunk = lines[i:i + room]
-                        h = 2 * pad + len(chunk) * TEXT_LEAD
+                        h = 2 * padp + len(chunk) * lhp
                         if draw:
-                            c.setFillColor(TERM_BG)
-                            c.rect(MARGIN, y - h, content_w, h, fill=1, stroke=0)
-                            c.setFont(TEXT_FONT, TEXT_SIZE)
-                            ty = y - pad - TEXT_SIZE
-                            for j, line in enumerate(chunk):
-                                _draw_colored(c, MARGIN + pad, ty, line, TERM_TEXT, True, i == 0 and j == 0)
-                                ty -= TEXT_LEAD
+                            png, _w, _h = TI.render_lines(chunk, i == 0, cols)
+                            c.drawImage(ImageReader(io.BytesIO(png)), MARGIN, y - h, width=content_w, height=h)
                         y -= h + 8
                         i += room
                     y -= 4
