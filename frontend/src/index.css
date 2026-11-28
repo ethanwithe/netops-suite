@@ -718,3 +718,7 @@ body { overscroll-behavior-y: none; }
     overflow-y: auto;
   }
 }
+
+/* Al marcar texto en la terminal solo se puede seleccionar lo de dentro de ella */
+body.vt-dragging, body.vt-dragging * { user-select: none; -webkit-user-select: none; }
+body.vt-dragging .vt-scroll, body.vt-dragging .vt-scroll * { user-select: text; -webkit-user-select: text; }
